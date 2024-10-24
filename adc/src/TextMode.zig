@@ -3,7 +3,7 @@ const SDL = @import("sdl2");
 
 const Font = @import("./Font.zig");
 
-pub fn TextMode(W: usize, H: usize) type {
+pub fn TextMode(H: usize, W: usize) type {
     return struct {
         const Self = @This();
 
@@ -109,7 +109,6 @@ pub fn TextMode(W: usize, H: usize) type {
 
         pub fn writeAccelerated(self: *Self, r: usize, c: usize, text: []const u8, show_acc: bool) void {
             // As above.
-
             var next_highlight = false;
             var j: usize = 0;
             for (text) |char| {

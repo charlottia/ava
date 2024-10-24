@@ -9,7 +9,7 @@ const Editor = @import("./Editor.zig");
 const Kyuubey = @This();
 
 allocator: Allocator,
-text_mode: TextMode(80, 25),
+text_mode: TextMode(25, 80),
 char_width: usize, // XXX: abstraction leak, should happen in IMTK
 char_height: usize, // XXX: abstraction leak, should happen in IMTK
 
@@ -30,7 +30,7 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, filename:
     const qb = try allocator.create(Kyuubey);
     qb.* = Kyuubey{
         .allocator = allocator,
-        .text_mode = try TextMode(80, 25).init(renderer, font),
+        .text_mode = try TextMode(25, 80).init(renderer, font),
         .char_width = font.char_width,
         .char_height = font.char_height,
         .editors = .{
