@@ -101,7 +101,9 @@ pub fn keyUp(self: *Kyuubey, sym: SDL.Keycode) !void {
     if ((sym == .left_alt or sym == .right_alt) and self.alt_held) {
         self.alt_held = false;
 
-        if (!self.menubar_focus) {
+        if (self.menu_open) {
+            self.menu_open = false;
+        } else if (!self.menubar_focus) {
             self.cursor_inhibit = true;
             self.menubar_focus = true;
             self.selected_menu = 0;
@@ -323,24 +325,33 @@ const MENUS = .{
     .@"&File" = .{
         .width = 16,
         .items = .{
-            "&New Program",
-            "&Open Program...",
-            "&Merge...",
-            "&Save",
-            "Save &As...",
-            "Sa&ve All",
-            "-",
-            "&Create File...",
-            "&Load File...",
-            "&Unload File...",
-            "-",
-            "&Print...",
-            "&DOS Shell",
-            "-",
-            "E&xit",
+            .{ "&New Program", "Removes currently loaded program from memory" },
+            .{ "&Open Program...", "Loads new program into memory" },
+            .{ "&Merge...", "Inserts specified file into current module" },
+            .{ "&Save", "Writes current module to file on disk" },
+            .{ "Save &As...", "Saves current module with specified name and formt" }, // XXX presses up against ruler but does not hide
+            .{ "Sa&ve All", "Writes all currently loaded module to files on disk" }, // XXX hides ruler!
+            null,
+            .{ "&Create File...", "Creates a module, include file, or document; retains loaded modules" }, // XXX as above
+            .{ "&Load File...", "Loads a module, include file, or document; retains loaded modules" }, // XXX as above
+            .{ "&Unload File...", "Rmoves a loaded module, include file, or document from memory" },
+            null,
+            .{ "&Print...", "Prints specified text or module" },
+            .{ "&DOS Shell", "Temporarily suspends ADC and invokes DOS shell" }, // uhh
+            null,
+            .{ "E&xit", "Exits ADC and returns to DOS" }, // uhhhhh
         },
     },
-    .@"&Edit" = .{ .width = 20, .items = .{} },
+    .@"&Edit" = .{ .width = 20, .items = .{
+        .{ "&Undo", "Restores current edited line to its original condition", "Alt+Backspace" },
+        .{ "Cu&t", "Deletes selected text and copies it to buffer", "Shift+Del" },
+        .{ "&Copy", "Copies selected text to buffer", "Ctrl+Ins" },
+        .{ "&Paste", "Inserts buffer contents at current location", "Shift+Ins" },
+        .{ "Cl&ear", "Deletes selected text without copying it to buffer", "Del" },
+        null,
+        .{ "New &SUB...", "Opens a window for a new subprogram" },
+        .{ "New &FUNCTION...", "Opens a window for a new FUNCTION procedure" },
+    } },
     .@"&View" = .{ .width = 21, .items = .{} },
     .@"&Search" = .{ .width = 24, .items = .{} },
     .@"&Run" = .{ .width = 19, .items = .{} },
@@ -389,15 +400,6 @@ pub fn render(self: *Kyuubey) void {
         }
     }
 
-    self.screen[24 * 80 + 62] |= 0xb3;
-    var buf: [9]u8 = undefined;
-    _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_y + 1, active_editor.cursor_x + 1 }) catch unreachable;
-    for (buf, 0..) |c, j|
-        self.screen[24 * 80 + 70 + j] += c;
-
-    self.cursor_x = active_editor.cursor_x + 1 - active_editor.scroll_x;
-    self.cursor_y = active_editor.cursor_y + 1 - active_editor.scroll_y + active_editor.top;
-
     // Draw open menus on top of anything else.
     if (self.menu_open) {
         // Note duplication with menubar drawing.
@@ -414,28 +416,42 @@ pub fn render(self: *Kyuubey) void {
                 var row: usize = 2;
                 var option_number: usize = 0;
                 inline for (menu.items) |o| {
-                    if (std.mem.eql(u8, o, "-")) {
+                    if (@typeInfo(@TypeOf(o)) == .Null) {
                         self.screen[80 * row + offset] = 0x70c3;
                         for (1..menu.width + 3) |j|
                             self.screen[80 * row + offset + j] = 0x70c4;
                         self.screen[80 * row + offset + menu.width + 3] = 0x70b4;
                     } else {
                         self.screen[80 * row + offset] = 0x70b3;
+                        const disabled = std.mem.eql(u8, "&Undo", o.@"0") or std.mem.eql(u8, "Cu&t", o.@"0") or std.mem.eql(u8, "&Copy", o.@"0") or std.mem.eql(u8, "Cl&ear", o.@"0");
+                        const fill: u16 = if (self.selected_menu_item == option_number)
+                            0x0700
+                        else if (disabled)
+                            0x7800
+                        else
+                            0x7000;
                         for (1..menu.width + 3) |j|
-                            self.screen[80 * row + offset + j] = if (self.selected_menu_item == option_number) 0x0700 else 0x7000;
+                            self.screen[80 * row + offset + j] = fill;
                         var next_highlight = false;
                         var j: usize = 2;
-                        for (o) |c| {
+                        for (o.@"0") |c| {
                             if (c == '&')
                                 next_highlight = true
                             else {
                                 self.screen[80 * row + offset + j] |= c;
                                 if (next_highlight) {
-                                    self.screen[80 * row + offset + j] |= 0x0f00;
+                                    if (!disabled)
+                                        self.screen[80 * row + offset + j] |= 0x0f00;
                                     next_highlight = false;
                                 }
                                 j += 1;
                             }
+                        }
+                        if (o.len == 3) {
+                            // Shortcut key.
+                            const sk = o.@"2";
+                            for (sk, 0..) |c, k|
+                                self.screen[80 * row + offset + menu.width + 2 - sk.len + k] |= c;
                         }
                         self.screen[80 * row + offset + menu.width + 3] = 0x70b3;
                         option_number += 1;
@@ -463,6 +479,15 @@ pub fn render(self: *Kyuubey) void {
             offset += option.name.len + 1;
         }
     }
+
+    self.screen[24 * 80 + 62] |= 0xb3;
+    var buf: [9]u8 = undefined;
+    _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_y + 1, active_editor.cursor_x + 1 }) catch unreachable;
+    for (buf, 0..) |c, j|
+        self.screen[24 * 80 + 70 + j] += c;
+
+    self.cursor_x = active_editor.cursor_x + 1 - active_editor.scroll_x;
+    self.cursor_y = active_editor.cursor_y + 1 - active_editor.scroll_y + active_editor.top;
 }
 
 fn renderMenuOption(self: *Kyuubey, title: []const u8, start: usize, index: usize) void {
