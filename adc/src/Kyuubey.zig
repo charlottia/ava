@@ -329,12 +329,12 @@ const MENUS = .{
             .{ "&Open Program...", "Loads new program into memory" },
             .{ "&Merge...", "Inserts specified file into current module" },
             .{ "&Save", "Writes current module to file on disk" },
-            .{ "Save &As...", "Saves current module with specified name and formt" }, // XXX presses up against ruler but does not hide
-            .{ "Sa&ve All", "Writes all currently loaded module to files on disk" }, // XXX hides ruler!
+            .{ "Save &As...", "Saves current module with specified name and format" }, // XXX presses up against ruler but does not hide
+            .{ "Sa&ve All", "Writes all currently loaded modules to files on disk" }, // XXX hides ruler!
             null,
             .{ "&Create File...", "Creates a module, include file, or document; retains loaded modules" }, // XXX as above
             .{ "&Load File...", "Loads a module, include file, or document; retains loaded modules" }, // XXX as above
-            .{ "&Unload File...", "Rmoves a loaded module, include file, or document from memory" },
+            .{ "&Unload File...", "Removes a loaded module, include file, or document from memory" },
             null,
             .{ "&Print...", "Prints specified text or module" },
             .{ "&DOS Shell", "Temporarily suspends ADC and invokes DOS shell" }, // uhh
@@ -384,23 +384,8 @@ pub fn render(self: *Kyuubey) void {
         self.renderEditor(e, self.editor_active == i);
     }
 
-    for (0..80) |x|
-        self.screen[24 * 80 + x] = 0x3000;
-
-    offset = 1;
-    if (self.menubar_focus) {
-        inline for (&.{ "F1=Help", "Enter=Display Menu", "Esc=Cancel", "Arrow=Next Item" }) |item| {
-            self.renderHelpItem(item, offset);
-            offset += item.len + 3;
-        }
-    } else {
-        inline for (&.{ "<Shift+F1=Help>", "<F6=Window>", "<F2=Subs>", "<F5=Run>", "<F8=Step>" }) |item| {
-            self.renderHelpItem(item, offset);
-            offset += item.len + 1;
-        }
-    }
-
     // Draw open menus on top of anything else.
+    var menu_help_text: ?[]const u8 = null;
     if (self.menu_open) {
         // Note duplication with menubar drawing.
         offset = 1;
@@ -447,6 +432,8 @@ pub fn render(self: *Kyuubey) void {
                                 j += 1;
                             }
                         }
+                        if (self.selected_menu_item == option_number)
+                            menu_help_text = o.@"1";
                         if (o.len == 3) {
                             // Shortcut key.
                             const sk = o.@"2";
@@ -480,11 +467,36 @@ pub fn render(self: *Kyuubey) void {
         }
     }
 
-    self.screen[24 * 80 + 62] |= 0xb3;
-    var buf: [9]u8 = undefined;
-    _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_y + 1, active_editor.cursor_x + 1 }) catch unreachable;
-    for (buf, 0..) |c, j|
-        self.screen[24 * 80 + 70 + j] += c;
+    for (0..80) |x|
+        self.screen[24 * 80 + x] = 0x3000;
+
+    offset = 1;
+    if (menu_help_text) |t| {
+        self.renderHelpItem("F1=Help", offset);
+        offset += "F1=Help".len + 1;
+        self.screen[24 * 80 + offset] |= 0xb3;
+        offset += 2;
+        self.renderHelpItem(t, offset);
+        offset += t.len;
+    } else if (self.menubar_focus) {
+        inline for (&.{ "F1=Help", "Enter=Display Menu", "Esc=Cancel", "Arrow=Next Item" }) |item| {
+            self.renderHelpItem(item, offset);
+            offset += item.len + 3;
+        }
+    } else {
+        inline for (&.{ "<Shift+F1=Help>", "<F6=Window>", "<F2=Subs>", "<F5=Run>", "<F8=Step>" }) |item| {
+            self.renderHelpItem(item, offset);
+            offset += item.len + 1;
+        }
+    }
+
+    if (offset <= 62) {
+        self.screen[24 * 80 + 62] |= 0xb3;
+        var buf: [9]u8 = undefined;
+        _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_y + 1, active_editor.cursor_x + 1 }) catch unreachable;
+        for (buf, 0..) |c, j|
+            self.screen[24 * 80 + 70 + j] += c;
+    }
 
     self.cursor_x = active_editor.cursor_x + 1 - active_editor.scroll_x;
     self.cursor_y = active_editor.cursor_y + 1 - active_editor.scroll_y + active_editor.top;
