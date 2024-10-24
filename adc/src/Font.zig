@@ -31,7 +31,7 @@ pub const CgaColors = [16]u24{
     0xFFFFFF,
 };
 
-pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
+pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !*Font {
     var char_width: usize = undefined;
     var char_height: usize = undefined;
 
@@ -87,12 +87,15 @@ pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
 
     if (parser_state != .ended) return error.BadGlyph;
 
-    return .{
+    const s = try allocator.create(Font);
+    errdefer allocator.destroy(s);
+    s.* = .{
         .allocator = allocator,
         .char_width = char_width,
         .char_height = char_height,
         .chars = try chars.toOwnedSlice(),
     };
+    return s;
 }
 
 pub fn deinit(self: *Font) void {
@@ -103,9 +106,13 @@ pub fn deinit(self: *Font) void {
     if (self.charset_prepared)
         for (self.charset) |t|
             t.destroy();
+
+    self.allocator.destroy(self);
 }
 
 pub fn prepare(self: *Font, renderer: SDL.Renderer) !void {
+    std.debug.assert(!self.charset_prepared);
+
     var charset = [_]SDL.Texture{undefined} ** 256;
 
     for (0..256) |i| {
@@ -135,7 +142,7 @@ pub fn prepare(self: *Font, renderer: SDL.Renderer) !void {
     self.charset = charset;
 }
 
-pub fn render(self: *Font, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
+pub fn render(self: *const Font, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
     std.debug.assert(self.charset_prepared);
 
     const bg = CgaColors[(pair >> (8 + 4)) & 0x7];

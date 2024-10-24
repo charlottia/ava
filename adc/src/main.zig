@@ -122,8 +122,6 @@ fn exe(
 
     _ = try SDL.showCursor(false);
 
-    try font.prepare(renderer);
-
     var qb = try Kyuubey.init(allocator, renderer, font, filename);
     defer qb.deinit();
 
@@ -135,8 +133,6 @@ fn exe(
     var keydown_mod: SDL.KeyModifierSet = undefined;
     var typematic_on = false;
 
-    var old_x: usize = 0;
-    var old_y: usize = 0;
     var mouse_down: ?SDL.MouseButton = null;
 
     var running = true;
@@ -167,45 +163,30 @@ fn exe(
                     keydown_tick = 0;
                 },
                 .mouse_motion => |motion| {
-                    qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(motion.x)) / scale);
-                    qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(motion.y)) / scale);
+                    const old_x = qb.mouse_x;
+                    const old_y = qb.mouse_y;
 
-                    if (qb.mouse_x != old_x or qb.mouse_y != old_y) {
+                    if (qb.mouseAt(motion.x, motion.y, scale)) {
                         if (mouse_down) |button|
                             try qb.mouseDrag(button, old_x, old_y);
-                        try qb.textRefresh();
+                        try qb.text_mode.present();
                     }
-
-                    old_x = qb.mouse_x;
-                    old_y = qb.mouse_y;
                 },
                 .mouse_button_down => |button| {
-                    qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(button.x)) / scale);
-                    qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(button.y)) / scale);
-
-                    if (qb.mouse_x != old_x or qb.mouse_y != old_y)
-                        try qb.textRefresh();
+                    if (qb.mouseAt(button.x, button.y, scale))
+                        try qb.text_mode.present();
 
                     try qb.mouseDown(button.button, button.clicks);
 
                     mouse_down = button.button;
-
-                    old_x = qb.mouse_x;
-                    old_y = qb.mouse_y;
                 },
                 .mouse_button_up => |button| {
-                    qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(button.x)) / scale);
-                    qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(button.y)) / scale);
-
-                    if (qb.mouse_x != old_x or qb.mouse_y != old_y)
-                        try qb.textRefresh();
+                    if (qb.mouseAt(button.x, button.y, scale))
+                        try qb.text_mode.present();
 
                     try qb.mouseUp(button.button, button.clicks);
 
                     mouse_down = null;
-
-                    old_x = qb.mouse_x;
-                    old_y = qb.mouse_y;
                 },
                 .quit => running = false,
                 else => {},
@@ -219,7 +200,7 @@ fn exe(
         if (until_flip <= 0) {
             until_flip += FLIP_MS;
             qb.cursor_on = !qb.cursor_on;
-            try qb.textRefresh();
+            try qb.text_mode.present();
         }
 
         // std.debug.print("> ", .{});
