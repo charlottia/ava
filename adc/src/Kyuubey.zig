@@ -94,6 +94,14 @@ pub fn keyDown(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void 
         self.alt_held = true;
         self.render();
         try self.textRefresh();
+        return;
+    }
+
+    if (sym == .@"return" and self.menubar_focus) {
+        if (!self.menu_open) {
+            self.menu_open = true;
+            self.selected_menu_item = 0;
+        }
     }
 }
 
@@ -352,9 +360,38 @@ const MENUS = .{
         .{ "New &SUB...", "Opens a window for a new subprogram" },
         .{ "New &FUNCTION...", "Opens a window for a new FUNCTION procedure" },
     } },
-    .@"&View" = .{ .width = 21, .items = .{} },
-    .@"&Search" = .{ .width = 24, .items = .{} },
-    .@"&Run" = .{ .width = 19, .items = .{} },
+    .@"&View" = .{ .width = 21, .items = .{
+        .{ "&SUBs...", "Displays a loaded SUB, FUNCTION, module, include file, or document", "F2" },
+        .{ "N&ext SUB", "Displays next SUB or FUNCTION procedure in the active window", "Shift+F2" },
+        .{ "S&plit", "Divides screen into two View windows" },
+        null,
+        .{ "&Next Statement", "Displays next statement to be executed" },
+        .{ "O&utput Screen", "Displays output screen", "F4" },
+        null,
+        .{ "&Included File", "Displays include file for editing" },
+        .{ "Included &Lines", "Displays include file for viewing only (not for editing)" },
+    } },
+    .@"&Search" = .{ .width = 24, .items = .{
+        .{ "&Find...", "Finds specified text" },
+        .{ "&Selected Text", "Finds selected text", "Ctrl+\\" },
+        .{ "&Repeat Last Find", "Finds next occurrence of text specified in previous search", "F3" },
+        .{ "&Change...", "Finds and changes specified text" },
+        .{ "&Label...", "Finds specified line label" },
+    } },
+    .@"&Run" = .{
+        .width = 19,
+        .items = .{
+            .{ "&Start", "Runs current program", "Shift+F5" },
+            .{ "&Restart", "Clears variables in preparation for restarting single stepping" },
+            .{ "Co&ntinue", "Continues execution after a break", "F5" },
+            .{ "Modify &COMMAND$...", "Sets string returned by COMMAND$ function" },
+            null,
+            .{ "Make E&XE File...", "Creates executable file on disk" },
+            .{ "Make &Library...", "Creates Quick library and stand-alone (.LIB) library on disk" }, // XXX ?
+            null,
+            .{ "Set &Main Module...", "Makes the specified module the main module" },
+        },
+    },
     .@"&Debug" = .{ .width = 27, .items = .{} },
     .@"&Calls" = .{ .width = 10, .items = .{} }, // ???
     .@"&Options" = .{ .width = 15, .items = .{} },
