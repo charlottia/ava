@@ -32,6 +32,11 @@ pub fn TextMode(W: usize, H: usize) type {
         mouse_row: usize = H - 1,
         mouse_col: usize = W - 1,
 
+        cursor_on: bool = true,
+        cursor_inhibit: bool = false,
+        cursor_row: usize = 0,
+        cursor_col: usize = 0,
+
         pub fn init(renderer: SDL.Renderer, font: *Font) !Self {
             try font.prepare(renderer);
             return .{
@@ -58,17 +63,17 @@ pub fn TextMode(W: usize, H: usize) type {
                     try self.font.render(self.renderer, pair, c, r);
                 };
 
-            // if (self.cursor_on and !self.cursor_inhibit) {
-            //     const pair = self.screen[self.cursor_y * W + self.cursor_x];
-            //     const fg = Font.CgaColors[(pair >> 8) & 0xF];
-            //     try self.renderer.setColorRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xFF), @intCast(fg & 0xFF), 255);
-            //     try self.renderer.fillRect(.{
-            //         .x = @intCast(self.cursor_x * self.font.char_width),
-            //         .y = @intCast(self.cursor_y * self.font.char_height + self.font.char_height - 3),
-            //         .width = @intCast(self.font.char_width - 1),
-            //         .height = 2,
-            //     });
-            // }
+            if (self.cursor_on and !self.cursor_inhibit) {
+                const pair = self.screen[self.cursor_row * W + self.cursor_col];
+                const fg = Font.CgaColors[(pair >> 8) & 0xF];
+                try self.renderer.setColorRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xFF), @intCast(fg & 0xFF), 255);
+                try self.renderer.fillRect(.{
+                    .x = @intCast(self.cursor_col * self.font.char_width),
+                    .y = @intCast(self.cursor_row * self.font.char_height + self.font.char_height - 3),
+                    .width = @intCast(self.font.char_width - 1),
+                    .height = 2,
+                });
+            }
 
             self.renderer.present();
         }

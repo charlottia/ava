@@ -15,10 +15,6 @@ char_height: usize, // XXX: abstraction leak, should happen in IMTK
 
 mouse_x: usize = 100,
 mouse_y: usize = 100,
-cursor_on: bool = true,
-cursor_x: usize = 0,
-cursor_y: usize = 0,
-cursor_inhibit: bool = false,
 
 alt_held: bool = false,
 menubar_focus: bool = false,
@@ -86,11 +82,11 @@ pub fn keyUp(self: *Kyuubey, sym: SDL.Keycode) !void {
         if (self.menu_open) {
             self.menu_open = false;
         } else if (!self.menubar_focus) {
-            self.cursor_inhibit = true;
+            self.text_mode.cursor_inhibit = true;
             self.menubar_focus = true;
             self.selected_menu = 0;
         } else {
-            self.cursor_inhibit = false;
+            self.text_mode.cursor_inhibit = false;
             self.menubar_focus = false;
         }
 
@@ -122,7 +118,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
                 }
             },
             .escape => {
-                self.cursor_inhibit = false;
+                self.text_mode.cursor_inhibit = false;
                 self.menubar_focus = false;
                 self.menu_open = false;
             },
@@ -161,29 +157,29 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
 
     var editor = self.activeEditor();
 
-    if (sym == .down and editor.cursor_y < editor.lines.items.len) {
-        editor.cursor_y += 1;
-    } else if (sym == .up and editor.cursor_y > 0) {
-        editor.cursor_y -= 1;
-    } else if (sym == .left and editor.cursor_x > 0) {
-        editor.cursor_x -= 1;
+    if (sym == .down and editor.cursor_row < editor.lines.items.len) {
+        editor.cursor_row += 1;
+    } else if (sym == .up and editor.cursor_row > 0) {
+        editor.cursor_row -= 1;
+    } else if (sym == .left and editor.cursor_col > 0) {
+        editor.cursor_col -= 1;
     } else if (sym == .right) {
-        if (editor.cursor_x < Editor.MAX_LINE)
-            editor.cursor_x += 1;
+        if (editor.cursor_col < Editor.MAX_LINE)
+            editor.cursor_col += 1;
     } else if (sym == .tab) {
         var line = try editor.currentLine();
         while (line.items.len < 254) {
-            try line.insert(editor.cursor_x, ' ');
-            editor.cursor_x += 1;
-            if (editor.cursor_x % 8 == 0)
+            try line.insert(editor.cursor_col, ' ');
+            editor.cursor_col += 1;
+            if (editor.cursor_col % 8 == 0)
                 break;
         }
     } else if (isPrintableKey(sym) and (try editor.currentLine()).items.len < 254) {
         var line = try editor.currentLine();
-        if (line.items.len < editor.cursor_x)
-            try line.appendNTimes(' ', editor.cursor_x - line.items.len);
-        try line.insert(editor.cursor_x, getCharacter(sym, mod));
-        editor.cursor_x += 1;
+        if (line.items.len < editor.cursor_col)
+            try line.appendNTimes(' ', editor.cursor_col - line.items.len);
+        try line.insert(editor.cursor_col, getCharacter(sym, mod));
+        editor.cursor_col += 1;
     } else if (sym == .@"return") {
         try editor.splitLine();
     } else if (sym == .backspace) {
@@ -191,12 +187,12 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
-        editor.cursor_x = if (editor.maybeCurrentLine()) |line|
+        editor.cursor_col = if (editor.maybeCurrentLine()) |line|
             Editor.lineFirst(line.items)
         else
             0;
     } else if (sym == .end) {
-        editor.cursor_x = if (editor.maybeCurrentLine()) |line|
+        editor.cursor_col = if (editor.maybeCurrentLine()) |line|
             line.items.len
         else
             0;
@@ -207,16 +203,16 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     }
 
     const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
-    if (editor.cursor_y < editor.scroll_y) {
-        editor.scroll_y = editor.cursor_y;
-    } else if (editor.cursor_y > editor.scroll_y + editor.height - adjust) {
-        editor.scroll_y = editor.cursor_y + adjust - editor.height;
+    if (editor.cursor_row < editor.scroll_row) {
+        editor.scroll_row = editor.cursor_row;
+    } else if (editor.cursor_row > editor.scroll_row + editor.height - adjust) {
+        editor.scroll_row = editor.cursor_row + adjust - editor.height;
     }
 
-    if (editor.cursor_x < editor.scroll_x) {
-        editor.scroll_x = editor.cursor_x;
-    } else if (editor.cursor_x > editor.scroll_x + 77) {
-        editor.scroll_x = editor.cursor_x - 77;
+    if (editor.cursor_col < editor.scroll_col) {
+        editor.scroll_col = editor.cursor_col;
+    } else if (editor.cursor_col > editor.scroll_col + 77) {
+        editor.scroll_col = editor.cursor_col - 77;
     }
 
     self.render();
@@ -446,12 +442,12 @@ pub fn render(self: *Kyuubey) void {
     if (offset <= 62) {
         self.text_mode.draw(24, 62, 0x30, .Vertical);
         var buf: [9]u8 = undefined;
-        _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_y + 1, active_editor.cursor_x + 1 }) catch unreachable;
+        _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_row + 1, active_editor.cursor_col + 1 }) catch unreachable;
         self.text_mode.write(24, 70, &buf);
     }
 
-    self.cursor_x = active_editor.cursor_x + 1 - active_editor.scroll_x;
-    self.cursor_y = active_editor.cursor_y + 1 - active_editor.scroll_y + active_editor.top;
+    self.text_mode.cursor_col = active_editor.cursor_col + 1 - active_editor.scroll_col;
+    self.text_mode.cursor_row = active_editor.cursor_row + 1 - active_editor.scroll_row + active_editor.top;
 }
 
 fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
@@ -475,11 +471,11 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
     self.text_mode.paint(editor.top + 1, 79, editor.top + editor.height + 1, 80, 0x17, .Vertical);
     self.text_mode.paint(editor.top + 1, 1, editor.top + editor.height + 1, 79, 0x17, .Blank);
 
-    for (0..@min(editor.height, editor.lines.items.len - editor.scroll_y)) |y| {
-        const line = &editor.lines.items[editor.scroll_y + y];
-        const upper = @min(line.items.len, 78 + editor.scroll_x);
-        if (upper > editor.scroll_x)
-            self.text_mode.write(y + editor.top + 1, 1, line.items[editor.scroll_x..upper]);
+    for (0..@min(editor.height, editor.lines.items.len - editor.scroll_row)) |y| {
+        const line = &editor.lines.items[editor.scroll_row + y];
+        const upper = @min(line.items.len, 78 + editor.scroll_col);
+        if (upper > editor.scroll_col)
+            self.text_mode.write(y + editor.top + 1, 1, line.items[editor.scroll_col..upper]);
     }
 
     if (active and editor.kind != .immediate) {

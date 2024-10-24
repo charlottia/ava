@@ -199,7 +199,7 @@ fn exe(
         until_flip -= @intCast(delta_tick);
         if (until_flip <= 0) {
             until_flip += FLIP_MS;
-            qb.cursor_on = !qb.cursor_on;
+            qb.text_mode.cursor_on = !qb.text_mode.cursor_on;
             try qb.text_mode.present();
         }
 

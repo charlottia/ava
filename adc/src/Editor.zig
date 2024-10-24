@@ -23,10 +23,10 @@ fullscreened: ?struct {
     old_height: usize,
 } = null,
 
-cursor_x: usize = 0,
-cursor_y: usize = 0,
-scroll_x: usize = 0,
-scroll_y: usize = 0,
+cursor_row: usize = 0,
+cursor_col: usize = 0,
+scroll_row: usize = 0,
+scroll_col: usize = 0,
 
 pub const MAX_LINE = 255;
 
@@ -79,15 +79,15 @@ pub fn loadFrom(self: *Editor, other: *const Editor) !void {
 }
 
 pub fn currentLine(self: *Editor) !*std.ArrayList(u8) {
-    if (self.cursor_y == self.lines.items.len)
+    if (self.cursor_row == self.lines.items.len)
         try self.lines.append(std.ArrayList(u8).init(self.allocator));
-    return &self.lines.items[self.cursor_y];
+    return &self.lines.items[self.cursor_row];
 }
 
 pub fn maybeCurrentLine(self: *Editor) ?*std.ArrayList(u8) {
-    if (self.cursor_y == self.lines.items.len)
+    if (self.cursor_row == self.lines.items.len)
         return null;
-    return &self.lines.items[self.cursor_y];
+    return &self.lines.items[self.cursor_row];
 }
 
 pub fn lineFirst(line: []const u8) usize {
@@ -103,31 +103,31 @@ pub fn splitLine(self: *Editor) !void {
     var next = std.ArrayList(u8).init(self.allocator);
     try next.appendNTimes(' ', first);
 
-    const appending = if (self.cursor_x < current.items.len) current.items[self.cursor_x..] else "";
+    const appending = if (self.cursor_col < current.items.len) current.items[self.cursor_col..] else "";
     try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
-    try current.replaceRange(self.cursor_x, current.items.len - self.cursor_x, &.{});
-    try self.lines.insert(self.cursor_y + 1, next);
+    try current.replaceRange(self.cursor_col, current.items.len - self.cursor_col, &.{});
+    try self.lines.insert(self.cursor_row + 1, next);
 
-    self.cursor_x = first;
-    self.cursor_y += 1;
+    self.cursor_col = first;
+    self.cursor_row += 1;
 }
 
 pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
-    if (mode == .backspace and self.cursor_x == 0) {
-        if (self.cursor_y == 0) {
+    if (mode == .backspace and self.cursor_col == 0) {
+        if (self.cursor_row == 0) {
             //  WRONG  //
             //   WAY   //
             // GO BACK //
             return;
         }
 
-        if (self.cursor_y == self.lines.items.len) {
-            self.cursor_y -= 1;
-            self.cursor_x = @intCast((try self.currentLine()).items.len);
+        if (self.cursor_row == self.lines.items.len) {
+            self.cursor_row -= 1;
+            self.cursor_col = @intCast((try self.currentLine()).items.len);
         } else {
-            const removed = self.lines.orderedRemove(self.cursor_y);
-            self.cursor_y -= 1;
-            self.cursor_x = @intCast((try self.currentLine()).items.len);
+            const removed = self.lines.orderedRemove(self.cursor_row);
+            self.cursor_row -= 1;
+            self.cursor_col = @intCast((try self.currentLine()).items.len);
             try (try self.currentLine()).appendSlice(removed.items);
             removed.deinit();
         }
@@ -135,10 +135,10 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         // self.cursor_x > 0
         const line = try self.currentLine();
         const first = lineFirst(line.items);
-        if (self.cursor_x == first) {
+        if (self.cursor_col == first) {
             var back_to: usize = 0;
-            if (self.cursor_y > 0) {
-                var y: usize = self.cursor_y - 1;
+            if (self.cursor_row > 0) {
+                var y: usize = self.cursor_row - 1;
                 while (true) : (y -= 1) {
                     const lf = lineFirst(self.lines.items[y].items);
                     if (lf < first) {
@@ -149,23 +149,23 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
                 }
             }
             try line.replaceRange(0, first - back_to, &.{});
-            self.cursor_x = back_to;
+            self.cursor_col = back_to;
         } else {
-            if (self.cursor_x - 1 < line.items.len)
-                _ = line.orderedRemove(self.cursor_x - 1);
-            self.cursor_x -= 1;
+            if (self.cursor_col - 1 < line.items.len)
+                _ = line.orderedRemove(self.cursor_col - 1);
+            self.cursor_col -= 1;
         }
-    } else if (self.cursor_x == (try self.currentLine()).items.len) {
+    } else if (self.cursor_col == (try self.currentLine()).items.len) {
         // mode == .delete
-        if (self.cursor_y == self.lines.items.len - 1)
+        if (self.cursor_row == self.lines.items.len - 1)
             return;
 
-        const removed = self.lines.orderedRemove(self.cursor_y + 1);
+        const removed = self.lines.orderedRemove(self.cursor_row + 1);
         try (try self.currentLine()).appendSlice(removed.items);
         removed.deinit();
     } else {
         // mode == .delete, self.cursor_x < self.currentLine().items.len
-        _ = (try self.currentLine()).orderedRemove(self.cursor_x);
+        _ = (try self.currentLine()).orderedRemove(self.cursor_col);
     }
 }
 
@@ -195,33 +195,33 @@ pub fn handleMouseDown(self: *Editor, active: bool, button: SDL.MouseButton, cli
         const scrollbar = self.kind != .immediate and y == self.top + self.height;
         if (scrollbar and active) {
             if (x == 1) {
-                if (self.scroll_x > 0) {
-                    self.scroll_x -= 1;
-                    self.cursor_x -= 1;
+                if (self.scroll_col > 0) {
+                    self.scroll_col -= 1;
+                    self.cursor_col -= 1;
                 }
             } else if (x > 1 and x < 78) {
                 const hst = self.horizontalScrollThumb();
                 if (x - 2 < hst)
-                    self.scroll_x = if (self.scroll_x >= 78) self.scroll_x - 78 else 0
+                    self.scroll_col = if (self.scroll_col >= 78) self.scroll_col - 78 else 0
                 else if (x - 2 > hst)
-                    self.scroll_x = if (self.scroll_x <= MAX_LINE - 77 - 78) self.scroll_x + 78 else MAX_LINE - 77
+                    self.scroll_col = if (self.scroll_col <= MAX_LINE - 77 - 78) self.scroll_col + 78 else MAX_LINE - 77
                 else
-                    self.scroll_x = (hst * (MAX_LINE - 77) + 74) / 75;
-                self.cursor_x = self.scroll_x;
+                    self.scroll_col = (hst * (MAX_LINE - 77) + 74) / 75;
+                self.cursor_col = self.scroll_col;
             } else if (x == 78) {
-                if (self.scroll_x < (MAX_LINE - 77)) {
-                    self.scroll_x += 1;
-                    self.cursor_x += 1;
+                if (self.scroll_col < (MAX_LINE - 77)) {
+                    self.scroll_col += 1;
+                    self.cursor_col += 1;
                 }
             }
-            if (self.cursor_x < self.scroll_x)
-                self.cursor_x = self.scroll_x
-            else if (self.cursor_x > self.scroll_x + 77)
-                self.cursor_x = self.scroll_x + 77;
+            if (self.cursor_col < self.scroll_col)
+                self.cursor_col = self.scroll_col
+            else if (self.cursor_col > self.scroll_col + 77)
+                self.cursor_col = self.scroll_col + 77;
         } else {
             const eff_y = if (scrollbar) y - 1 else y;
-            self.cursor_x = self.scroll_x + x - 1;
-            self.cursor_y = @min(self.scroll_y + eff_y - self.top - 1, self.lines.items.len);
+            self.cursor_col = self.scroll_col + x - 1;
+            self.cursor_row = @min(self.scroll_row + eff_y - self.top - 1, self.lines.items.len);
         }
         return true;
     }
@@ -293,11 +293,11 @@ pub fn pageDown(self: *Editor) void {
 }
 
 pub fn horizontalScrollThumb(self: *const Editor) usize {
-    return self.scroll_x * 75 / (MAX_LINE - 77);
+    return self.scroll_col * 75 / (MAX_LINE - 77);
 }
 
 pub fn verticalScrollThumb(self: *const Editor) usize {
     if (self.lines.items.len == 0)
         return 0;
-    return self.cursor_y * (self.height - 4) / self.lines.items.len;
+    return self.cursor_row * (self.height - 4) / self.lines.items.len;
 }
