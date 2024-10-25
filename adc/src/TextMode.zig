@@ -26,11 +26,15 @@ pub fn TextMode(H: usize, W: usize) type {
             DotsLight = 0xb0,
         };
 
-        screen: [W * H]u16 = [_]u16{0} ** (W * H),
+        // https://retrocomputing.stackexchange.com/a/27805/20624
+        const FLIP_MS = 266;
+
+        screen: [W * H]u16 = [_]u16{0x0700} ** (W * H),
         renderer: SDL.Renderer,
         font: *Font,
         mouse_row: usize = H - 1,
         mouse_col: usize = W - 1,
+        flip_timer: i16 = FLIP_MS, // XXX? imelik tunne
 
         cursor_on: bool = true,
         cursor_inhibit: bool = false,
@@ -50,18 +54,31 @@ pub fn TextMode(H: usize, W: usize) type {
             self.mouse_col = mouse_x / self.font.char_width;
         }
 
-        pub fn present(self: *const Self) !void {
+        pub fn present(self: *Self, delta_tick: u64) !void {
             try self.renderer.clear();
 
-            for (0..H) |r|
-                for (0..W) |c| {
-                    var pair = self.screen[r * W + c];
-                    if (self.mouse_row == r and self.mouse_col == c)
-                        pair = ((7 - (pair >> 12)) << 12) |
-                            ((7 - ((pair >> 8) & 0x7)) << 8) |
-                            (pair & 0xFF);
-                    try self.font.render(self.renderer, pair, c, r);
-                };
+            var r: usize = 0;
+            var c: usize = 0;
+            for (self.screen) |pair| {
+                const p = if (self.mouse_row == r and self.mouse_col == c)
+                    ((7 - (pair >> 12)) << 12) |
+                        ((7 - ((pair >> 8) & 0x7)) << 8) |
+                        (pair & 0xFF)
+                else
+                    pair;
+                try self.font.render(self.renderer, p, c, r);
+
+                if (c == W - 1) {
+                    c = 0;
+                    r += 1;
+                } else c += 1;
+            }
+
+            self.flip_timer -= @intCast(delta_tick);
+            if (self.flip_timer <= 0) {
+                self.flip_timer += FLIP_MS;
+                self.cursor_on = !self.cursor_on;
+            }
 
             if (self.cursor_on and !self.cursor_inhibit) {
                 const pair = self.screen[self.cursor_row * W + self.cursor_col];

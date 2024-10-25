@@ -120,32 +120,12 @@ fn exe(
     // var qb = try Kyuubey.init(allocator, renderer, font, filename);
     // defer qb.deinit();
 
-    var imtui = try Imtui.init(allocator, renderer, font);
+    var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
     while (imtui.running) {
-        // if (keydown_tick > 0 and !typematic_on and last_tick >= keydown_tick + TYPEMATIC_DELAY) {
-        //     typematic_on = true;
-        //     keydown_tick = last_tick;
-        //     try qb.keyPress(keydown_sym, keydown_mod);
-        // } else if (keydown_tick > 0 and typematic_on and last_tick >= keydown_tick + TYPEMATIC_REPEAT) {
-        //     keydown_tick = last_tick;
-        //     try qb.keyPress(keydown_sym, keydown_mod);
-        // }
-
         while (SDL.pollEvent()) |ev|
             imtui.processEvent(ev);
-
-        // const this_tick = SDL.getTicks64();
-        // const delta_tick = this_tick - last_tick;
-
-        // last_tick = this_tick;
-        // until_flip -= @intCast(delta_tick);
-        // if (until_flip <= 0) {
-        //     until_flip += FLIP_MS;
-        //     qb.text_mode.cursor_on = !qb.text_mode.cursor_on;
-        //     try qb.text_mode.present();
-        // }
 
         try imtui.newFrame();
 
