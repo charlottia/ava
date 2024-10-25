@@ -10,8 +10,8 @@ const Kyuubey = @This();
 
 allocator: Allocator,
 text_mode: TextMode(25, 80),
-char_width: usize, // XXX: abstraction leak, should happen in IMTK
-char_height: usize, // XXX: abstraction leak, should happen in IMTK
+char_width: usize, // XXX: abstraction leak, should happen in IMTUI
+char_height: usize, // XXX: abstraction leak, should happen in IMTUI
 
 mouse_x: usize = 100,
 mouse_y: usize = 100,

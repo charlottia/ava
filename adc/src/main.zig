@@ -10,6 +10,7 @@ const Args = @import("./Args.zig");
 const EventThread = @import("./EventThread.zig");
 const Kyuubey = @import("./Kyuubey.zig");
 const Font = @import("./Font.zig");
+const Imtui = @import("./Imtui.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -54,13 +55,6 @@ pub fn main() !void {
 
     return exe(allocator, args.filename, args.scale, handle, reader, writer);
 }
-
-// https://retrocomputing.stackexchange.com/a/27805/20624
-const FLIP_MS = 266;
-
-// https://ejmastnak.com/tutorials/arch/typematic-rate/
-const TYPEMATIC_DELAY = 500;
-const TYPEMATIC_REPEAT = 1000 / 25;
 
 fn exe(
     allocator: Allocator,
@@ -122,86 +116,40 @@ fn exe(
 
     _ = try SDL.showCursor(false);
 
-    var qb = try Kyuubey.init(allocator, renderer, font, filename);
-    defer qb.deinit();
+    _ = filename;
+    // var qb = try Kyuubey.init(allocator, renderer, font, filename);
+    // defer qb.deinit();
 
-    var until_flip: i16 = FLIP_MS;
-    var last_tick = SDL.getTicks64();
+    var imtui = try Imtui.init(allocator, renderer, font);
+    defer imtui.deinit();
 
-    var keydown_tick: u64 = 0;
-    var keydown_sym: SDL.Keycode = .unknown;
-    var keydown_mod: SDL.KeyModifierSet = undefined;
-    var typematic_on = false;
-
-    var mouse_down: ?SDL.MouseButton = null;
-
-    var running = true;
-    while (running) {
-        if (keydown_tick > 0 and !typematic_on and last_tick >= keydown_tick + TYPEMATIC_DELAY) {
-            typematic_on = true;
-            keydown_tick = last_tick;
-            try qb.keyPress(keydown_sym, keydown_mod);
-        } else if (keydown_tick > 0 and typematic_on and last_tick >= keydown_tick + TYPEMATIC_REPEAT) {
-            keydown_tick = last_tick;
-            try qb.keyPress(keydown_sym, keydown_mod);
-        }
+    while (imtui.running) {
+        // if (keydown_tick > 0 and !typematic_on and last_tick >= keydown_tick + TYPEMATIC_DELAY) {
+        //     typematic_on = true;
+        //     keydown_tick = last_tick;
+        //     try qb.keyPress(keydown_sym, keydown_mod);
+        // } else if (keydown_tick > 0 and typematic_on and last_tick >= keydown_tick + TYPEMATIC_REPEAT) {
+        //     keydown_tick = last_tick;
+        //     try qb.keyPress(keydown_sym, keydown_mod);
+        // }
 
         while (SDL.pollEvent()) |ev|
-            switch (ev) {
-                .key_down => |key| {
-                    if (key.is_repeat) break;
+            imtui.processEvent(ev);
 
-                    try qb.keyDown(key.keycode, key.modifiers);
-                    try qb.keyPress(key.keycode, key.modifiers);
-                    keydown_tick = SDL.getTicks64();
-                    keydown_sym = key.keycode;
-                    keydown_mod = key.modifiers;
-                    typematic_on = false;
-                },
-                .key_up => |key| {
-                    try qb.keyUp(key.keycode);
-                    keydown_tick = 0;
-                },
-                .mouse_motion => |motion| {
-                    const old_x = qb.mouse_x;
-                    const old_y = qb.mouse_y;
+        // const this_tick = SDL.getTicks64();
+        // const delta_tick = this_tick - last_tick;
 
-                    if (qb.mouseAt(motion.x, motion.y, scale)) {
-                        if (mouse_down) |button|
-                            try qb.mouseDrag(button, old_x, old_y);
-                        try qb.text_mode.present();
-                    }
-                },
-                .mouse_button_down => |button| {
-                    if (qb.mouseAt(button.x, button.y, scale))
-                        try qb.text_mode.present();
+        // last_tick = this_tick;
+        // until_flip -= @intCast(delta_tick);
+        // if (until_flip <= 0) {
+        //     until_flip += FLIP_MS;
+        //     qb.text_mode.cursor_on = !qb.text_mode.cursor_on;
+        //     try qb.text_mode.present();
+        // }
 
-                    try qb.mouseDown(button.button, button.clicks);
+        try imtui.newFrame();
 
-                    mouse_down = button.button;
-                },
-                .mouse_button_up => |button| {
-                    if (qb.mouseAt(button.x, button.y, scale))
-                        try qb.text_mode.present();
-
-                    try qb.mouseUp(button.button, button.clicks);
-
-                    mouse_down = null;
-                },
-                .quit => running = false,
-                else => {},
-            };
-
-        const this_tick = SDL.getTicks64();
-        const delta_tick = this_tick - last_tick;
-
-        last_tick = this_tick;
-        until_flip -= @intCast(delta_tick);
-        if (until_flip <= 0) {
-            until_flip += FLIP_MS;
-            qb.text_mode.cursor_on = !qb.text_mode.cursor_on;
-            try qb.text_mode.present();
-        }
+        try imtui.render();
 
         // std.debug.print("> ", .{});
         // const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
