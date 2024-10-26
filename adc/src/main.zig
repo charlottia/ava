@@ -129,6 +129,15 @@ fn exe(
 
         try imtui.newFrame();
 
+        var menubar = try imtui.menubar(0, 0, 80);
+
+        var file = try menubar.menu("&File");
+        _ = file.item("&New Program");
+
+        _ = try menubar.menu("&Edit");
+
+        _ = try menubar.menu("&View");
+
         try imtui.render();
 
         // std.debug.print("> ", .{});

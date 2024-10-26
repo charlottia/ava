@@ -7,7 +7,9 @@ const Font = @import("./Font.zig");
 
 const Imtui = @This();
 
-allocator: Allocator,
+base_allocator: Allocator,
+arena: std.heap.ArenaAllocator,
+arena_allocator: Allocator,
 text_mode: TextMode(25, 80),
 scale: f32,
 
@@ -25,21 +27,35 @@ mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
 
+_alt_held: bool = false,
+_focus: union(enum) {
+    unknown,
+    menubar: usize, // menu index
+} = .unknown,
+
+_menubar: ?*Menubar = null,
+
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
 const TYPEMATIC_REPEAT_MS = 1000 / 25;
 
-pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f32) !Imtui {
-    return .{
-        .allocator = allocator,
+pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f32) !*Imtui {
+    const imtui = try allocator.create(Imtui);
+    imtui.* = .{
+        .base_allocator = allocator,
+        .arena = std.heap.ArenaAllocator.init(allocator),
+        .arena_allocator = undefined,
         .text_mode = try TextMode(25, 80).init(renderer, font),
         .scale = scale,
         .last_tick = SDL.getTicks64(),
     };
+    imtui.arena_allocator = imtui.arena.allocator();
+    return imtui;
 }
 
 pub fn deinit(self: *Imtui) void {
-    _ = self;
+    self.arena.deinit();
+    self.base_allocator.destroy(self);
 }
 
 pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
@@ -92,7 +108,14 @@ fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: 
     };
 }
 
+pub fn render(self: *Imtui) !void {
+    try self.text_mode.present(self.delta_tick);
+}
+
 pub fn newFrame(self: *Imtui) !void {
+    _ = self.arena.reset(.retain_capacity);
+    self._menubar = null;
+
     const this_tick = SDL.getTicks64();
     self.delta_tick = this_tick - self.last_tick;
     defer self.last_tick = this_tick;
@@ -101,33 +124,128 @@ pub fn newFrame(self: *Imtui) !void {
         if (!self.typematic_on and this_tick >= keydown_tick + TYPEMATIC_DELAY_MS) {
             self.typematic_on = true;
             self.keydown_tick = keydown_tick + TYPEMATIC_DELAY_MS;
-            // XXX keyPress(self.keydown_sym, self.keydown_mod);
+            try self.handleKeyPress(self.keydown_sym, self.keydown_mod);
         } else if (self.typematic_on and this_tick >= keydown_tick + TYPEMATIC_REPEAT_MS) {
             self.keydown_tick = keydown_tick + TYPEMATIC_REPEAT_MS;
-            // XXX keyPress(self.keydown_sym, self.keydown_mod);
+            try self.handleKeyPress(self.keydown_sym, self.keydown_mod);
         }
     }
+
+    self.text_mode.clear(0x07);
 }
 
-pub fn render(self: *Imtui) !void {
-    try self.text_mode.present(self.delta_tick);
+pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*Menubar {
+    std.debug.assert(self._menubar == null);
+    const mb = try self.arena_allocator.create(Menubar);
+    mb.* = Menubar.init(self, r, c1, c2);
+    self._menubar = mb;
+    return mb;
+}
+
+const Menubar = struct {
+    imtui: *Imtui,
+    r: usize,
+    c1: usize,
+    c2: usize,
+
+    offset: usize = 2,
+    menus: std.ArrayListUnmanaged(*MenubarMenu) = .{},
+
+    fn init(imtui: *Imtui, r: usize, c1: usize, c2: usize) Menubar {
+        imtui.text_mode.paint(r, c1, r + 1, c2, 0x70, .Blank);
+        return .{ .imtui = imtui, .r = r, .c1 = c1, .c2 = c2 };
+    }
+
+    pub fn menu(self: *Menubar, label: []const u8) !*MenubarMenu {
+        const m = try self.imtui.arena_allocator.create(MenubarMenu);
+        m.* = MenubarMenu.init(self.imtui, self.r, self.c1 + self.offset, label, self.menus.items.len);
+        try self.menus.append(self.imtui.arena_allocator, m);
+        self.offset += lenWithoutAccelerators(label) + 2;
+        std.debug.assert(self.offset < self.c2 - self.c1);
+        return m;
+    }
+};
+
+const MenubarMenu = struct {
+    imtui: *Imtui,
+    r: usize,
+    c: usize,
+    label: []const u8,
+    index: usize,
+
+    fn init(imtui: *Imtui, r: usize, c: usize, label: []const u8, index: usize) MenubarMenu {
+        switch (imtui._focus) {
+            .menubar => |ix| if (index == ix) {
+                imtui.text_mode.paint(r, c, r + 1, c + lenWithoutAccelerators(label) + 2, 0x07, .Blank);
+            },
+            else => {},
+        }
+
+        imtui.text_mode.writeAccelerated(
+            r,
+            c + 1,
+            label,
+            // !self.menu_open and (self.alt_held or self.menubar_focus),
+            imtui._alt_held or imtui._focus == .menubar,
+        );
+        return .{ .imtui = imtui, .r = r, .c = c, .label = label, .index = index };
+    }
+
+    pub fn item(self: *MenubarMenu, label: []const u8) void {
+        _ = self;
+        _ = label;
+    }
+};
+
+fn lenWithoutAccelerators(s: []const u8) usize {
+    var len: usize = 0;
+    for (s) |c|
+        len += if (c == '&') 0 else 1;
+    return len;
 }
 
 fn handleKeyDown(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-    _ = self;
-    _ = keycode;
     _ = modifiers;
+
+    if ((keycode == .left_alt or keycode == .right_alt) and !self._alt_held) {
+        self._alt_held = true;
+        return;
+    }
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-    _ = self;
-    _ = keycode;
     _ = modifiers;
+
+    switch (self._focus) {
+        .menubar => |*ix| {
+            switch (keycode) {
+                .left => {
+                    if (ix.* == 0)
+                        ix.* = self._menubar.?.menus.items.len - 1
+                    else
+                        ix.* -= 1;
+                },
+                .right => ix.* = (ix.* + 1) % self._menubar.?.menus.items.len,
+                else => {},
+            }
+        },
+        else => {},
+    }
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
-    _ = self;
-    _ = keycode;
+    if ((keycode == .left_alt or keycode == .right_alt) and self._alt_held) {
+        self._alt_held = false;
+
+        // TODO: if any menu open, close it
+        if (self._focus != .menubar) {
+            self.text_mode.cursor_inhibit = true;
+            self._focus = .{ .menubar = 0 };
+        } else {
+            self.text_mode.cursor_inhibit = false;
+            self._focus = .unknown; // XXX
+        }
+    }
 }
 
 fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: usize } {
