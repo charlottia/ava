@@ -129,6 +129,14 @@ fn exe(
 
         try imtui.newFrame();
 
+        var editor = try imtui.editor(1, 0, 21, 80, 0);
+        editor.title("Untitled");
+        editor.end();
+
+        var imm_editor = try imtui.editor(21, 0, 24, 80, 1);
+        imm_editor.title("Immediate");
+        imm_editor.end();
+
         var menubar = try imtui.menubar(0, 0, 80);
 
         var file_menu = try menubar.menu("&File", 16);

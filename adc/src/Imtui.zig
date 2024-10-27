@@ -34,6 +34,7 @@ _focus: union(enum) {
 } = .unknown,
 
 _menubar: ?*ImtuiControls.Menubar = null,
+_editors: std.AutoHashMapUnmanaged(usize, *ImtuiControls.Editor) = .{},
 
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
@@ -53,6 +54,10 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f3
 pub fn deinit(self: *Imtui) void {
     if (self._menubar) |mb|
         mb.deinit();
+    var eit = self._editors.valueIterator();
+    while (eit.next()) |e|
+        e.*.deinit();
+    self._editors.deinit(self.allocator);
     self.allocator.destroy(self);
 }
 
@@ -130,6 +135,18 @@ pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Men
     const mb = try ImtuiControls.Menubar.create(self, r, c1, c2);
     self._menubar = mb;
     return mb;
+}
+
+pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_id: usize) !*ImtuiControls.Editor {
+    const gop = try self._editors.getOrPut(self.allocator, editor_id);
+    if (gop.found_existing) {
+        gop.value_ptr.*.describe(r1, c1, r2, c2);
+        return gop.value_ptr.*;
+    }
+
+    const e = try ImtuiControls.Editor.create(self, r1, c1, r2, c2);
+    gop.value_ptr.* = e;
+    return e;
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {

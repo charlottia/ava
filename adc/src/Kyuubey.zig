@@ -329,26 +329,26 @@ pub fn render(self: *Kyuubey) void {
     self.text_mode.cursor_row = active_editor.cursor_row + 1 - active_editor.scroll_row + active_editor.top;
 }
 
-fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
-    self.text_mode.draw(editor.top, 0, 0x17, if (editor.top == 1) .TopLeft else .VerticalRight);
-    for (1..79) |x|
-        self.text_mode.draw(editor.top, x, 0x17, .Horizontal);
+fn renderEditor(self: *Kyuubey, editor: *Editor, _: bool) void {
+    // self.text_mode.draw(editor.top, 0, 0x17, if (editor.top == 1) .TopLeft else .VerticalRight);
+    // for (1..79) |x|
+    //     self.text_mode.draw(editor.top, x, 0x17, .Horizontal);
 
-    const start = 40 - editor.title.len / 2;
-    const colour: u8 = if (active) 0x71 else 0x17;
-    self.text_mode.paint(editor.top, start - 1, editor.top + 1, start + editor.title.len + 1, colour, 0);
-    self.text_mode.write(editor.top, start, editor.title);
-    self.text_mode.draw(editor.top, 79, 0x17, if (editor.top == 1) .TopRight else .VerticalLeft);
+    // const start = 40 - editor.title.len / 2;
+    // const colour: u8 = if (active) 0x71 else 0x17;
+    // self.text_mode.paint(editor.top, start - 1, editor.top + 1, start + editor.title.len + 1, colour, 0);
+    // self.text_mode.write(editor.top, start, editor.title);
+    // self.text_mode.draw(editor.top, 79, 0x17, if (editor.top == 1) .TopRight else .VerticalLeft);
 
-    if (editor.kind != .immediate) {
-        self.text_mode.draw(editor.top, 75, 0x17, .VerticalLeft);
-        self.text_mode.draw(editor.top, 76, 0x71, if (editor.fullscreened != null) .ArrowVertical else .ArrowUp);
-        self.text_mode.draw(editor.top, 77, 0x17, .VerticalRight);
-    }
+    // if (editor.kind != .immediate) {
+    //     self.text_mode.draw(editor.top, 75, 0x17, .VerticalLeft);
+    //     self.text_mode.draw(editor.top, 76, 0x71, if (editor.fullscreened != null) .ArrowVertical else .ArrowUp);
+    //     self.text_mode.draw(editor.top, 77, 0x17, .VerticalRight);
+    // }
 
-    self.text_mode.paint(editor.top + 1, 0, editor.top + editor.height + 1, 1, 0x17, .Vertical);
-    self.text_mode.paint(editor.top + 1, 79, editor.top + editor.height + 1, 80, 0x17, .Vertical);
-    self.text_mode.paint(editor.top + 1, 1, editor.top + editor.height + 1, 79, 0x17, .Blank);
+    // self.text_mode.paint(editor.top + 1, 0, editor.top + editor.height + 1, 1, 0x17, .Vertical);
+    // self.text_mode.paint(editor.top + 1, 79, editor.top + editor.height + 1, 80, 0x17, .Vertical);
+    // self.text_mode.paint(editor.top + 1, 1, editor.top + editor.height + 1, 79, 0x17, .Blank);
 
     for (0..@min(editor.height, editor.lines.items.len - editor.scroll_row)) |y| {
         const line = &editor.lines.items[editor.scroll_row + y];
@@ -357,21 +357,21 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
             self.text_mode.write(y + editor.top + 1, 1, line.items[editor.scroll_col..upper]);
     }
 
-    if (active and editor.kind != .immediate) {
-        if (editor.height > 3) {
-            self.text_mode.draw(editor.top + 1, 79, 0x70, .ArrowUp);
-            self.text_mode.paint(editor.top + 2, 79, editor.top + editor.height, 80, 0x70, .DotsLight);
-            self.text_mode.draw(editor.top + 2 + editor.verticalScrollThumb(), 79, 0x00, .Blank);
-            self.text_mode.draw(editor.top + editor.height - 1, 79, 0x70, .ArrowDown);
-        }
+    // if (active and editor.kind != .immediate) {
+    //     if (editor.height > 3) {
+    //         self.text_mode.draw(editor.top + 1, 79, 0x70, .ArrowUp);
+    //         self.text_mode.paint(editor.top + 2, 79, editor.top + editor.height, 80, 0x70, .DotsLight);
+    //         self.text_mode.draw(editor.top + 2 + editor.verticalScrollThumb(), 79, 0x00, .Blank);
+    //         self.text_mode.draw(editor.top + editor.height - 1, 79, 0x70, .ArrowDown);
+    //     }
 
-        if (editor.height > 1) {
-            self.text_mode.draw(editor.top + editor.height, 1, 0x70, .ArrowLeft);
-            self.text_mode.paint(editor.top + editor.height, 2, editor.top + editor.height + 1, 78, 0x70, .DotsLight);
-            self.text_mode.draw(editor.top + editor.height, 2 + editor.horizontalScrollThumb(), 0x00, .Blank);
-            self.text_mode.draw(editor.top + editor.height, 78, 0x70, .ArrowRight);
-        }
-    }
+    //     if (editor.height > 1) {
+    //         self.text_mode.draw(editor.top + editor.height, 1, 0x70, .ArrowLeft);
+    //         self.text_mode.paint(editor.top + editor.height, 2, editor.top + editor.height + 1, 78, 0x70, .DotsLight);
+    //         self.text_mode.draw(editor.top + editor.height, 2 + editor.horizontalScrollThumb(), 0x00, .Blank);
+    //         self.text_mode.draw(editor.top + editor.height, 78, 0x70, .ArrowRight);
+    //     }
+    // }
 }
 
 fn isPrintableKey(sym: SDL.Keycode) bool {
