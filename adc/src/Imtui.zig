@@ -4,6 +4,7 @@ const SDL = @import("sdl2");
 
 const TextMode = @import("./TextMode.zig").TextMode;
 const Font = @import("./Font.zig");
+const ImtuiControls = @import("./ImtuiControls.zig");
 
 const Imtui = @This();
 
@@ -31,9 +32,10 @@ _alt_held: bool = false,
 _focus: union(enum) {
     unknown,
     menubar: usize, // menu index
+    menu: struct { index: usize, item: usize },
 } = .unknown,
 
-_menubar: ?*Menubar = null,
+_menubar: ?*ImtuiControls.Menubar = null,
 
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
@@ -101,13 +103,6 @@ pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
     }
 }
 
-fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {
-    return .{
-        .x = @intFromFloat(@as(f32, @floatFromInt(payload.x)) / self.scale),
-        .y = @intFromFloat(@as(f32, @floatFromInt(payload.y)) / self.scale),
-    };
-}
-
 pub fn render(self: *Imtui) !void {
     try self.text_mode.present(self.delta_tick);
 }
@@ -134,74 +129,12 @@ pub fn newFrame(self: *Imtui) !void {
     self.text_mode.clear(0x07);
 }
 
-pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*Menubar {
+pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Menubar {
     std.debug.assert(self._menubar == null);
-    const mb = try self.arena_allocator.create(Menubar);
-    mb.* = Menubar.init(self, r, c1, c2);
+    const mb = try self.arena_allocator.create(ImtuiControls.Menubar);
+    mb.* = ImtuiControls.Menubar.init(self, r, c1, c2);
     self._menubar = mb;
     return mb;
-}
-
-const Menubar = struct {
-    imtui: *Imtui,
-    r: usize,
-    c1: usize,
-    c2: usize,
-
-    offset: usize = 2,
-    menus: std.ArrayListUnmanaged(*MenubarMenu) = .{},
-
-    fn init(imtui: *Imtui, r: usize, c1: usize, c2: usize) Menubar {
-        imtui.text_mode.paint(r, c1, r + 1, c2, 0x70, .Blank);
-        return .{ .imtui = imtui, .r = r, .c1 = c1, .c2 = c2 };
-    }
-
-    pub fn menu(self: *Menubar, label: []const u8) !*MenubarMenu {
-        const m = try self.imtui.arena_allocator.create(MenubarMenu);
-        m.* = MenubarMenu.init(self.imtui, self.r, self.c1 + self.offset, label, self.menus.items.len);
-        try self.menus.append(self.imtui.arena_allocator, m);
-        self.offset += lenWithoutAccelerators(label) + 2;
-        std.debug.assert(self.offset < self.c2 - self.c1);
-        return m;
-    }
-};
-
-const MenubarMenu = struct {
-    imtui: *Imtui,
-    r: usize,
-    c: usize,
-    label: []const u8,
-    index: usize,
-
-    fn init(imtui: *Imtui, r: usize, c: usize, label: []const u8, index: usize) MenubarMenu {
-        switch (imtui._focus) {
-            .menubar => |ix| if (index == ix) {
-                imtui.text_mode.paint(r, c, r + 1, c + lenWithoutAccelerators(label) + 2, 0x07, .Blank);
-            },
-            else => {},
-        }
-
-        imtui.text_mode.writeAccelerated(
-            r,
-            c + 1,
-            label,
-            // !self.menu_open and (self.alt_held or self.menubar_focus),
-            imtui._alt_held or imtui._focus == .menubar,
-        );
-        return .{ .imtui = imtui, .r = r, .c = c, .label = label, .index = index };
-    }
-
-    pub fn item(self: *MenubarMenu, label: []const u8) void {
-        _ = self;
-        _ = label;
-    }
-};
-
-fn lenWithoutAccelerators(s: []const u8) usize {
-    var len: usize = 0;
-    for (s) |c|
-        len += if (c == '&') 0 else 1;
-    return len;
 }
 
 fn handleKeyDown(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -211,23 +144,50 @@ fn handleKeyDown(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierS
         self._alt_held = true;
         return;
     }
+
+    if (keycode == .@"return" and self._focus == .menubar)
+        self._focus = .{ .menu = .{ .index = self._focus.menubar, .item = 0 } };
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     _ = modifiers;
 
     switch (self._focus) {
-        .menubar => |*ix| {
-            switch (keycode) {
-                .left => {
-                    if (ix.* == 0)
-                        ix.* = self._menubar.?.menus.items.len - 1
-                    else
-                        ix.* -= 1;
-                },
-                .right => ix.* = (ix.* + 1) % self._menubar.?.menus.items.len,
-                else => {},
-            }
+        .menubar => |*ix| switch (keycode) {
+            .left => {
+                if (ix.* == 0)
+                    ix.* = self._menubar.?.menus.items.len - 1
+                else
+                    ix.* -= 1;
+            },
+            .right => ix.* = (ix.* + 1) % self._menubar.?.menus.items.len,
+            .up, .down => self._focus = .{ .menu = .{ .index = ix.*, .item = 0 } },
+            .escape => {
+                self.text_mode.cursor_inhibit = false;
+                self._focus = .unknown; // XXX
+            },
+            else => {},
+        },
+        .menu => |*m| switch (keycode) {
+            .left => {
+                m.item = 0;
+                if (m.index == 0)
+                    m.index = self._menubar.?.menus.items.len - 1
+                else
+                    m.index -= 1;
+            },
+            .right => {
+                m.item = 0;
+                m.index = (m.index + 1) % self._menubar.?.menus.items.len;
+            },
+            .up => {
+                if (m.item == 0)
+                    m.item = self._menubar.?.menus.items[m.index].selectable_count - 1
+                else
+                    m.item -= 1;
+            },
+            .down => m.item = (m.item + 1) % self._menubar.?.menus.items[m.index].selectable_count,
+            else => {},
         },
         else => {},
     }
@@ -237,8 +197,9 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
     if ((keycode == .left_alt or keycode == .right_alt) and self._alt_held) {
         self._alt_held = false;
 
-        // TODO: if any menu open, close it
-        if (self._focus != .menubar) {
+        if (self._focus == .menu) {
+            self._focus = .{ .menubar = self._focus.menu.index };
+        } else if (self._focus != .menubar) {
             self.text_mode.cursor_inhibit = true;
             self._focus = .{ .menubar = 0 };
         } else {
@@ -278,4 +239,11 @@ fn handleMouseUp(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
     _ = self;
     _ = button;
     _ = clicks;
+}
+
+fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {
+    return .{
+        .x = @intFromFloat(@as(f32, @floatFromInt(payload.x)) / self.scale),
+        .y = @intFromFloat(@as(f32, @floatFromInt(payload.y)) / self.scale),
+    };
 }

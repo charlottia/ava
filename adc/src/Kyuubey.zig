@@ -58,77 +58,77 @@ fn activeEditor(self: *Kyuubey) *Editor {
     return &self.editors[self.editor_active];
 }
 
-pub fn keyDown(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void {
-    _ = mod;
-    if ((sym == .left_alt or sym == .right_alt) and !self.alt_held) {
-        self.alt_held = true;
-        self.render();
-        try self.text_mode.present();
-        return;
-    }
+// pub fn keyDown(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void {
+//     _ = mod;
+//     if ((sym == .left_alt or sym == .right_alt) and !self.alt_held) {
+//         self.alt_held = true;
+//         self.render();
+//         try self.text_mode.present();
+//         return;
+//     }
 
-    if (sym == .@"return" and self.menubar_focus) {
-        if (!self.menu_open) {
-            self.menu_open = true;
-            self.selected_menu_item = 0;
-        }
-    }
-}
+//     if (sym == .@"return" and self.menubar_focus) {
+//         if (!self.menu_open) {
+//             self.menu_open = true;
+//             self.selected_menu_item = 0;
+//         }
+//     }
+// }
 
-pub fn keyUp(self: *Kyuubey, sym: SDL.Keycode) !void {
-    if ((sym == .left_alt or sym == .right_alt) and self.alt_held) {
-        self.alt_held = false;
+// pub fn keyUp(self: *Kyuubey, sym: SDL.Keycode) !void {
+//     if ((sym == .left_alt or sym == .right_alt) and self.alt_held) {
+//         self.alt_held = false;
 
-        if (self.menu_open) {
-            self.menu_open = false;
-        } else if (!self.menubar_focus) {
-            self.text_mode.cursor_inhibit = true;
-            self.menubar_focus = true;
-            self.selected_menu = 0;
-        } else {
-            self.text_mode.cursor_inhibit = false;
-            self.menubar_focus = false;
-        }
+//         if (self.menu_open) {
+//             self.menu_open = false;
+//         } else if (!self.menubar_focus) {
+//             self.text_mode.cursor_inhibit = true;
+//             self.menubar_focus = true;
+//             self.selected_menu = 0;
+//         } else {
+//             self.text_mode.cursor_inhibit = false;
+//             self.menubar_focus = false;
+//         }
 
-        self.render();
-        try self.text_mode.present();
-    }
-}
+//         self.render();
+//         try self.text_mode.present();
+//     }
+// }
 
 pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void {
-    if (self.menubar_focus) {
-        switch (sym) {
-            .left => self.selected_menu = if (self.selected_menu == 0) 8 else self.selected_menu - 1,
-            .right => self.selected_menu = if (self.selected_menu == 8) 0 else self.selected_menu + 1,
-            .up => {
-                if (!self.menu_open) {
-                    self.menu_open = true;
-                    self.selected_menu_item = 0;
-                } else {
-                    // TODO: needs to know about the menu to wrap!!
-                    self.selected_menu_item -= 1;
-                }
-            },
-            .down => {
-                if (!self.menu_open) {
-                    self.menu_open = true;
-                    self.selected_menu_item = 0;
-                } else {
-                    self.selected_menu_item += 1;
-                }
-            },
-            .escape => {
-                self.text_mode.cursor_inhibit = false;
-                self.menubar_focus = false;
-                self.menu_open = false;
-            },
-            else => {},
-        }
+    // if (self.menubar_focus) {
+    //     switch (sym) {
+    //         .left => self.selected_menu = if (self.selected_menu == 0) 8 else self.selected_menu - 1,
+    //         .right => self.selected_menu = if (self.selected_menu == 8) 0 else self.selected_menu + 1,
+    //         .up => {
+    //             if (!self.menu_open) {
+    //                 self.menu_open = true;
+    //                 self.selected_menu_item = 0;
+    //             } else {
+    //                 // TODO: needs to know about the menu to wrap!!
+    //                 self.selected_menu_item -= 1;
+    //             }
+    //         },
+    //         .down => {
+    //             if (!self.menu_open) {
+    //                 self.menu_open = true;
+    //                 self.selected_menu_item = 0;
+    //             } else {
+    //                 self.selected_menu_item += 1;
+    //             }
+    //         },
+    //         .escape => {
+    //             self.text_mode.cursor_inhibit = false;
+    //             self.menubar_focus = false;
+    //             self.menu_open = false;
+    //         },
+    //         else => {},
+    //     }
 
-        self.render();
-        try self.text_mode.present();
-        return;
-    }
+    //     self.render();
+    //     try self.text_mode.present();
+    //     return;
+    // }
 
     if (sym == .f6) {
         const prev = self.activeEditor();
@@ -219,20 +219,20 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     try self.text_mode.present();
 }
 
-pub fn mouseAt(self: *Kyuubey, mouse_x: i32, mouse_y: i32, scale: f32) bool {
-    const old_mouse_x = self.mouse_x;
-    const old_mouse_y = self.mouse_y;
+// pub fn mouseAt(self: *Kyuubey, mouse_x: i32, mouse_y: i32, scale: f32) bool {
+//     const old_mouse_x = self.mouse_x;
+//     const old_mouse_y = self.mouse_y;
 
-    self.mouse_x = @intFromFloat(@as(f32, @floatFromInt(mouse_x)) / scale);
-    self.mouse_y = @intFromFloat(@as(f32, @floatFromInt(mouse_y)) / scale);
+//     self.mouse_x = @intFromFloat(@as(f32, @floatFromInt(mouse_x)) / scale);
+//     self.mouse_y = @intFromFloat(@as(f32, @floatFromInt(mouse_y)) / scale);
 
-    if (old_mouse_x != self.mouse_x or old_mouse_y != self.mouse_y) {
-        self.text_mode.positionMouseAt(self.mouse_x, self.mouse_y);
-        return true;
-    }
+//     if (old_mouse_x != self.mouse_x or old_mouse_y != self.mouse_y) {
+//         self.text_mode.positionMouseAt(self.mouse_x, self.mouse_y);
+//         return true;
+//     }
 
-    return false;
-}
+//     return false;
+// }
 
 pub fn mouseDown(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
     const x = self.mouse_x / self.char_width;
@@ -315,36 +315,36 @@ fn toggleSplit(self: *Kyuubey) !void {
 }
 
 const MENUS = .{
-    .@"&File" = .{
-        .width = 16,
-        .items = .{
-            .{ "&New Program", "Removes currently loaded program from memory" },
-            .{ "&Open Program...", "Loads new program into memory" },
-            .{ "&Merge...", "Inserts specified file into current module" },
-            .{ "&Save", "Writes current module to file on disk" },
-            .{ "Save &As...", "Saves current module with specified name and format" },
-            .{ "Sa&ve All", "Writes all currently loaded modules to files on disk" },
-            null,
-            .{ "&Create File...", "Creates a module, include file, or document; retains loaded modules" },
-            .{ "&Load File...", "Loads a module, include file, or document; retains loaded modules" },
-            .{ "&Unload File...", "Removes a loaded module, include file, or document from memory" },
-            null,
-            .{ "&Print...", "Prints specified text or module" },
-            .{ "&DOS Shell", "Temporarily suspends ADC and invokes DOS shell" }, // uhh
-            null,
-            .{ "E&xit", "Exits ADC and returns to DOS" }, // uhhhhh
-        },
-    },
-    .@"&Edit" = .{ .width = 20, .items = .{
-        .{ "&Undo", "Restores current edited line to its original condition", "Alt+Backspace" },
-        .{ "Cu&t", "Deletes selected text and copies it to buffer", "Shift+Del" },
-        .{ "&Copy", "Copies selected text to buffer", "Ctrl+Ins" },
-        .{ "&Paste", "Inserts buffer contents at current location", "Shift+Ins" },
-        .{ "Cl&ear", "Deletes selected text without copying it to buffer", "Del" },
-        null,
-        .{ "New &SUB...", "Opens a window for a new subprogram" },
-        .{ "New &FUNCTION...", "Opens a window for a new FUNCTION procedure" },
-    } },
+    // .@"&File" = .{
+    //     .width = 16,
+    //     .items = .{
+    //         .{ "&New Program", "Removes currently loaded program from memory" },
+    //         .{ "&Open Program...", "Loads new program into memory" },
+    //         .{ "&Merge...", "Inserts specified file into current module" },
+    //         .{ "&Save", "Writes current module to file on disk" },
+    //         .{ "Save &As...", "Saves current module with specified name and format" },
+    //         .{ "Sa&ve All", "Writes all currently loaded modules to files on disk" },
+    //         null,
+    //         .{ "&Create File...", "Creates a module, include file, or document; retains loaded modules" },
+    //         .{ "&Load File...", "Loads a module, include file, or document; retains loaded modules" },
+    //         .{ "&Unload File...", "Removes a loaded module, include file, or document from memory" },
+    //         null,
+    //         .{ "&Print...", "Prints specified text or module" },
+    //         .{ "&DOS Shell", "Temporarily suspends ADC and invokes DOS shell" }, // uhh
+    //         null,
+    //         .{ "E&xit", "Exits ADC and returns to DOS" }, // uhhhhh
+    //     },
+    // },
+    // .@"&Edit" = .{ .width = 20, .items = .{
+    //     .{ "&Undo", "Restores current edited line to its original condition", "Alt+Backspace" },
+    //     .{ "Cu&t", "Deletes selected text and copies it to buffer", "Shift+Del" },
+    //     .{ "&Copy", "Copies selected text to buffer", "Ctrl+Ins" },
+    //     .{ "&Paste", "Inserts buffer contents at current location", "Shift+Ins" },
+    //     .{ "Cl&ear", "Deletes selected text without copying it to buffer", "Del" },
+    //     null,
+    //     .{ "New &SUB...", "Opens a window for a new subprogram" },
+    //     .{ "New &FUNCTION...", "Opens a window for a new FUNCTION procedure" },
+    // } },
     .@"&View" = .{ .width = 21, .items = .{
         .{ "&SUBs...", "Displays a loaded SUB, FUNCTION, module, include file, or document", "F2" },
         .{ "N&ext SUB", "Displays next SUB or FUNCTION procedure in the active window", "Shift+F2" },
@@ -384,24 +384,24 @@ const MENUS = .{
 };
 
 pub fn render(self: *Kyuubey) void {
-    self.text_mode.clear(0x17);
-    self.text_mode.paint(0, 0, 1, 80, 0x70, .Blank);
+    // self.text_mode.clear(0x17);
+    // self.text_mode.paint(0, 0, 1, 80, 0x70, .Blank);
 
     var offset: usize = 2;
-    inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
-        // XXX option.name.len includes a & -- we currently rely on this!!
-        if (std.mem.eql(u8, option.name, "&Help"))
-            offset = 73;
-        if (self.menubar_focus and self.selected_menu == i)
-            self.text_mode.paint(0, offset, 1, offset + option.name.len + 1, 0x07, .Blank);
-        self.text_mode.writeAccelerated(
-            0,
-            offset + 1,
-            option.name,
-            !self.menu_open and (self.alt_held or self.menubar_focus),
-        );
-        offset += option.name.len + 1;
-    }
+    // inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
+    //     // XXX option.name.len includes a & -- we currently rely on this!!
+    //     if (std.mem.eql(u8, option.name, "&Help"))
+    //         offset = 73;
+    //     if (self.menubar_focus and self.selected_menu == i)
+    //         self.text_mode.paint(0, offset, 1, offset + option.name.len + 1, 0x07, .Blank);
+    //     self.text_mode.writeAccelerated(
+    //         0,
+    //         offset + 1,
+    //         option.name,
+    //         !self.menu_open and (self.alt_held or self.menubar_focus),
+    //     );
+    //     offset += option.name.len + 1;
+    // }
 
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
@@ -495,69 +495,69 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
     }
 }
 
-fn renderMenu(self: *Kyuubey) ?[]const u8 {
-    var menu_help_text: ?[]const u8 = null;
-
-    // Note duplication with menubar drawing.
-    var offset: usize = 1;
-    inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
-        if (std.mem.eql(u8, option.name, "&Help"))
-            offset = 49;
-
-        if (i == self.selected_menu) {
-            const menu = @field(MENUS, option.name);
-            self.text_mode.draw(1, offset, 0x70, .TopLeft);
-            self.text_mode.paint(1, offset + 1, 2, offset + 1 + menu.width + 2, 0x70, .Horizontal);
-            self.text_mode.draw(1, offset + menu.width + 3, 0x70, .TopRight);
-
-            var row: usize = 2;
-            var option_number: usize = 0;
-            inline for (menu.items) |o| {
-                if (@typeInfo(@TypeOf(o)) == .Null) {
-                    self.text_mode.draw(row, offset, 0x70, .VerticalRight);
-                    self.text_mode.paint(row, offset + 1, row + 1, offset + 1 + menu.width + 2, 0x70, .Horizontal);
-                    self.text_mode.draw(row, offset + menu.width + 3, 0x70, .VerticalLeft);
-                } else {
-                    self.text_mode.draw(row, offset, 0x70, .Vertical);
-                    const disabled = std.mem.eql(u8, "&Undo", o.@"0") or std.mem.eql(u8, "Cu&t", o.@"0") or std.mem.eql(u8, "&Copy", o.@"0") or std.mem.eql(u8, "Cl&ear", o.@"0");
-                    const colour: u8 = if (self.selected_menu_item == option_number)
-                        0x07
-                    else if (disabled)
-                        0x78
-                    else
-                        0x70;
-                    self.text_mode.paint(row, offset + 1, row + 1, offset + 1 + menu.width + 2, colour, .Blank);
-
-                    self.text_mode.writeAccelerated(row, offset + 2, o.@"0", !disabled);
-                    if (self.selected_menu_item == option_number)
-                        menu_help_text = o.@"1";
-
-                    if (o.len == 3) {
-                        // Shortcut key.
-                        const sk = o.@"2";
-                        self.text_mode.write(row, offset + menu.width + 2 - sk.len, sk);
-                    }
-                    self.text_mode.draw(row, offset + menu.width + 3, 0x70, .Vertical);
-                    option_number += 1;
-                }
-                self.text_mode.shadow(row, offset + menu.width + 4);
-                self.text_mode.shadow(row, offset + menu.width + 5);
-                row += 1;
-            }
-            self.text_mode.draw(row, offset, 0x70, .BottomLeft);
-            self.text_mode.paint(row, offset + 1, row + 1, offset + 1 + menu.width + 2, 0x70, .Horizontal);
-            self.text_mode.draw(row, offset + menu.width + 3, 0x70, .BottomRight);
-            self.text_mode.shadow(row, offset + menu.width + 4);
-            self.text_mode.shadow(row, offset + menu.width + 5);
-            row += 1;
-            for (2..menu.width + 6) |j|
-                self.text_mode.shadow(row, offset + j);
-        }
-        offset += option.name.len + 1;
-    }
-
-    return menu_help_text;
-}
+// fn renderMenu(self: *Kyuubey) ?[]const u8 {
+//     var menu_help_text: ?[]const u8 = null;
+//
+//     // Note duplication with menubar drawing.
+//     var offset: usize = 1;
+//     inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
+//         if (std.mem.eql(u8, option.name, "&Help"))
+//             offset = 49;
+//
+//         if (i == self.selected_menu) {
+//             const menu = @field(MENUS, option.name);
+//             self.text_mode.draw(1, offset, 0x70, .TopLeft);
+//             self.text_mode.paint(1, offset + 1, 2, offset + 1 + menu.width + 2, 0x70, .Horizontal);
+//             self.text_mode.draw(1, offset + menu.width + 3, 0x70, .TopRight);
+//
+//             var row: usize = 2;
+//             var option_number: usize = 0;
+//             inline for (menu.items) |o| {
+//                 if (@typeInfo(@TypeOf(o)) == .Null) {
+//                     self.text_mode.draw(row, offset, 0x70, .VerticalRight);
+//                     self.text_mode.paint(row, offset + 1, row + 1, offset + 1 + menu.width + 2, 0x70, .Horizontal);
+//                     self.text_mode.draw(row, offset + menu.width + 3, 0x70, .VerticalLeft);
+//                 } else {
+//                     self.text_mode.draw(row, offset, 0x70, .Vertical);
+//                     const disabled = std.mem.eql(u8, "&Undo", o.@"0") or std.mem.eql(u8, "Cu&t", o.@"0") or std.mem.eql(u8, "&Copy", o.@"0") or std.mem.eql(u8, "Cl&ear", o.@"0");
+//                     const colour: u8 = if (self.selected_menu_item == option_number)
+//                         0x07
+//                     else if (disabled)
+//                         0x78
+//                     else
+//                         0x70;
+//                     self.text_mode.paint(row, offset + 1, row + 1, offset + 1 + menu.width + 2, colour, .Blank);
+//
+//                     self.text_mode.writeAccelerated(row, offset + 2, o.@"0", !disabled);
+//                     if (self.selected_menu_item == option_number)
+//                         menu_help_text = o.@"1";
+//
+//                     if (o.len == 3) {
+//                         // Shortcut key.
+//                         const sk = o.@"2";
+//                         self.text_mode.write(row, offset + menu.width + 2 - sk.len, sk);
+//                     }
+//                     self.text_mode.draw(row, offset + menu.width + 3, 0x70, .Vertical);
+//                     option_number += 1;
+//                 }
+//                 self.text_mode.shadow(row, offset + menu.width + 4);
+//                 self.text_mode.shadow(row, offset + menu.width + 5);
+//                 row += 1;
+//             }
+//             self.text_mode.draw(row, offset, 0x70, .BottomLeft);
+//             self.text_mode.paint(row, offset + 1, row + 1, offset + 1 + menu.width + 2, 0x70, .Horizontal);
+//             self.text_mode.draw(row, offset + menu.width + 3, 0x70, .BottomRight);
+//             self.text_mode.shadow(row, offset + menu.width + 4);
+//             self.text_mode.shadow(row, offset + menu.width + 5);
+//             row += 1;
+//             for (2..menu.width + 6) |j|
+//                 self.text_mode.shadow(row, offset + j);
+//         }
+//         offset += option.name.len + 1;
+//     }
+//
+//     return menu_help_text;
+// }
 
 fn isPrintableKey(sym: SDL.Keycode) bool {
     return @intFromEnum(sym) >= @intFromEnum(SDL.Keycode.space) and
