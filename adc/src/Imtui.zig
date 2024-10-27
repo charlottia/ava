@@ -8,9 +8,7 @@ const ImtuiControls = @import("./ImtuiControls.zig");
 
 const Imtui = @This();
 
-base_allocator: Allocator,
-arena: std.heap.ArenaAllocator,
-arena_allocator: Allocator,
+allocator: Allocator,
 text_mode: TextMode(25, 80),
 scale: f32,
 
@@ -44,20 +42,18 @@ const TYPEMATIC_REPEAT_MS = 1000 / 25;
 pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f32) !*Imtui {
     const imtui = try allocator.create(Imtui);
     imtui.* = .{
-        .base_allocator = allocator,
-        .arena = std.heap.ArenaAllocator.init(allocator),
-        .arena_allocator = undefined,
+        .allocator = allocator,
         .text_mode = try TextMode(25, 80).init(renderer, font),
         .scale = scale,
         .last_tick = SDL.getTicks64(),
     };
-    imtui.arena_allocator = imtui.arena.allocator();
     return imtui;
 }
 
 pub fn deinit(self: *Imtui) void {
-    self.arena.deinit();
-    self.base_allocator.destroy(self);
+    if (self._menubar) |mb|
+        mb.deinit();
+    self.allocator.destroy(self);
 }
 
 pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
@@ -108,9 +104,6 @@ pub fn render(self: *Imtui) !void {
 }
 
 pub fn newFrame(self: *Imtui) !void {
-    _ = self.arena.reset(.retain_capacity);
-    self._menubar = null;
-
     const this_tick = SDL.getTicks64();
     self.delta_tick = this_tick - self.last_tick;
     defer self.last_tick = this_tick;
@@ -130,9 +123,12 @@ pub fn newFrame(self: *Imtui) !void {
 }
 
 pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Menubar {
-    std.debug.assert(self._menubar == null);
-    const mb = try self.arena_allocator.create(ImtuiControls.Menubar);
-    mb.* = ImtuiControls.Menubar.init(self, r, c1, c2);
+    if (self._menubar) |mb| {
+        mb.describe(r, c1, c2);
+        return mb;
+    }
+
+    const mb = try ImtuiControls.Menubar.create(self, r, c1, c2);
     self._menubar = mb;
     return mb;
 }
@@ -181,20 +177,20 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
             },
             .up => while (true) {
                 if (m.item == 0)
-                    m.item = self._menubar.?.menus.items[m.index].items.items.len - 1
+                    m.item = self._menubar.?.menus.items[m.index].menu_items.items.len - 1
                 else
                     m.item -= 1;
-                if (self._menubar.?.menus.items[m.index].items.items[m.item] == null)
+                if (self._menubar.?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
                 break;
             },
             .down => while (true) {
-                m.item = (m.item + 1) % self._menubar.?.menus.items[m.index].items.items.len;
-                if (self._menubar.?.menus.items[m.index].items.items[m.item] == null)
+                m.item = (m.item + 1) % self._menubar.?.menus.items[m.index].menu_items.items.len;
+                if (self._menubar.?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
                 break;
             },
-            .@"return" => self._menubar.?.menus.items[m.index].items.items[m.item].?._chosen = true,
+            .@"return" => self._menubar.?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
             else => {},
         },
         else => {},

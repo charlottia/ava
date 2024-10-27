@@ -164,7 +164,41 @@ fn exe(
         try edit_menu.end();
 
         var view_menu = try menubar.menu("&View", 21);
+        _ = (try view_menu.item("&SUBs...")).shortcut("F2").help("Displays a loaded SUB, FUNCTION, module, include file, or document");
+        _ = (try view_menu.item("N&ext SUB")).shortcut("Shift+F2").help("Displays next SUB or FUNCTION procedure in the active window");
+        _ = (try view_menu.item("S&plit")).help("Divides screen into two View windows");
+        try view_menu.separator();
+        _ = (try view_menu.item("&Next Statement")).help("Displays next statement to be executed");
+        _ = (try view_menu.item("O&utput Screen")).shortcut("F4").help("Displays output screen");
+        try view_menu.separator();
+        _ = (try view_menu.item("&Included File")).help("Displays include file for editing");
+        _ = (try view_menu.item("Included &Lines")).help("Displays include file for viewing only (not for editing)");
         try view_menu.end();
+
+        var search_menu = try menubar.menu("&Search", 24);
+        _ = (try search_menu.item("&Find...")).help("Finds specified text");
+        _ = (try search_menu.item("&Selected Text")).shortcut("Ctrl+\\").help("Finds selected text");
+        _ = (try search_menu.item("&Repeat Last Find")).shortcut("F3").help("Finds next occurrence of text specified in previous search");
+        _ = (try search_menu.item("&Change...")).help("Finds and changes specified text");
+        _ = (try search_menu.item("&Label...")).help("Finds specified line label");
+        try search_menu.end();
+
+        var run_menu = try menubar.menu("&Run", 19);
+        _ = (try run_menu.item("&Start")).shortcut("Shift+F5").help("Runs current program");
+        _ = (try run_menu.item("&Restart")).help("Clears variables in preparation for restarting single stepping");
+        _ = (try run_menu.item("Co&ntinue")).shortcut("F5").help("Continues execution after a break");
+        _ = (try run_menu.item("Modify &COMMAND$...")).help("Sets string returned by COMMAND$ function");
+        try run_menu.separator();
+        _ = (try run_menu.item("Make E&XE File...")).help("Creates executable file on disk");
+        _ = (try run_menu.item("Make &Library...")).help("Creates Quick library and stand-alone (.LIB) library on disk"); // XXX ?
+        try run_menu.separator();
+        _ = (try run_menu.item("Set &Main Module...")).help("Makes the specified module the main module");
+        try run_menu.end();
+
+        try (try menubar.menu("&Debug", 27)).end();
+        try (try menubar.menu("&Calls", 10)).end();
+        try (try menubar.menu("&Options", 15)).end();
+        try (try menubar.menu("&Help", 25)).end();
 
         try imtui.render();
 
