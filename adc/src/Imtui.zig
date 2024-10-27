@@ -60,7 +60,6 @@ pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
     switch (ev) {
         .key_down => |key| {
             if (key.is_repeat) return;
-            try self.handleKeyDown(key.keycode, key.modifiers);
             try self.handleKeyPress(key.keycode, key.modifiers);
             self.keydown_tick = SDL.getTicks64();
             self.keydown_sym = key.keycode;
@@ -133,18 +132,22 @@ pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Men
     return mb;
 }
 
-fn handleKeyDown(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     _ = modifiers;
 
-    // XXX: just roll this into handleKeyPress and remove the distinction?
     if ((keycode == .left_alt or keycode == .right_alt) and !self._alt_held) {
         self._alt_held = true;
         return;
     }
-}
 
-fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-    _ = modifiers;
+    if (self._alt_held and keycodeAlphanum(keycode)) {
+        for (self._menubar.?.menus.items, 0..) |m, mix|
+            if (acceleratorMatch(m.label, keycode)) {
+                self._alt_held = false;
+                self._focus = .{ .menu = .{ .index = mix, .item = 0 } };
+                return;
+            };
+    }
 
     switch (self._focus) {
         .menubar => |*ix| switch (keycode) {
@@ -161,7 +164,13 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 self._focus = .unknown; // XXX
             },
             .@"return" => self._focus = .{ .menu = .{ .index = ix.*, .item = 0 } },
-            else => {},
+            else => if (keycodeAlphanum(keycode)) {
+                for (self._menubar.?.menus.items, 0..) |m, mix|
+                    if (acceleratorMatch(m.label, keycode)) {
+                        self._focus = .{ .menu = .{ .index = mix, .item = 0 } };
+                        return;
+                    };
+            },
         },
         .menu => |*m| switch (keycode) {
             .left => {
@@ -195,7 +204,12 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 self._focus = .unknown; // XXX
             },
             .@"return" => self._menubar.?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
-            else => {},
+            else => if (keycodeAlphanum(keycode)) {
+                for (self._menubar.?.menus.items[m.index].menu_items.items) |*mi|
+                    if (mi.* != null and acceleratorMatch(mi.*.?.label, keycode)) {
+                        mi.*.?._chosen = true;
+                    };
+            },
         },
         else => {},
     }
@@ -254,4 +268,20 @@ fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: 
         .x = @intFromFloat(@as(f32, @floatFromInt(payload.x)) / self.scale),
         .y = @intFromFloat(@as(f32, @floatFromInt(payload.y)) / self.scale),
     };
+}
+
+fn acceleratorMatch(label: []const u8, keycode: SDL.Keycode) bool {
+    var next_acc = false;
+    for (label) |c| {
+        if (c == '&')
+            next_acc = true
+        else if (next_acc)
+            return std.ascii.toLower(c) == @intFromEnum(keycode);
+    }
+    return false;
+}
+
+fn keycodeAlphanum(keycode: SDL.Keycode) bool {
+    return @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
+        @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z);
 }
