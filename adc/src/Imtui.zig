@@ -140,13 +140,11 @@ pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Men
 fn handleKeyDown(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     _ = modifiers;
 
+    // XXX: just roll this into handleKeyPress and remove the distinction?
     if ((keycode == .left_alt or keycode == .right_alt) and !self._alt_held) {
         self._alt_held = true;
         return;
     }
-
-    if (keycode == .@"return" and self._focus == .menubar)
-        self._focus = .{ .menu = .{ .index = self._focus.menubar, .item = 0 } };
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -166,6 +164,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 self.text_mode.cursor_inhibit = false;
                 self._focus = .unknown; // XXX
             },
+            .@"return" => self._focus = .{ .menu = .{ .index = ix.*, .item = 0 } },
             else => {},
         },
         .menu => |*m| switch (keycode) {
@@ -180,13 +179,22 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 m.item = 0;
                 m.index = (m.index + 1) % self._menubar.?.menus.items.len;
             },
-            .up => {
+            .up => while (true) {
                 if (m.item == 0)
-                    m.item = self._menubar.?.menus.items[m.index].selectable_count - 1
+                    m.item = self._menubar.?.menus.items[m.index].items.items.len - 1
                 else
                     m.item -= 1;
+                if (self._menubar.?.menus.items[m.index].items.items[m.item] == null)
+                    continue;
+                break;
             },
-            .down => m.item = (m.item + 1) % self._menubar.?.menus.items[m.index].selectable_count,
+            .down => while (true) {
+                m.item = (m.item + 1) % self._menubar.?.menus.items[m.index].items.items.len;
+                if (self._menubar.?.menus.items[m.index].items.items[m.item] == null)
+                    continue;
+                break;
+            },
+            .@"return" => self._menubar.?.menus.items[m.index].items.items[m.item].?._chosen = true,
             else => {},
         },
         else => {},

@@ -35,7 +35,6 @@ pub const MenubarMenu = struct {
     width: usize,
 
     items: std.ArrayListUnmanaged(?*MenubarItem) = .{},
-    selectable_count: usize = 0,
 
     fn init(imtui: *Imtui, r: usize, c: usize, label: []const u8, index: usize, width: usize) MenubarMenu {
         if ((imtui._focus == .menubar and imtui._focus.menubar == index) or
@@ -52,7 +51,6 @@ pub const MenubarMenu = struct {
         const i = try self.imtui.arena_allocator.create(MenubarItem);
         i.* = MenubarItem.init(self.imtui, label);
         try self.items.append(self.imtui.arena_allocator, i);
-        self.selectable_count += 1;
         return i;
     }
 
@@ -71,29 +69,24 @@ pub const MenubarMenu = struct {
         self.imtui.text_mode.draw(self.r + 1, self.c - 1 + self.width + 3, 0x70, .TopRight);
 
         var row = self.r + 2;
-        var it_ix: usize = 0;
-        for (self.items.items) |mit| {
+        for (self.items.items, 0..) |mit, ix| {
             if (mit) |it| {
-                defer it_ix += 1;
                 self.imtui.text_mode.draw(row, self.c - 1, 0x70, .Vertical);
-                const disabled = std.mem.eql(u8, "&Undo", it.label) or std.mem.eql(u8, "Cu&t", it.label) or std.mem.eql(u8, "&Copy", it.label) or std.mem.eql(u8, "Cl&ear", it.label);
-                const colour: u8 = if (selected_it_ix == it_ix)
+                const colour: u8 = if (selected_it_ix == ix)
                     0x07
-                else if (disabled)
+                else if (!it.enabled)
                     0x78
                 else
                     0x70;
                 self.imtui.text_mode.paint(row, self.c, row + 1, self.c + self.width + 2, colour, .Blank);
 
-                self.imtui.text_mode.writeAccelerated(row, self.c + 1, it.label, !disabled);
-                // if (self.selected_menu_item == it_ix)
+                self.imtui.text_mode.writeAccelerated(row, self.c + 1, it.label, it.enabled);
+                // if (self.selected_menu_item == ix)
                 //     menu_help_text = o.@"1";
 
-                // if (o.len == 3) {
-                //     // Shortcut key.
-                //     const sk = o.@"2";
-                //     self.imtui.text_mode.write(row, offset + menu.width + 2 - sk.len, sk);
-                // }
+                if (it.shortcut_key) |key|
+                    self.imtui.text_mode.write(row, self.c - 1 + self.width + 2 - key.len, key);
+
                 self.imtui.text_mode.draw(row, self.c - 1 + self.width + 3, 0x70, .Vertical);
             } else {
                 self.imtui.text_mode.draw(row, self.c - 1, 0x70, .VerticalRight);
@@ -118,11 +111,19 @@ pub const MenubarMenu = struct {
 pub const MenubarItem = struct {
     imtui: *Imtui,
     label: []const u8,
+    enabled: bool = true,
     shortcut_key: ?[]const u8 = null,
     help_text: ?[]const u8 = null,
 
+    _chosen: bool = false,
+
     fn init(imtui: *Imtui, label: []const u8) MenubarItem {
         return .{ .imtui = imtui, .label = label };
+    }
+
+    pub fn disabled(self: *MenubarItem) *MenubarItem {
+        self.enabled = false;
+        return self;
     }
 
     pub fn shortcut(self: *MenubarItem, key: []const u8) *MenubarItem {
@@ -131,8 +132,13 @@ pub const MenubarItem = struct {
         return self;
     }
 
-    pub fn help(self: *MenubarItem, text: []const u8) void {
+    pub fn help(self: *MenubarItem, text: []const u8) *MenubarItem {
         self.help_text = text;
+        return self;
+    }
+
+    pub fn chosen(self: *MenubarItem) bool {
+        return self._chosen;
     }
 };
 

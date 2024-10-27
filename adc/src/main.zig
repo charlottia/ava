@@ -132,32 +132,35 @@ fn exe(
         var menubar = try imtui.menubar(0, 0, 80);
 
         var file_menu = try menubar.menu("&File", 16);
-        (try file_menu.item("&New Program")).help("Removes currently loaded program from memory");
-        (try file_menu.item("&Open Program...")).help("Loads new program into memory");
-        (try file_menu.item("&Merge...")).help("Inserts specified file into current module");
-        (try file_menu.item("&Save")).help("Writes current module to file on disk");
-        (try file_menu.item("Save &As...")).help("Saves current module with specified name and format");
-        (try file_menu.item("Sa&ve All")).help("Writes all currently loaded modules to files on disk");
+        _ = (try file_menu.item("&New Program")).help("Removes currently loaded program from memory");
+        _ = (try file_menu.item("&Open Program...")).help("Loads new program into memory");
+        _ = (try file_menu.item("&Merge...")).help("Inserts specified file into current module");
+        _ = (try file_menu.item("&Save")).help("Writes current module to file on disk");
+        _ = (try file_menu.item("Save &As...")).help("Saves current module with specified name and format");
+        _ = (try file_menu.item("Sa&ve All")).help("Writes all currently loaded modules to files on disk");
         try file_menu.separator();
-        (try file_menu.item("&Create File...")).help("Creates a module, include file, or document; retains loaded modules");
-        (try file_menu.item("&Load File...")).help("Loads a module, include file, or document; retains loaded modules");
-        (try file_menu.item("&Unload File...")).help("Removes a loaded module, include file, or document from memory");
+        _ = (try file_menu.item("&Create File...")).help("Creates a module, include file, or document; retains loaded modules");
+        _ = (try file_menu.item("&Load File...")).help("Loads a module, include file, or document; retains loaded modules");
+        _ = (try file_menu.item("&Unload File...")).help("Removes a loaded module, include file, or document from memory");
         try file_menu.separator();
-        (try file_menu.item("&Print...")).help("Prints specified text or module");
-        (try file_menu.item("&DOS Shell")).help("Temporarily suspends ADC and invokes DOS shell"); // uhh
+        _ = (try file_menu.item("&Print...")).help("Prints specified text or module");
+        _ = (try file_menu.item("&DOS Shell")).help("Temporarily suspends ADC and invokes DOS shell"); // uhh
         try file_menu.separator();
-        (try file_menu.item("E&xit")).help("Exits ADC and returns to DOS"); // uhhhhh
+        var exit = (try file_menu.item("E&xit")).help("Exits ADC and returns to DOS");
+        if (exit.chosen()) {
+            imtui.running = false;
+        }
         try file_menu.end();
 
         var edit_menu = try menubar.menu("&Edit", 20);
-        (try edit_menu.item("&Undo")).shortcut("Alt+Backspace").help("Restores current edited line to its original condition");
-        (try edit_menu.item("Cu&t")).shortcut("Shift+Del").help("Deletes selected text and copies it to buffer");
-        (try edit_menu.item("&Copy")).shortcut("Ctrl+Ins").help("Copies selected text to buffer");
-        (try edit_menu.item("&Paste")).shortcut("Shift+Ins").help("Inserts buffer contents at current location");
-        (try edit_menu.item("Cl&ear")).shortcut("Del").help("Deletes selected text without copying it to buffer");
+        _ = (try edit_menu.item("&Undo")).disabled().shortcut("Alt+Backspace").help("Restores current edited line to its original condition");
+        _ = (try edit_menu.item("Cu&t")).disabled().shortcut("Shift+Del").help("Deletes selected text and copies it to buffer");
+        _ = (try edit_menu.item("&Copy")).disabled().shortcut("Ctrl+Ins").help("Copies selected text to buffer");
+        _ = (try edit_menu.item("&Paste")).shortcut("Shift+Ins").help("Inserts buffer contents at current location");
+        _ = (try edit_menu.item("Cl&ear")).disabled().shortcut("Del").help("Deletes selected text without copying it to buffer");
         try edit_menu.separator();
-        (try edit_menu.item("New &SUB...")).help("Opens a window for a new subprogram");
-        (try edit_menu.item("New &FUNCTION...")).help("Opens a window for a new FUNCTION procedure");
+        _ = (try edit_menu.item("New &SUB...")).help("Opens a window for a new subprogram");
+        _ = (try edit_menu.item("New &FUNCTION...")).help("Opens a window for a new FUNCTION procedure");
         try edit_menu.end();
 
         var view_menu = try menubar.menu("&View", 21);
