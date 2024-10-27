@@ -200,6 +200,28 @@ fn exe(
         try (try menubar.menu("&Options", 15)).end();
         try (try menubar.menu("&Help", 25)).end();
 
+        imtui.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
+        var ruler = true;
+        switch (imtui._focus) {
+            .menu => |m| {
+                const help_text = menubar.item_at(m).help_text.?;
+                imtui.text_mode.write(24, 1, "F1=Help");
+                imtui.text_mode.draw(24, 9, 0x30, .Vertical);
+                imtui.text_mode.write(24, 11, help_text);
+                ruler = (11 + help_text.len) <= 62;
+            },
+            .menubar => imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
+            else => imtui.text_mode.write(24, 1, "<Shift+F1=Help> <F6=Window> <F2=Subs> <F5=Run> <F8=Step>"),
+        }
+
+        if (ruler) {
+            imtui.text_mode.draw(24, 62, 0x30, .Vertical);
+            var buf: [9]u8 = undefined;
+            // _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_row + 1, active_editor.cursor_col + 1 });
+            _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ 1, 1 });
+            imtui.text_mode.write(24, 70, &buf);
+        }
+
         try imtui.render();
 
         // std.debug.print("> ", .{});

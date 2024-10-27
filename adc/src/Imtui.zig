@@ -30,7 +30,7 @@ _alt_held: bool = false,
 _focus: union(enum) {
     unknown,
     menubar: usize, // menu index
-    menu: struct { index: usize, item: usize },
+    menu: ImtuiControls.MenuItemReference,
 } = .unknown,
 
 _menubar: ?*ImtuiControls.Menubar = null,
@@ -189,6 +189,10 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 if (self._menubar.?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
                 break;
+            },
+            .escape => {
+                self.text_mode.cursor_inhibit = false;
+                self._focus = .unknown; // XXX
             },
             .@"return" => self._menubar.?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
             else => {},

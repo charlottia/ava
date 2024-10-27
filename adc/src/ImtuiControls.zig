@@ -61,6 +61,10 @@ pub const Menubar = struct {
         std.debug.assert(self.offset < self.c2 - self.c1);
         return m;
     }
+
+    pub fn item_at(self: *const Menubar, ref: MenuItemReference) *const MenuItem {
+        return self.menus.items[ref.index].menu_items.items[ref.item].?;
+    }
 };
 
 pub const Menu = struct {
@@ -259,6 +263,8 @@ pub const MenuItem = struct {
         return self._chosen;
     }
 };
+
+pub const MenuItemReference = struct { index: usize, item: usize };
 
 fn lenWithoutAccelerators(s: []const u8) usize {
     var len: usize = 0;
