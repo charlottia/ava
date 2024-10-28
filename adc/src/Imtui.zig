@@ -25,7 +25,9 @@ typematic_on: bool = false,
 mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
+
 mouse_menu_op: bool = false,
+mouse_menu_op_closable: bool = false, // XXX
 
 _alt_held: bool = false,
 _focus: union(enum) {
@@ -277,11 +279,21 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: us
 fn handleMouseDown(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
     _ = clicks;
 
+    // "mouse_menu_op" is a bit of hack. We might be able to generalise it by
+    // saying that whatever control a mouse operation starts in then receives
+    // further events until it ends (i.e. from down to up).
     self.mouse_menu_op = false;
 
-    if (button == .left and self._menubar.?.mouseIsOver(self)) {
+    if (button == .left and (self._menubar.?.mouseIsOver(self) or
+        (self.openMenu() != null and self.openMenu().?.mouseIsOverItem(self))))
+    {
         self.mouse_menu_op = true;
         return self.handleMenuMouseDown();
+    }
+
+    if (button == .left and (self._focus == .menubar or self._focus == .menu)) {
+        self._focus = .unknown; // XXX
+        return;
     }
 }
 
@@ -301,9 +313,19 @@ fn handleMouseUp(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
 }
 
 fn handleMenuMouseDown(self: *Imtui) void {
+    self.mouse_menu_op_closable = false;
+
     for (self._menubar.?.menus.items, 0..) |*m, mix|
         if (m.*.mouseIsOver(self)) {
+            if (self.openMenu()) |om|
+                self.mouse_menu_op_closable = om.index == mix;
             self._focus = .{ .menubar = .{ .index = mix, .open = true } };
+            return;
+        };
+
+    if (self.openMenu()) |m|
+        if (m.mouseOverItem(self)) |i| {
+            self._focus = .{ .menu = .{ .index = m.index, .item = i.index } };
             return;
         };
 }
@@ -315,6 +337,9 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
     if (self.mouse_row == self._menubar.?.r) {
         for (self._menubar.?.menus.items, 0..) |*m, mix|
             if (m.*.mouseIsOver(self)) {
+                if (self.openMenu()) |om|
+                    self.mouse_menu_op_closable = self.mouse_menu_op_closable and
+                        om.index == mix;
                 self._focus = .{ .menubar = .{ .index = mix, .open = true } };
                 return;
             };
@@ -323,16 +348,31 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
     }
 
     if (self.openMenu()) |m| {
-        if (m.mouseOverItem(self)) |i|
-            self._focus = .{ .menu = .{ .index = m.index, .item = i.index } }
-        else
-            self._focus = .{ .menubar = .{ .index = m.index, .open = true } };
+        if (m.mouseOverItem(self)) |i| {
+            self.mouse_menu_op_closable = false;
+            self._focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+        } else self._focus = .{ .menubar = .{ .index = m.index, .open = true } };
         return;
     }
 }
 
 fn handleMenuMouseUp(self: *Imtui) void {
     self.mouse_menu_op = false;
+
+    if (self.openMenu()) |m| {
+        if (m.mouseOverItem(self)) |i| {
+            i._chosen = true;
+            self._focus = .unknown; // XXX
+            return;
+        }
+
+        if (m.mouseIsOver(self) and !self.mouse_menu_op_closable) {
+            self._focus = .{ .menu = .{ .index = m.index, .item = 0 } };
+            return;
+        }
+
+        self._focus = .unknown; // XXX
+    }
 }
 
 fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {

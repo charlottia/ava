@@ -222,14 +222,15 @@ pub const Menu = struct {
         return imtui.mouse_row == self.r and imtui.mouse_col >= self.c1 and imtui.mouse_col < self.c2;
     }
 
-    pub fn mouseOverItem(self: *Menu, imtui: *const Imtui) ?*MenuItem {
-        if (!(imtui.mouse_row >= self.r + 2 and
+    pub fn mouseIsOverItem(self: *Menu, imtui: *const Imtui) bool {
+        return imtui.mouse_row >= self.r + 2 and
             imtui.mouse_row <= self.r + 2 + self.menu_items.items.len - 1 and
-            imtui.mouse_col >= self.menu_c1 + 1 and
-            imtui.mouse_col < self.menu_c2))
-        {
-            return null;
-        }
+            imtui.mouse_col >= self.menu_c1 and
+            imtui.mouse_col <= self.menu_c2;
+    }
+
+    pub fn mouseOverItem(self: *Menu, imtui: *const Imtui) ?*MenuItem {
+        if (!self.mouseIsOverItem(imtui)) return null;
         return self.menu_items.items[imtui.mouse_row - self.r - 2];
     }
 };

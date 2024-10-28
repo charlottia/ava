@@ -4,5 +4,9 @@
 * [ ] releasing outside item/menu `[ File ]` closes again
 * [x] until mouse up, no item is selected
 * [x] when mouse down, hover items selected
-* [ ] mouse down on menu: deselect
-* [ ] mouse up on open menu: close
+* [x] mouse down on menu: deselect
+* [x] mouse up on open menu: close
+  * what the hell is the actual heuristic here? Something like:
+    * mouse down on an already open menu's menubar item, AND
+    * mouse not dragged anywhere that would cause a switch of focus, AND
+    * mouse up on that same menubar item
