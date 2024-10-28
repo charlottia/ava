@@ -25,11 +25,12 @@ typematic_on: bool = false,
 mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
+mouse_menu_op: bool = false,
 
 _alt_held: bool = false,
 _focus: union(enum) {
     unknown,
-    menubar: usize, // menu index
+    menubar: struct { index: usize, open: bool },
     menu: ImtuiControls.MenuItemReference,
 } = .unknown,
 
@@ -79,7 +80,7 @@ pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
         .mouse_motion => |motion| {
             const pos = self.interpolateMouse(motion);
             self.text_mode.positionMouseAt(pos.x, pos.y);
-            if (self.handleMouseAt(self.text_mode.cursor_row, self.text_mode.cursor_col)) |old_loc| {
+            if (self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col)) |old_loc| {
                 if (self.mouse_down) |button|
                     try self.handleMouseDrag(button, old_loc.r, old_loc.c);
             }
@@ -87,14 +88,14 @@ pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
         .mouse_button_down => |button| {
             const pos = self.interpolateMouse(button);
             self.text_mode.positionMouseAt(pos.x, pos.y);
-            _ = self.handleMouseAt(self.text_mode.cursor_row, self.text_mode.cursor_col);
+            _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
             try self.handleMouseDown(button.button, button.clicks);
             self.mouse_down = button.button;
         },
         .mouse_button_up => |button| {
             const pos = self.interpolateMouse(button);
             self.text_mode.positionMouseAt(pos.x, pos.y);
-            _ = self.handleMouseAt(self.text_mode.cursor_row, self.text_mode.cursor_col);
+            _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
             try self.handleMouseUp(button.button, button.clicks);
             self.mouse_down = null;
         },
@@ -149,6 +150,15 @@ pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_i
     return e;
 }
 
+pub fn openMenu(self: *Imtui) ?*ImtuiControls.Menu {
+    switch (self._focus) {
+        .menubar => |mb| if (mb.open) return self._menubar.?.menus.items[mb.index],
+        .menu => |m| return self._menubar.?.menus.items[m.index],
+        else => {},
+    }
+    return null;
+}
+
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     _ = modifiers;
 
@@ -156,6 +166,9 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         self._alt_held = true;
         return;
     }
+
+    if ((self._focus == .menubar or self._focus == .menu) and self.mouse_down != null)
+        return;
 
     if (self._alt_held and keycodeAlphanum(keycode)) {
         for (self._menubar.?.menus.items, 0..) |m, mix|
@@ -167,20 +180,20 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     }
 
     switch (self._focus) {
-        .menubar => |*ix| switch (keycode) {
+        .menubar => |*mb| switch (keycode) {
             .left => {
-                if (ix.* == 0)
-                    ix.* = self._menubar.?.menus.items.len - 1
+                if (mb.index == 0)
+                    mb.index = self._menubar.?.menus.items.len - 1
                 else
-                    ix.* -= 1;
+                    mb.index -= 1;
             },
-            .right => ix.* = (ix.* + 1) % self._menubar.?.menus.items.len,
-            .up, .down => self._focus = .{ .menu = .{ .index = ix.*, .item = 0 } },
+            .right => mb.index = (mb.index + 1) % self._menubar.?.menus.items.len,
+            .up, .down => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             .escape => {
                 self.text_mode.cursor_inhibit = false;
                 self._focus = .unknown; // XXX
             },
-            .@"return" => self._focus = .{ .menu = .{ .index = ix.*, .item = 0 } },
+            .@"return" => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             else => if (keycodeAlphanum(keycode)) {
                 for (self._menubar.?.menus.items, 0..) |m, mix|
                     if (acceleratorMatch(m.label, keycode)) {
@@ -237,10 +250,10 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
         self._alt_held = false;
 
         if (self._focus == .menu) {
-            self._focus = .{ .menubar = self._focus.menu.index };
+            self._focus = .{ .menubar = .{ .index = self._focus.menu.index, .open = false } };
         } else if (self._focus != .menubar) {
             self.text_mode.cursor_inhibit = true;
-            self._focus = .{ .menubar = 0 };
+            self._focus = .{ .menubar = .{ .index = 0, .open = false } };
         } else {
             self.text_mode.cursor_inhibit = false;
             self._focus = .unknown; // XXX
@@ -261,29 +274,71 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: us
     return null;
 }
 
-fn handleMouseDrag(self: *Imtui, button: SDL.MouseButton, old_row: usize, old_col: usize) !void {
-    _ = self;
-    _ = button;
-    _ = old_row;
-    _ = old_col;
+fn handleMouseDown(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
+    _ = clicks;
+
+    self.mouse_menu_op = false;
+
+    if (button == .left and self._menubar.?.mouseIsOver(self)) {
+        self.mouse_menu_op = true;
+        return self.handleMenuMouseDown();
+    }
 }
 
-fn handleMouseDown(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
-    _ = self;
+fn handleMouseDrag(self: *Imtui, button: SDL.MouseButton, old_row: usize, old_col: usize) !void {
     _ = button;
-    _ = clicks;
+
+    if (self.mouse_menu_op)
+        return self.handleMenuMouseDrag(old_row, old_col);
 }
 
 fn handleMouseUp(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
-    _ = self;
     _ = button;
     _ = clicks;
+
+    if (self.mouse_menu_op)
+        return self.handleMenuMouseUp();
+}
+
+fn handleMenuMouseDown(self: *Imtui) void {
+    for (self._menubar.?.menus.items, 0..) |*m, mix|
+        if (m.*.mouseIsOver(self)) {
+            self._focus = .{ .menubar = .{ .index = mix, .open = true } };
+            return;
+        };
+}
+
+fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
+    _ = old_row;
+    _ = old_col;
+
+    if (self.mouse_row == self._menubar.?.r) {
+        for (self._menubar.?.menus.items, 0..) |*m, mix|
+            if (m.*.mouseIsOver(self)) {
+                self._focus = .{ .menubar = .{ .index = mix, .open = true } };
+                return;
+            };
+        self._focus = .unknown; // XXX
+        return;
+    }
+
+    if (self.openMenu()) |m| {
+        if (m.mouseOverItem(self)) |i|
+            self._focus = .{ .menu = .{ .index = m.index, .item = i.index } }
+        else
+            self._focus = .{ .menubar = .{ .index = m.index, .open = true } };
+        return;
+    }
+}
+
+fn handleMenuMouseUp(self: *Imtui) void {
+    self.mouse_menu_op = false;
 }
 
 fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {
     return .{
-        .x = @intFromFloat(@as(f32, @floatFromInt(payload.x)) / self.scale),
-        .y = @intFromFloat(@as(f32, @floatFromInt(payload.y)) / self.scale),
+        .x = @intFromFloat(@as(f32, @floatFromInt(@max(0, payload.x))) / self.scale),
+        .y = @intFromFloat(@as(f32, @floatFromInt(@max(0, payload.y))) / self.scale),
     };
 }
 

@@ -62,18 +62,25 @@ pub const Menubar = struct {
         return m;
     }
 
-    pub fn item_at(self: *const Menubar, ref: MenuItemReference) *const MenuItem {
+    pub fn itemAt(self: *const Menubar, ref: MenuItemReference) *const MenuItem {
         return self.menus.items[ref.index].menu_items.items[ref.item].?;
+    }
+
+    pub fn mouseIsOver(self: *const Menubar, imtui: *const Imtui) bool {
+        return imtui.mouse_row == self.r and imtui.mouse_col >= self.c1 and imtui.mouse_col < self.c2;
     }
 };
 
 pub const Menu = struct {
     imtui: *Imtui,
     r: usize,
-    c: usize,
+    c1: usize,
+    c2: usize,
     label: []const u8,
     index: usize,
     width: usize,
+    menu_c1: usize,
+    menu_c2: usize,
 
     menu_items: std.ArrayListUnmanaged(?*MenuItem) = .{},
     menu_items_at: usize,
@@ -83,10 +90,13 @@ pub const Menu = struct {
         m.* = .{
             .imtui = imtui,
             .r = undefined,
-            .c = undefined,
+            .c1 = undefined,
+            .c2 = undefined,
             .label = undefined,
             .index = undefined,
             .width = undefined,
+            .menu_c1 = undefined,
+            .menu_c2 = undefined,
             .menu_items_at = undefined,
         };
         m.describe(r, c, label, index, width);
@@ -95,17 +105,25 @@ pub const Menu = struct {
 
     fn describe(self: *Menu, r: usize, c: usize, label: []const u8, index: usize, width: usize) void {
         self.r = r;
-        self.c = c;
+        self.c1 = c;
+        self.c2 = c + lenWithoutAccelerators(label) + 2;
         self.label = label;
         self.index = index;
         self.width = width;
+
+        self.menu_c1 = c - 1;
+        if (self.menu_c1 + self.width + 3 > 77) // XXX
+            self.menu_c1 -= self.menu_c1 + self.width + 3 - 77;
+        self.menu_c2 = self.menu_c1 + self.width + 3;
+
         self.menu_items_at = 0;
 
-        if ((self.imtui._focus == .menubar and self.imtui._focus.menubar == index) or
+        if ((self.imtui._focus == .menubar and self.imtui._focus.menubar.index == index) or
             (self.imtui._focus == .menu and self.imtui._focus.menu.index == index))
-            self.imtui.text_mode.paint(r, c, r + 1, c + lenWithoutAccelerators(label) + 2, 0x07, .Blank);
+            self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
 
-        const show_acc = self.imtui._focus != .menu and (self.imtui._alt_held or self.imtui._focus == .menubar);
+        const show_acc = self.imtui._focus != .menu and (self.imtui._alt_held or
+            (self.imtui._focus == .menubar and !self.imtui._focus.menubar.open));
         self.imtui.text_mode.writeAccelerated(r, c + 1, label, show_acc);
     }
 
@@ -119,13 +137,13 @@ pub const Menu = struct {
 
     pub fn item(self: *Menu, label: []const u8) !*MenuItem {
         const i = if (self.menu_items_at == self.menu_items.items.len) i: {
-            const i = try MenuItem.create(self.imtui, label);
+            const i = try MenuItem.create(self.imtui, label, self.menu_items_at);
             try self.menu_items.append(self.imtui.allocator, i);
             break :i i;
         } else i: {
             // XXX: can't handle item/separator swap
             var i = self.menu_items.items[self.menu_items_at].?;
-            i.describe(label);
+            i.describe(label, self.menu_items_at);
             break :i i;
         };
         self.menu_items_at += 1;
@@ -155,84 +173,95 @@ pub const Menu = struct {
         }
         std.debug.assert(self.menu_items.items.len == self.menu_items_at);
 
-        if (!(self.imtui._focus == .menu and self.imtui._focus.menu.index == self.index))
+        if (self.imtui.openMenu() != self)
             return;
 
-        const selected_it_ix = self.imtui._focus.menu.item;
-
-        var c = self.c - 1;
-        if (c + self.width + 3 > 77) // XXX
-            c -= c + self.width + 3 - 77;
-
-        self.imtui.text_mode.draw(self.r + 1, c, 0x70, .TopLeft);
-        self.imtui.text_mode.paint(self.r + 1, c + 1, self.r + 2, c + self.width + 3, 0x70, .Horizontal);
-        self.imtui.text_mode.draw(self.r + 1, c + self.width + 3, 0x70, .TopRight);
+        self.imtui.text_mode.draw(self.r + 1, self.menu_c1, 0x70, .TopLeft);
+        self.imtui.text_mode.paint(self.r + 1, self.menu_c1 + 1, self.r + 2, self.menu_c2, 0x70, .Horizontal);
+        self.imtui.text_mode.draw(self.r + 1, self.menu_c2, 0x70, .TopRight);
 
         var row = self.r + 2;
         for (self.menu_items.items, 0..) |mit, ix| {
             if (mit) |it| {
-                self.imtui.text_mode.draw(row, c, 0x70, .Vertical);
-                const colour: u8 = if (selected_it_ix == ix)
+                self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .Vertical);
+                const selected = self.imtui._focus == .menu and self.imtui._focus.menu.item == ix;
+                const colour: u8 = if (selected)
                     0x07
                 else if (!it.enabled)
                     0x78
                 else
                     0x70;
-                self.imtui.text_mode.paint(row, c + 1, row + 1, c + self.width + 3, colour, .Blank);
+                self.imtui.text_mode.paint(row, self.menu_c1 + 1, row + 1, self.menu_c2, colour, .Blank);
 
-                self.imtui.text_mode.writeAccelerated(row, c + 2, it.label, it.enabled);
-                // if (self.selected_menu_item == ix)
-                //     menu_help_text = o.@"1";
+                self.imtui.text_mode.writeAccelerated(row, self.menu_c1 + 2, it.label, it.enabled);
 
                 if (it.shortcut_key) |key|
-                    self.imtui.text_mode.write(row, c + self.width + 2 - key.len, key);
+                    self.imtui.text_mode.write(row, self.menu_c2 - 1 - key.len, key);
 
-                self.imtui.text_mode.draw(row, c + self.width + 3, 0x70, .Vertical);
+                self.imtui.text_mode.draw(row, self.menu_c1 + self.width + 3, 0x70, .Vertical);
             } else {
-                self.imtui.text_mode.draw(row, c, 0x70, .VerticalRight);
-                self.imtui.text_mode.paint(row, c + 1, row + 1, c + self.width + 3, 0x70, .Horizontal);
-                self.imtui.text_mode.draw(row, c + self.width + 3, 0x70, .VerticalLeft);
+                self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .VerticalRight);
+                self.imtui.text_mode.paint(row, self.menu_c1 + 1, row + 1, self.menu_c2, 0x70, .Horizontal);
+                self.imtui.text_mode.draw(row, self.menu_c2, 0x70, .VerticalLeft);
             }
-            self.imtui.text_mode.shadow(row, c + self.width + 4);
-            self.imtui.text_mode.shadow(row, c + self.width + 5);
+            self.imtui.text_mode.shadow(row, self.menu_c2 + 1);
+            self.imtui.text_mode.shadow(row, self.menu_c2 + 2);
             row += 1;
         }
-        self.imtui.text_mode.draw(row, c, 0x70, .BottomLeft);
-        self.imtui.text_mode.paint(row, c + 1, row + 1, c + 1 + self.width + 2, 0x70, .Horizontal);
-        self.imtui.text_mode.draw(row, c + self.width + 3, 0x70, .BottomRight);
-        self.imtui.text_mode.shadow(row, c + self.width + 4);
-        self.imtui.text_mode.shadow(row, c + self.width + 5);
+        self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .BottomLeft);
+        self.imtui.text_mode.paint(row, self.menu_c1 + 1, row + 1, self.menu_c2, 0x70, .Horizontal);
+        self.imtui.text_mode.draw(row, self.menu_c2, 0x70, .BottomRight);
+        self.imtui.text_mode.shadow(row, self.menu_c2 + 1);
+        self.imtui.text_mode.shadow(row, self.menu_c2 + 2);
         row += 1;
-        for (2..self.width + 6) |j|
-            self.imtui.text_mode.shadow(row, c + j);
+        for (self.menu_c1 + 2..self.menu_c2 + 3) |j|
+            self.imtui.text_mode.shadow(row, j);
+    }
+
+    pub fn mouseIsOver(self: *const Menu, imtui: *const Imtui) bool {
+        return imtui.mouse_row == self.r and imtui.mouse_col >= self.c1 and imtui.mouse_col < self.c2;
+    }
+
+    pub fn mouseOverItem(self: *Menu, imtui: *const Imtui) ?*MenuItem {
+        if (!(imtui.mouse_row >= self.r + 2 and
+            imtui.mouse_row <= self.r + 2 + self.menu_items.items.len - 1 and
+            imtui.mouse_col >= self.menu_c1 + 1 and
+            imtui.mouse_col < self.menu_c2))
+        {
+            return null;
+        }
+        return self.menu_items.items[imtui.mouse_row - self.r - 2];
     }
 };
 
 pub const MenuItem = struct {
     imtui: *Imtui,
     label: []const u8,
+    index: usize,
     enabled: bool,
     shortcut_key: ?[]const u8,
     help_text: ?[]const u8,
 
     _chosen: bool,
 
-    fn create(imtui: *Imtui, label: []const u8) !*MenuItem {
+    fn create(imtui: *Imtui, label: []const u8, index: usize) !*MenuItem {
         var i = try imtui.allocator.create(MenuItem);
         i.* = .{
             .imtui = imtui,
             .label = undefined,
+            .index = undefined,
             .enabled = undefined,
             .shortcut_key = undefined,
             .help_text = undefined,
             ._chosen = false,
         };
-        i.describe(label);
+        i.describe(label, index);
         return i;
     }
 
-    fn describe(self: *MenuItem, label: []const u8) void {
+    fn describe(self: *MenuItem, label: []const u8, index: usize) void {
         self.label = label;
+        self.index = index;
         self.enabled = true;
         self.shortcut_key = null;
         self.help_text = null;
