@@ -107,6 +107,7 @@ pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
 }
 
 pub fn render(self: *Imtui) !void {
+    self.text_mode.cursor_inhibit = self._focus == .menu or self._focus == .menubar;
     try self.text_mode.present(self.delta_tick);
 }
 
@@ -192,7 +193,6 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
             .right => mb.index = (mb.index + 1) % self._menubar.?.menus.items.len,
             .up, .down => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             .escape => {
-                self.text_mode.cursor_inhibit = false;
                 self._focus = .unknown; // XXX
             },
             .@"return" => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
@@ -232,7 +232,6 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 break;
             },
             .escape => {
-                self.text_mode.cursor_inhibit = false;
                 self._focus = .unknown; // XXX
             },
             .@"return" => self._menubar.?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
@@ -254,10 +253,8 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
         if (self._focus == .menu) {
             self._focus = .{ .menubar = .{ .index = self._focus.menu.index, .open = false } };
         } else if (self._focus != .menubar) {
-            self.text_mode.cursor_inhibit = true;
             self._focus = .{ .menubar = .{ .index = 0, .open = false } };
         } else {
-            self.text_mode.cursor_inhibit = false;
             self._focus = .unknown; // XXX
         }
     }
