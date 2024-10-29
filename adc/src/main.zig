@@ -123,6 +123,8 @@ fn exe(
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
+    var bp = false;
+
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
             imtui.processEvent(ev);
@@ -219,7 +221,19 @@ fn exe(
                 show_ruler = (11 + help_text.len) <= 62;
             },
             .menubar => imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
-            else => imtui.text_mode.write(24, 1, "<Shift+F1=Help> <F6=Window> <F2=Subs> <F5=Run> <F8=Step>"),
+            else => {
+                if ((try imtui.button(24, 1, 0x30, "<Shift+F1=Help>")).chosen()) {
+                    std.debug.print("TODO: trigger shift+f1\n", .{});
+                    bp = true;
+                }
+                _ = try imtui.button(24, 17, 0x30, "<F6=Window>");
+                _ = try imtui.button(24, 29, 0x30, "<F2=Subs>");
+                if (!bp)
+                    if ((try imtui.button(24, 39, 0x30, "<F5=Run>")).chosen()) {
+                        std.debug.print("run!\n", .{});
+                    };
+                _ = try imtui.button(24, 48, 0x30, "<F8=Step>");
+            },
         }
 
         if (show_ruler) {

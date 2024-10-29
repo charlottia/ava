@@ -2,8 +2,58 @@ const std = @import("std");
 
 const Imtui = @import("./Imtui.zig");
 
+pub const Button = struct {
+    imtui: *Imtui,
+    generation: usize,
+    r: usize,
+    c: usize,
+    colour: u8,
+    label: []const u8,
+
+    _chosen: bool,
+
+    pub fn create(imtui: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Button {
+        var b = try imtui.allocator.create(Button);
+        b.* = .{
+            .imtui = imtui,
+            .generation = undefined,
+            .r = undefined,
+            .c = undefined,
+            .colour = undefined,
+            .label = label,
+            ._chosen = false,
+        };
+        b.describe(imtui.generation, r, c, colour);
+        return b;
+    }
+
+    pub fn describe(self: *Button, generation: usize, r: usize, c: usize, colour: u8) void {
+        self.generation = generation;
+        self.r = r;
+        self.c = c;
+        self.colour = colour;
+        self.imtui.text_mode.paint(r, c, r + 1, c + self.label.len, colour, .Blank);
+        self.imtui.text_mode.write(r, c, self.label);
+    }
+
+    pub fn deinit(self: *Button) void {
+        self.imtui.allocator.destroy(self);
+    }
+
+    pub fn mouseIsOver(self: *const Button, imtui: *const Imtui) bool {
+        return imtui.mouse_row == self.r and imtui.mouse_col >= self.c and imtui.mouse_col < self.c + self.label.len;
+    }
+
+    pub fn chosen(self: *Button) bool {
+        defer self._chosen = false;
+        return self._chosen;
+    }
+};
+
+// TODO: redo Menubar -< Menu -< MenuItem with generations and ids?
 pub const Menubar = struct {
     imtui: *Imtui,
+    generation: usize,
     r: usize,
     c1: usize,
     c2: usize,
@@ -16,6 +66,7 @@ pub const Menubar = struct {
         var mb = try imtui.allocator.create(Menubar);
         mb.* = .{
             .imtui = imtui,
+            .generation = undefined,
             .r = undefined,
             .c1 = undefined,
             .c2 = undefined,
@@ -23,11 +74,12 @@ pub const Menubar = struct {
             .menus = .{},
             .menus_at = undefined,
         };
-        mb.describe(r, c1, c2);
+        mb.describe(imtui.generation, r, c1, c2);
         return mb;
     }
 
-    pub fn describe(self: *Menubar, r: usize, c1: usize, c2: usize) void {
+    pub fn describe(self: *Menubar, generation: usize, r: usize, c1: usize, c2: usize) void {
+        self.generation = generation;
         self.r = r;
         self.c1 = c1;
         self.c2 = c2;
@@ -298,6 +350,7 @@ pub const MenuItemReference = struct { index: usize, item: usize };
 
 pub const Editor = struct {
     imtui: *Imtui,
+    generation: usize,
     r1: usize,
     c1: usize,
     r2: usize,
@@ -308,17 +361,19 @@ pub const Editor = struct {
         var e = try imtui.allocator.create(Editor);
         e.* = .{
             .imtui = imtui,
+            .generation = undefined,
             .r1 = undefined,
             .c1 = undefined,
             .r2 = undefined,
             .c2 = undefined,
             ._title = undefined,
         };
-        e.describe(r1, c1, r2, c2);
+        e.describe(imtui.generation, r1, c1, r2, c2);
         return e;
     }
 
-    pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void {
+    pub fn describe(self: *Editor, generation: usize, r1: usize, c1: usize, r2: usize, c2: usize) void {
+        self.generation = generation;
         self.r1 = r1;
         self.c1 = c1;
         self.r2 = r2;

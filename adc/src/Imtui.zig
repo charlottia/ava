@@ -13,6 +13,7 @@ text_mode: TextMode(25, 80),
 scale: f32,
 
 running: bool = true,
+generation: usize = 0,
 
 last_tick: u64,
 delta_tick: u64 = 0,
@@ -38,6 +39,7 @@ _focus: union(enum) {
 
 _menubar: ?*ImtuiControls.Menubar = null,
 _editors: std.AutoHashMapUnmanaged(usize, *ImtuiControls.Editor) = .{},
+_buttons: std.StringHashMapUnmanaged(*ImtuiControls.Button) = .{},
 
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
@@ -57,15 +59,22 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f3
 pub fn deinit(self: *Imtui) void {
     if (self._menubar) |mb|
         mb.deinit();
+
     var eit = self._editors.valueIterator();
     while (eit.next()) |e|
         e.*.deinit();
     self._editors.deinit(self.allocator);
+
+    var bit = self._buttons.valueIterator();
+    while (bit.next()) |b|
+        b.*.deinit();
+    self._buttons.deinit(self.allocator);
+
     self.allocator.destroy(self);
 }
 
-pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
-    switch (ev) {
+pub fn processEvent(self: *Imtui, event: SDL.Event) void {
+    switch (event) {
         .key_down => |key| {
             if (key.is_repeat) return;
             try self.handleKeyPress(key.keycode, key.modifiers);
@@ -79,26 +88,26 @@ pub fn processEvent(self: *Imtui, ev: SDL.Event) void {
             try self.handleKeyUp(key.keycode);
             self.keydown_tick = null;
         },
-        .mouse_motion => |motion| {
-            const pos = self.interpolateMouse(motion);
+        .mouse_motion => |ev| {
+            const pos = self.interpolateMouse(ev);
             self.text_mode.positionMouseAt(pos.x, pos.y);
             if (self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col)) |old_loc| {
-                if (self.mouse_down) |button|
-                    try self.handleMouseDrag(button, old_loc.r, old_loc.c);
+                if (self.mouse_down) |b|
+                    try self.handleMouseDrag(b, old_loc.r, old_loc.c);
             }
         },
-        .mouse_button_down => |button| {
-            const pos = self.interpolateMouse(button);
+        .mouse_button_down => |ev| {
+            const pos = self.interpolateMouse(ev);
             self.text_mode.positionMouseAt(pos.x, pos.y);
             _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
-            try self.handleMouseDown(button.button, button.clicks);
-            self.mouse_down = button.button;
+            try self.handleMouseDown(ev.button, ev.clicks);
+            self.mouse_down = ev.button;
         },
-        .mouse_button_up => |button| {
-            const pos = self.interpolateMouse(button);
+        .mouse_button_up => |ev| {
+            const pos = self.interpolateMouse(ev);
             self.text_mode.positionMouseAt(pos.x, pos.y);
             _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
-            try self.handleMouseUp(button.button, button.clicks);
+            try self.handleMouseUp(ev.button, ev.clicks);
             self.mouse_down = null;
         },
         .quit => self.running = false,
@@ -112,6 +121,8 @@ pub fn render(self: *Imtui) !void {
 }
 
 pub fn newFrame(self: *Imtui) !void {
+    self.generation += 1;
+
     const this_tick = SDL.getTicks64();
     self.delta_tick = this_tick - self.last_tick;
     defer self.last_tick = this_tick;
@@ -132,8 +143,13 @@ pub fn newFrame(self: *Imtui) !void {
 
 pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Menubar {
     if (self._menubar) |mb| {
-        mb.describe(r, c1, c2);
-        return mb;
+        if (mb.generation == self.generation - 1) {
+            mb.describe(self.generation, r, c1, c2);
+            return mb;
+        } else {
+            mb.deinit();
+            self._menubar = null;
+        }
     }
 
     const mb = try ImtuiControls.Menubar.create(self, r, c1, c2);
@@ -144,8 +160,12 @@ pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Men
 pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_id: usize) !*ImtuiControls.Editor {
     const gop = try self._editors.getOrPut(self.allocator, editor_id);
     if (gop.found_existing) {
-        gop.value_ptr.*.describe(r1, c1, r2, c2);
-        return gop.value_ptr.*;
+        if (gop.value_ptr.*.generation == self.generation - 1) {
+            gop.value_ptr.*.describe(self.generation, r1, c1, r2, c2);
+            return gop.value_ptr.*;
+        } else {
+            gop.value_ptr.*.deinit();
+        }
     }
 
     const e = try ImtuiControls.Editor.create(self, r1, c1, r2, c2);
@@ -153,10 +173,38 @@ pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_i
     return e;
 }
 
+pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*ImtuiControls.Button {
+    const gop = try self._buttons.getOrPut(self.allocator, label);
+    if (gop.found_existing) {
+        if (gop.value_ptr.*.generation == self.generation - 1) {
+            gop.value_ptr.*.describe(self.generation, r, c, colour);
+            return gop.value_ptr.*;
+        } else {
+            gop.value_ptr.*.deinit();
+        }
+    }
+
+    const e = try ImtuiControls.Button.create(self, r, c, colour, label);
+    gop.value_ptr.* = e;
+    return e;
+}
+
+pub fn getMenubar(self: *Imtui) ?*ImtuiControls.Menubar {
+    if (self._menubar) |mb| {
+        if (mb.generation == self.generation)
+            return mb
+        else {
+            mb.deinit();
+            self._menubar = null;
+        }
+    }
+    return null;
+}
+
 pub fn openMenu(self: *Imtui) ?*ImtuiControls.Menu {
     switch (self._focus) {
-        .menubar => |mb| if (mb.open) return self._menubar.?.menus.items[mb.index],
-        .menu => |m| return self._menubar.?.menus.items[m.index],
+        .menubar => |mb| if (mb.open) return self.getMenubar().?.menus.items[mb.index],
+        .menu => |m| return self.getMenubar().?.menus.items[m.index],
         else => {},
     }
     return null;
@@ -174,7 +222,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         return;
 
     if (self._alt_held and keycodeAlphanum(keycode)) {
-        for (self._menubar.?.menus.items, 0..) |m, mix|
+        for (self.getMenubar().?.menus.items, 0..) |m, mix|
             if (acceleratorMatch(m.label, keycode)) {
                 self._alt_held = false;
                 self._focus = .{ .menu = .{ .index = mix, .item = 0 } };
@@ -186,18 +234,18 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         .menubar => |*mb| switch (keycode) {
             .left => {
                 if (mb.index == 0)
-                    mb.index = self._menubar.?.menus.items.len - 1
+                    mb.index = self.getMenubar().?.menus.items.len - 1
                 else
                     mb.index -= 1;
             },
-            .right => mb.index = (mb.index + 1) % self._menubar.?.menus.items.len,
+            .right => mb.index = (mb.index + 1) % self.getMenubar().?.menus.items.len,
             .up, .down => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             .escape => {
                 self._focus = .unknown; // XXX
             },
             .@"return" => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             else => if (keycodeAlphanum(keycode)) {
-                for (self._menubar.?.menus.items, 0..) |m, mix|
+                for (self.getMenubar().?.menus.items, 0..) |m, mix|
                     if (acceleratorMatch(m.label, keycode)) {
                         self._focus = .{ .menu = .{ .index = mix, .item = 0 } };
                         return;
@@ -208,35 +256,35 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
             .left => {
                 m.item = 0;
                 if (m.index == 0)
-                    m.index = self._menubar.?.menus.items.len - 1
+                    m.index = self.getMenubar().?.menus.items.len - 1
                 else
                     m.index -= 1;
             },
             .right => {
                 m.item = 0;
-                m.index = (m.index + 1) % self._menubar.?.menus.items.len;
+                m.index = (m.index + 1) % self.getMenubar().?.menus.items.len;
             },
             .up => while (true) {
                 if (m.item == 0)
-                    m.item = self._menubar.?.menus.items[m.index].menu_items.items.len - 1
+                    m.item = self.getMenubar().?.menus.items[m.index].menu_items.items.len - 1
                 else
                     m.item -= 1;
-                if (self._menubar.?.menus.items[m.index].menu_items.items[m.item] == null)
+                if (self.getMenubar().?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
                 break;
             },
             .down => while (true) {
-                m.item = (m.item + 1) % self._menubar.?.menus.items[m.index].menu_items.items.len;
-                if (self._menubar.?.menus.items[m.index].menu_items.items[m.item] == null)
+                m.item = (m.item + 1) % self.getMenubar().?.menus.items[m.index].menu_items.items.len;
+                if (self.getMenubar().?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
                 break;
             },
             .escape => {
                 self._focus = .unknown; // XXX
             },
-            .@"return" => self._menubar.?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
+            .@"return" => self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
             else => if (keycodeAlphanum(keycode)) {
-                for (self._menubar.?.menus.items[m.index].menu_items.items) |*mi|
+                for (self.getMenubar().?.menus.items[m.index].menu_items.items) |*mi|
                     if (mi.* != null and acceleratorMatch(mi.*.?.label, keycode)) {
                         mi.*.?._chosen = true;
                     };
@@ -273,36 +321,55 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: us
     return null;
 }
 
-fn handleMouseDown(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
+fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
     _ = clicks;
 
     // "mouse_menu_op" is a bit of hack. We might be able to generalise it by
     // saying that whatever control a mouse operation starts in then receives
     // further events until it ends (i.e. from down to up).
+    //
+    // ^- This is obviously the way it should be?? This suggests a slightly more
+    //    generic object model (the one we're currently pretending to have);
+    //    controls directly receiving the mouse events. Is the Menubar a whole
+    //    receiver, or do individual items receive events? If the latter, how do
+    //    we deal with e.g. mouse drag from menubar (on no particular item) over
+    //    an item toggling that menu, in the same way it happens when starting
+    //    from an item? tbblobnoern
     self.mouse_menu_op = false;
 
-    if (button == .left and (self._menubar.?.mouseIsOver(self) or
+    if (b == .left and (self.getMenubar().?.mouseIsOver(self) or
         (self.openMenu() != null and self.openMenu().?.mouseIsOverItem(self))))
     {
         self.mouse_menu_op = true;
         return self.handleMenuMouseDown();
     }
 
-    if (button == .left and (self._focus == .menubar or self._focus == .menu)) {
+    if (b == .left and (self._focus == .menubar or self._focus == .menu)) {
         self._focus = .unknown; // XXX
         return;
     }
+
+    if (b == .left) {
+        var bit = self._buttons.valueIterator();
+        while (bit.next()) |bu|
+            if (bu.*.generation == self.generation) {
+                if (bu.*.mouseIsOver(self)) {
+                    bu.*._chosen = true;
+                    return;
+                }
+            } else std.debug.print("button failed gen check\n", .{});
+    }
 }
 
-fn handleMouseDrag(self: *Imtui, button: SDL.MouseButton, old_row: usize, old_col: usize) !void {
-    _ = button;
+fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+    _ = b;
 
     if (self.mouse_menu_op)
         return self.handleMenuMouseDrag(old_row, old_col);
 }
 
-fn handleMouseUp(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
-    _ = button;
+fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
+    _ = b;
     _ = clicks;
 
     if (self.mouse_menu_op)
@@ -312,7 +379,7 @@ fn handleMouseUp(self: *Imtui, button: SDL.MouseButton, clicks: u8) !void {
 fn handleMenuMouseDown(self: *Imtui) void {
     self.mouse_menu_op_closable = false;
 
-    for (self._menubar.?.menus.items, 0..) |*m, mix|
+    for (self.getMenubar().?.menus.items, 0..) |*m, mix|
         if (m.*.mouseIsOver(self)) {
             if (self.openMenu()) |om|
                 self.mouse_menu_op_closable = om.index == mix;
@@ -331,8 +398,8 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
     _ = old_row;
     _ = old_col;
 
-    if (self.mouse_row == self._menubar.?.r) {
-        for (self._menubar.?.menus.items, 0..) |*m, mix|
+    if (self.mouse_row == self.getMenubar().?.r) {
+        for (self.getMenubar().?.menus.items, 0..) |*m, mix|
             if (m.*.mouseIsOver(self)) {
                 if (self.openMenu()) |om|
                     self.mouse_menu_op_closable = self.mouse_menu_op_closable and
