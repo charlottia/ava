@@ -212,7 +212,7 @@ fn exe(
 
         imtui.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
         var show_ruler = true;
-        switch (imtui._focus) {
+        switch (imtui.focus) {
             .menu => |m| {
                 const help_text = menubar.itemAt(m).help_text.?;
                 imtui.text_mode.write(24, 1, "F1=Help");

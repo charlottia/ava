@@ -16,19 +16,18 @@ pub const Button = struct {
         var b = try imtui.allocator.create(Button);
         b.* = .{
             .imtui = imtui,
-            .generation = undefined,
+            .generation = imtui.generation,
             .r = undefined,
             .c = undefined,
             .colour = undefined,
             .label = label,
             ._chosen = false,
         };
-        b.describe(imtui.generation, r, c, colour);
+        b.describe(r, c, colour);
         return b;
     }
 
-    pub fn describe(self: *Button, generation: usize, r: usize, c: usize, colour: u8) void {
-        self.generation = generation;
+    pub fn describe(self: *Button, r: usize, c: usize, colour: u8) void {
         self.r = r;
         self.c = c;
         self.colour = colour;
@@ -50,7 +49,6 @@ pub const Button = struct {
     }
 };
 
-// TODO: redo Menubar -< Menu -< MenuItem with generations and ids?
 pub const Menubar = struct {
     imtui: *Imtui,
     generation: usize,
@@ -66,7 +64,7 @@ pub const Menubar = struct {
         var mb = try imtui.allocator.create(Menubar);
         mb.* = .{
             .imtui = imtui,
-            .generation = undefined,
+            .generation = imtui.generation,
             .r = undefined,
             .c1 = undefined,
             .c2 = undefined,
@@ -74,12 +72,11 @@ pub const Menubar = struct {
             .menus = .{},
             .menus_at = undefined,
         };
-        mb.describe(imtui.generation, r, c1, c2);
+        mb.describe(r, c1, c2);
         return mb;
     }
 
-    pub fn describe(self: *Menubar, generation: usize, r: usize, c1: usize, c2: usize) void {
-        self.generation = generation;
+    pub fn describe(self: *Menubar, r: usize, c1: usize, c2: usize) void {
         self.r = r;
         self.c1 = c1;
         self.c2 = c2;
@@ -125,6 +122,7 @@ pub const Menubar = struct {
 
 pub const Menu = struct {
     imtui: *Imtui,
+    generation: usize,
     r: usize,
     c1: usize,
     c2: usize,
@@ -141,6 +139,7 @@ pub const Menu = struct {
         var m = try imtui.allocator.create(Menu);
         m.* = .{
             .imtui = imtui,
+            .generation = imtui.generation,
             .r = undefined,
             .c1 = undefined,
             .c2 = undefined,
@@ -170,16 +169,16 @@ pub const Menu = struct {
 
         self.menu_items_at = 0;
 
-        if ((self.imtui._focus == .menubar and self.imtui._focus.menubar.index == index) or
-            (self.imtui._focus == .menu and self.imtui._focus.menu.index == index))
+        if ((self.imtui.focus == .menubar and self.imtui.focus.menubar.index == index) or
+            (self.imtui.focus == .menu and self.imtui.focus.menu.index == index))
             self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
 
-        const show_acc = self.imtui._focus != .menu and (self.imtui._alt_held or
-            (self.imtui._focus == .menubar and !self.imtui._focus.menubar.open));
+        const show_acc = self.imtui.focus != .menu and (self.imtui.alt_held or
+            (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
         self.imtui.text_mode.writeAccelerated(r, c + 1, label, show_acc);
     }
 
-    fn deinit(self: *Menu) void {
+    pub fn deinit(self: *Menu) void {
         for (self.menu_items.items) |mit|
             if (mit) |it|
                 it.deinit();
@@ -236,7 +235,7 @@ pub const Menu = struct {
         for (self.menu_items.items, 0..) |mit, ix| {
             if (mit) |it| {
                 self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .Vertical);
-                const selected = self.imtui._focus == .menu and self.imtui._focus.menu.item == ix;
+                const selected = self.imtui.focus == .menu and self.imtui.focus.menu.item == ix;
                 const colour: u8 = if (selected)
                     0x07
                 else if (!it.enabled)
@@ -289,6 +288,7 @@ pub const Menu = struct {
 
 pub const MenuItem = struct {
     imtui: *Imtui,
+    generation: usize,
     label: []const u8,
     index: usize,
     enabled: bool,
@@ -301,6 +301,7 @@ pub const MenuItem = struct {
         var i = try imtui.allocator.create(MenuItem);
         i.* = .{
             .imtui = imtui,
+            .generation = imtui.generation,
             .label = undefined,
             .index = undefined,
             .enabled = undefined,
@@ -320,7 +321,7 @@ pub const MenuItem = struct {
         self.help_text = null;
     }
 
-    fn deinit(self: *MenuItem) void {
+    pub fn deinit(self: *MenuItem) void {
         self.imtui.allocator.destroy(self);
     }
 
@@ -361,19 +362,18 @@ pub const Editor = struct {
         var e = try imtui.allocator.create(Editor);
         e.* = .{
             .imtui = imtui,
-            .generation = undefined,
+            .generation = imtui.generation,
             .r1 = undefined,
             .c1 = undefined,
             .r2 = undefined,
             .c2 = undefined,
             ._title = undefined,
         };
-        e.describe(imtui.generation, r1, c1, r2, c2);
+        e.describe(r1, c1, r2, c2);
         return e;
     }
 
-    pub fn describe(self: *Editor, generation: usize, r1: usize, c1: usize, r2: usize, c2: usize) void {
-        self.generation = generation;
+    pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void {
         self.r1 = r1;
         self.c1 = c1;
         self.r2 = r2;

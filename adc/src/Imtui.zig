@@ -30,16 +30,40 @@ mouse_down: ?SDL.MouseButton = null,
 mouse_menu_op: bool = false,
 mouse_menu_op_closable: bool = false, // XXX
 
-_alt_held: bool = false,
-_focus: union(enum) {
+alt_held: bool = false,
+focus: union(enum) {
     unknown,
     menubar: struct { index: usize, open: bool },
     menu: ImtuiControls.MenuItemReference,
 } = .unknown,
 
-_menubar: ?*ImtuiControls.Menubar = null,
-_editors: std.AutoHashMapUnmanaged(usize, *ImtuiControls.Editor) = .{},
-_buttons: std.StringHashMapUnmanaged(*ImtuiControls.Button) = .{},
+controls: std.StringHashMapUnmanaged(Control) = .{},
+
+const Control = union(enum) {
+    button: *ImtuiControls.Button,
+    menubar: *ImtuiControls.Menubar,
+    menu: *ImtuiControls.Menu,
+    menu_item: *ImtuiControls.MenuItem,
+    editor: *ImtuiControls.Editor,
+
+    fn generation(self: Control) usize {
+        return switch (self) {
+            inline else => |c| c.generation,
+        };
+    }
+
+    fn setGeneration(self: Control, n: usize) void {
+        switch (self) {
+            inline else => |c| c.generation = n,
+        }
+    }
+
+    fn deinit(self: Control) void {
+        switch (self) {
+            inline else => |c| c.deinit(),
+        }
+    }
+};
 
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
@@ -57,18 +81,12 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f3
 }
 
 pub fn deinit(self: *Imtui) void {
-    if (self._menubar) |mb|
-        mb.deinit();
-
-    var eit = self._editors.valueIterator();
-    while (eit.next()) |e|
-        e.*.deinit();
-    self._editors.deinit(self.allocator);
-
-    var bit = self._buttons.valueIterator();
-    while (bit.next()) |b|
-        b.*.deinit();
-    self._buttons.deinit(self.allocator);
+    var cit = self.controls.iterator();
+    while (cit.next()) |c| {
+        self.allocator.free(c.key_ptr.*);
+        c.value_ptr.deinit();
+    }
+    self.controls.deinit(self.allocator);
 
     self.allocator.destroy(self);
 }
@@ -116,11 +134,23 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) void {
 }
 
 pub fn render(self: *Imtui) !void {
-    self.text_mode.cursor_inhibit = self._focus == .menu or self._focus == .menubar;
+    self.text_mode.cursor_inhibit = self.focus == .menu or self.focus == .menubar;
     try self.text_mode.present(self.delta_tick);
 }
 
 pub fn newFrame(self: *Imtui) !void {
+    var cit = self.controls.iterator();
+    while (cit.next()) |c| {
+        if (c.value_ptr.generation() != self.generation) {
+            self.allocator.free(c.key_ptr.*);
+            c.value_ptr.deinit();
+            self.controls.removeByPtr(c.key_ptr);
+
+            cit = self.controls.iterator();
+            std.debug.print("aging something out\n", .{});
+        }
+    }
+
     self.generation += 1;
 
     const this_tick = SDL.getTicks64();
@@ -141,68 +171,69 @@ pub fn newFrame(self: *Imtui) !void {
     self.text_mode.clear(0x07);
 }
 
-pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Menubar {
-    if (self._menubar) |mb| {
-        if (mb.generation == self.generation - 1) {
-            mb.describe(self.generation, r, c1, c2);
-            return mb;
-        } else {
-            mb.deinit();
-            self._menubar = null;
+fn controlById(self: *Imtui, comptime tag: std.meta.Tag(Control), id: []const u8) ?std.meta.TagPayload(Control, tag) {
+    // We remove invalidated objects here (in addition to newFrame), since
+    // a null return here will often be followed by a putNoClobber on
+    // self.controls.
+    const e = self.controls.getEntry(id) orelse return null;
+    if (e.value_ptr.generation() >= self.generation - 1) {
+        e.value_ptr.setGeneration(self.generation);
+        switch (e.value_ptr.*) {
+            tag => |p| return p,
+            else => unreachable,
         }
     }
 
+    std.debug.print("controlById invalidating\n", .{});
+    self.allocator.free(e.key_ptr.*);
+    e.value_ptr.deinit();
+    self.controls.removeByPtr(e.key_ptr);
+    return null;
+}
+
+pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Menubar {
+    if (self.controlById(.menubar, "menubar")) |mb| {
+        mb.describe(r, c1, c2);
+        return mb;
+    }
+
     const mb = try ImtuiControls.Menubar.create(self, r, c1, c2);
-    self._menubar = mb;
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, "menubar"), .{ .menubar = mb });
     return mb;
 }
 
 pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_id: usize) !*ImtuiControls.Editor {
-    const gop = try self._editors.getOrPut(self.allocator, editor_id);
-    if (gop.found_existing) {
-        if (gop.value_ptr.*.generation == self.generation - 1) {
-            gop.value_ptr.*.describe(self.generation, r1, c1, r2, c2);
-            return gop.value_ptr.*;
-        } else {
-            gop.value_ptr.*.deinit();
-        }
+    var buf: [10]u8 = undefined; // editor.XYZ
+    const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{editor_id});
+    if (self.controlById(.editor, key)) |e| {
+        e.describe(r1, c1, r2, c2);
+        return e;
     }
 
     const e = try ImtuiControls.Editor.create(self, r1, c1, r2, c2);
-    gop.value_ptr.* = e;
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .editor = e });
     return e;
 }
 
 pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*ImtuiControls.Button {
-    const gop = try self._buttons.getOrPut(self.allocator, label);
-    if (gop.found_existing) {
-        if (gop.value_ptr.*.generation == self.generation - 1) {
-            gop.value_ptr.*.describe(self.generation, r, c, colour);
-            return gop.value_ptr.*;
-        } else {
-            gop.value_ptr.*.deinit();
-        }
+    var buf: [60]u8 = undefined; // button.blahblahblahblahblah
+    const key = try std.fmt.bufPrint(&buf, "button.{s}", .{label});
+    if (self.controlById(.button, key)) |b| {
+        b.describe(r, c, colour);
+        return b;
     }
 
-    const e = try ImtuiControls.Button.create(self, r, c, colour, label);
-    gop.value_ptr.* = e;
-    return e;
+    const b = try ImtuiControls.Button.create(self, r, c, colour, label);
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .button = b });
+    return b;
 }
 
 pub fn getMenubar(self: *Imtui) ?*ImtuiControls.Menubar {
-    if (self._menubar) |mb| {
-        if (mb.generation == self.generation)
-            return mb
-        else {
-            mb.deinit();
-            self._menubar = null;
-        }
-    }
-    return null;
+    return self.controlById(.menubar, "menubar");
 }
 
 pub fn openMenu(self: *Imtui) ?*ImtuiControls.Menu {
-    switch (self._focus) {
+    switch (self.focus) {
         .menubar => |mb| if (mb.open) return self.getMenubar().?.menus.items[mb.index],
         .menu => |m| return self.getMenubar().?.menus.items[m.index],
         else => {},
@@ -213,24 +244,24 @@ pub fn openMenu(self: *Imtui) ?*ImtuiControls.Menu {
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     _ = modifiers;
 
-    if ((keycode == .left_alt or keycode == .right_alt) and !self._alt_held) {
-        self._alt_held = true;
+    if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held) {
+        self.alt_held = true;
         return;
     }
 
-    if ((self._focus == .menubar or self._focus == .menu) and self.mouse_down != null)
+    if ((self.focus == .menubar or self.focus == .menu) and self.mouse_down != null)
         return;
 
-    if (self._alt_held and keycodeAlphanum(keycode)) {
+    if (self.alt_held and keycodeAlphanum(keycode)) {
         for (self.getMenubar().?.menus.items, 0..) |m, mix|
             if (acceleratorMatch(m.label, keycode)) {
-                self._alt_held = false;
-                self._focus = .{ .menu = .{ .index = mix, .item = 0 } };
+                self.alt_held = false;
+                self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
                 return;
             };
     }
 
-    switch (self._focus) {
+    switch (self.focus) {
         .menubar => |*mb| switch (keycode) {
             .left => {
                 if (mb.index == 0)
@@ -239,15 +270,15 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                     mb.index -= 1;
             },
             .right => mb.index = (mb.index + 1) % self.getMenubar().?.menus.items.len,
-            .up, .down => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
+            .up, .down => self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             .escape => {
-                self._focus = .unknown; // XXX
+                self.focus = .unknown; // XXX
             },
-            .@"return" => self._focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
+            .@"return" => self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
             else => if (keycodeAlphanum(keycode)) {
                 for (self.getMenubar().?.menus.items, 0..) |m, mix|
                     if (acceleratorMatch(m.label, keycode)) {
-                        self._focus = .{ .menu = .{ .index = mix, .item = 0 } };
+                        self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
                         return;
                     };
             },
@@ -280,7 +311,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 break;
             },
             .escape => {
-                self._focus = .unknown; // XXX
+                self.focus = .unknown; // XXX
             },
             .@"return" => self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
             else => if (keycodeAlphanum(keycode)) {
@@ -295,15 +326,15 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
-    if ((keycode == .left_alt or keycode == .right_alt) and self._alt_held) {
-        self._alt_held = false;
+    if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held) {
+        self.alt_held = false;
 
-        if (self._focus == .menu) {
-            self._focus = .{ .menubar = .{ .index = self._focus.menu.index, .open = false } };
-        } else if (self._focus != .menubar) {
-            self._focus = .{ .menubar = .{ .index = 0, .open = false } };
+        if (self.focus == .menu) {
+            self.focus = .{ .menubar = .{ .index = self.focus.menu.index, .open = false } };
+        } else if (self.focus != .menubar) {
+            self.focus = .{ .menubar = .{ .index = 0, .open = false } };
         } else {
-            self._focus = .unknown; // XXX
+            self.focus = .unknown; // XXX
         }
     }
 }
@@ -344,20 +375,35 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
         return self.handleMenuMouseDown();
     }
 
-    if (b == .left and (self._focus == .menubar or self._focus == .menu)) {
-        self._focus = .unknown; // XXX
+    if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
+        self.focus = .unknown; // XXX
         return;
     }
 
     if (b == .left) {
-        var bit = self._buttons.valueIterator();
-        while (bit.next()) |bu|
-            if (bu.*.generation == self.generation) {
-                if (bu.*.mouseIsOver(self)) {
-                    bu.*._chosen = true;
-                    return;
-                }
-            } else std.debug.print("button failed gen check\n", .{});
+        // I don't think it's not critical to check for generational liveness in
+        // every possible access. If it has indeed aged out, then a false match
+        // here writes state that will never be read by the client, and the
+        // object will be collected at the start of the next frame.
+        var cit = self.controls.valueIterator();
+        while (cit.next()) |c|
+            switch (c.*) {
+                .button => |bu| {
+                    if (bu.*.mouseIsOver(self)) {
+                        std.debug.print("button event target found mark\n", .{});
+                        bu.*._chosen = true;
+                        return;
+                    }
+                },
+                else => {},
+            };
+        // if (c.
+        // if (bu.*.generation == self.generation) {
+        //     if (bu.*.mouseIsOver(self)) {
+        //         bu.*._chosen = true;
+        //         return;
+        //     }
+        // } else std.debug.print("button failed gen check\n", .{});
     }
 }
 
@@ -383,13 +429,13 @@ fn handleMenuMouseDown(self: *Imtui) void {
         if (m.*.mouseIsOver(self)) {
             if (self.openMenu()) |om|
                 self.mouse_menu_op_closable = om.index == mix;
-            self._focus = .{ .menubar = .{ .index = mix, .open = true } };
+            self.focus = .{ .menubar = .{ .index = mix, .open = true } };
             return;
         };
 
     if (self.openMenu()) |m|
         if (m.mouseOverItem(self)) |i| {
-            self._focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+            self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
             return;
         };
 }
@@ -404,18 +450,18 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
                 if (self.openMenu()) |om|
                     self.mouse_menu_op_closable = self.mouse_menu_op_closable and
                         om.index == mix;
-                self._focus = .{ .menubar = .{ .index = mix, .open = true } };
+                self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                 return;
             };
-        self._focus = .unknown; // XXX
+        self.focus = .unknown; // XXX
         return;
     }
 
     if (self.openMenu()) |m| {
         if (m.mouseOverItem(self)) |i| {
             self.mouse_menu_op_closable = false;
-            self._focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-        } else self._focus = .{ .menubar = .{ .index = m.index, .open = true } };
+            self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+        } else self.focus = .{ .menubar = .{ .index = m.index, .open = true } };
         return;
     }
 }
@@ -426,16 +472,16 @@ fn handleMenuMouseUp(self: *Imtui) void {
     if (self.openMenu()) |m| {
         if (m.mouseOverItem(self)) |i| {
             i._chosen = true;
-            self._focus = .unknown; // XXX
+            self.focus = .unknown; // XXX
             return;
         }
 
         if (m.mouseIsOver(self) and !self.mouse_menu_op_closable) {
-            self._focus = .{ .menu = .{ .index = m.index, .item = 0 } };
+            self.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
             return;
         }
 
-        self._focus = .unknown; // XXX
+        self.focus = .unknown; // XXX
     }
 }
 
