@@ -42,6 +42,7 @@ controls: std.StringHashMapUnmanaged(Control) = .{},
 
 const Control = union(enum) {
     button: *ImtuiControls.Button,
+    shortcut: *ImtuiControls.Shortcut,
     menubar: *ImtuiControls.Menubar,
     menu: *ImtuiControls.Menu,
     menu_item: *ImtuiControls.MenuItem,
@@ -65,6 +66,8 @@ const Control = union(enum) {
         }
     }
 };
+
+pub const ShortcutModifier = enum { shift, alt, ctrl };
 
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
@@ -232,6 +235,17 @@ pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !
     return b;
 }
 
+pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !*ImtuiControls.Shortcut {
+    var buf: [60]u8 = undefined; // shortcut.left_parenthesis.shift
+    const key = try std.fmt.bufPrint(&buf, "shortcut.{s}.{?s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" });
+    if (self.controlById(.shortcut, key)) |s|
+        return s;
+
+    const s = try ImtuiControls.Shortcut.create(self, keycode, modifier);
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .shortcut = s });
+    return s;
+}
+
 pub fn getMenubar(self: *Imtui) ?*ImtuiControls.Menubar {
     return self.controlById(.menubar, "menubar");
 }
@@ -347,12 +361,9 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         switch (c.*) {
-            .button => |bu| {
-                if (bu._shortcut) |shortcut|
-                    if (shortcut.matches(keycode, modifiers)) {
-                        bu.*._chosen = true;
-                        return;
-                    };
+            .shortcut => |s| if (s.matches(keycode, modifiers)) {
+                s.*._chosen = true;
+                return;
             },
             else => {},
         };
@@ -422,6 +433,11 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
         while (cit.next()) |c|
             switch (c.*) {
                 .button => |bu| {
+                    // TODO:
+                    // Mouse down on button: button inverts.
+                    // Mouse then up: button is chosen.
+                    // Mouse dragged off: uninverts, can drag back over to re-invert,
+                    //                    can't drag to other button like menus.
                     if (bu.*.mouseIsOver(self)) {
                         bu.*._chosen = true;
                         return;

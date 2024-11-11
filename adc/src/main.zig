@@ -125,8 +125,6 @@ pub fn main() !void {
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
-    var bp = false;
-
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
             imtui.processEvent(ev);
@@ -228,24 +226,30 @@ pub fn main() !void {
                 // XXX: these are still active even when menu/bar is focussed! How?
 
                 var help_button = try imtui.button(24, 1, 0x30, "<Shift+F1=Help>");
-                help_button.shortcut(SDL.Keycode.f1, .shift);
                 if (help_button.chosen()) {
                     std.debug.print("TODO: trigger shift+f1\n", .{});
-                    bp = true;
                 }
                 var window_button = try imtui.button(24, 17, 0x30, "<F6=Window>");
-                window_button.shortcut(.f6, null);
                 if (window_button.chosen()) {
-                    std.debug.print("F6 pressed!\n", .{});
+                    std.debug.print("Window pressed!\n", .{});
                 }
 
                 _ = try imtui.button(24, 29, 0x30, "<F2=Subs>");
-                if (!bp)
-                    if ((try imtui.button(24, 39, 0x30, "<F5=Run>")).chosen()) {
-                        std.debug.print("run!\n", .{});
-                    };
+                if ((try imtui.button(24, 39, 0x30, "<F5=Run>")).chosen()) {
+                    std.debug.print("run!\n", .{});
+                }
                 _ = try imtui.button(24, 48, 0x30, "<F8=Step>");
             },
+        }
+
+        var sf1 = try imtui.shortcut(.f1, .shift);
+        if (sf1.chosen()) {
+            std.debug.print("Shift+F1 pressed!\n", .{});
+        }
+
+        var f6 = try imtui.shortcut(.f6, null);
+        if (f6.chosen()) {
+            std.debug.print("F6 pressed!\n", .{});
         }
 
         if (show_ruler) {

@@ -3,20 +3,6 @@ const SDL = @import("sdl2");
 
 const Imtui = @import("./Imtui.zig");
 
-const ShortcutModifier = enum { shift, alt, ctrl };
-
-const Shortcut = struct {
-    keycode: SDL.Keycode,
-    modifier: ?ShortcutModifier,
-
-    pub fn matches(self: Shortcut, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) bool {
-        if (keycode != self.keycode) return false;
-        return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
-            (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
-            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
-    }
-};
-
 pub const Button = struct {
     imtui: *Imtui,
     generation: usize,
@@ -25,7 +11,6 @@ pub const Button = struct {
     colour: u8,
     label: []const u8,
 
-    _shortcut: ?Shortcut,
     _chosen: bool,
 
     pub fn create(imtui: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Button {
@@ -37,7 +22,6 @@ pub const Button = struct {
             .c = undefined,
             .colour = undefined,
             .label = label,
-            ._shortcut = undefined,
             ._chosen = false,
         };
         b.describe(r, c, colour);
@@ -48,7 +32,6 @@ pub const Button = struct {
         self.r = r;
         self.c = c;
         self.colour = colour;
-        self._shortcut = null;
         self.imtui.text_mode.paint(r, c, r + 1, c + self.label.len, colour, .Blank);
         self.imtui.text_mode.write(r, c, self.label);
     }
@@ -57,15 +40,48 @@ pub const Button = struct {
         self.imtui.allocator.destroy(self);
     }
 
-    pub fn shortcut(self: *Button, keycode: SDL.Keycode, modifier: ?ShortcutModifier) void {
-        self._shortcut = .{ .keycode = keycode, .modifier = modifier };
-    }
-
     pub fn mouseIsOver(self: *const Button, imtui: *const Imtui) bool {
         return imtui.mouse_row == self.r and imtui.mouse_col >= self.c and imtui.mouse_col < self.c + self.label.len;
     }
 
     pub fn chosen(self: *Button) bool {
+        defer self._chosen = false;
+        return self._chosen;
+    }
+};
+
+pub const Shortcut = struct {
+    imtui: *Imtui,
+    generation: usize,
+    keycode: SDL.Keycode,
+    modifier: ?Imtui.ShortcutModifier,
+
+    _chosen: bool,
+
+    pub fn create(imtui: *Imtui, keycode: SDL.Keycode, modifier: ?Imtui.ShortcutModifier) !*Shortcut {
+        const s = try imtui.allocator.create(Shortcut);
+        s.* = .{
+            .imtui = imtui,
+            .generation = imtui.generation,
+            .keycode = keycode,
+            .modifier = modifier,
+            ._chosen = false,
+        };
+        return s;
+    }
+
+    pub fn deinit(self: *Shortcut) void {
+        self.imtui.allocator.destroy(self);
+    }
+
+    pub fn matches(self: Shortcut, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) bool {
+        if (keycode != self.keycode) return false;
+        return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
+            (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
+            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
+    }
+
+    pub fn chosen(self: *Shortcut) bool {
         defer self._chosen = false;
         return self._chosen;
     }
