@@ -360,9 +360,9 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 return;
             },
             else => if (keycodeAlphanum(keycode)) {
-                for (self.getMenubar().?.menus.items[m.index].menu_items.items) |*mi|
-                    if (mi.* != null and acceleratorMatch(mi.*.?.label, keycode)) {
-                        mi.*.?._chosen = true;
+                for (self.getMenubar().?.menus.items[m.index].menu_items.items) |mi|
+                    if (mi != null and acceleratorMatch(mi.?.label, keycode)) {
+                        mi.?._chosen = true;
                         return;
                     };
             },
@@ -370,10 +370,10 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         else => {},
     }
 
-    for (self.getMenubar().?.menus.items) |*m| {
-        for (m.*.menu_items.items) |*mi| {
-            if (mi.* != null) if (mi.*.?._shortcut) |s| if (s.matches(keycode, modifiers)) {
-                mi.*.?._chosen = true;
+    for (self.getMenubar().?.menus.items) |m| {
+        for (m.menu_items.items) |mi| {
+            if (mi != null) if (mi.?._shortcut) |s| if (s.matches(keycode, modifiers)) {
+                mi.?._chosen = true;
                 return;
             };
         }
@@ -487,8 +487,8 @@ fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
 fn handleMenuMouseDown(self: *Imtui) void {
     self.mouse_menu_op_closable = false;
 
-    for (self.getMenubar().?.menus.items, 0..) |*m, mix|
-        if (m.*.mouseIsOver(self)) {
+    for (self.getMenubar().?.menus.items, 0..) |m, mix|
+        if (m.mouseIsOver(self)) {
             if (self.openMenu()) |om|
                 self.mouse_menu_op_closable = om.index == mix;
             self.focus = .{ .menubar = .{ .index = mix, .open = true } };
@@ -507,8 +507,8 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
     _ = old_col;
 
     if (self.mouse_row == self.getMenubar().?.r) {
-        for (self.getMenubar().?.menus.items, 0..) |*m, mix|
-            if (m.*.mouseIsOver(self)) {
+        for (self.getMenubar().?.menus.items, 0..) |m, mix|
+            if (m.mouseIsOver(self)) {
                 if (self.openMenu()) |om|
                     self.mouse_menu_op_closable = self.mouse_menu_op_closable and
                         om.index == mix;

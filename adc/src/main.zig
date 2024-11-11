@@ -157,7 +157,7 @@ pub fn main() !void {
         _ = (try file_menu.item("&Print...")).help("Prints specified text or module");
         _ = (try file_menu.item("&DOS Shell")).help("Temporarily suspends ADC and invokes DOS shell"); // uhh
         try file_menu.separator();
-        var exit = (try file_menu.item("E&xit")).shortcut(.f4, .alt).help("Exits ADC and returns to DOS");
+        var exit = (try file_menu.item("E&xit")).help("Exits ADC and returns to DOS");
         if (exit.chosen()) {
             imtui.running = false;
         }
@@ -206,10 +206,41 @@ pub fn main() !void {
         _ = (try run_menu.item("Set &Main Module...")).help("Makes the specified module the main module");
         try run_menu.end();
 
-        try (try menubar.menu("&Debug", 27)).end();
-        try (try menubar.menu("&Calls", 10)).end();
-        try (try menubar.menu("&Options", 15)).end();
-        try (try menubar.menu("&Help", 25)).end();
+        var debug_menu = try menubar.menu("&Debug", 27);
+        _ = (try debug_menu.item("&Add Watch...")).help("Adds specified expression to the Watch window");
+        _ = (try debug_menu.item("&Instant Watch...")).shortcut(.f9, .shift).help("Displays the value of a variable or expression");
+        _ = (try debug_menu.item("&Watchpoint...")).help("Causes program to stop when specified expression is TRUE");
+        _ = (try debug_menu.item("&Delete Watch...")).disabled().help("Deletes specified entry from Watch window");
+        _ = (try debug_menu.item("De&lete All Watch")).disabled().help("Deletes all Watch window entries");
+        try debug_menu.separator();
+        _ = (try debug_menu.item("&Trace On")).help("Highlights statement currently executing");
+        _ = (try debug_menu.item("&History On")).help("Records statement execution order");
+        try debug_menu.separator();
+        _ = (try debug_menu.item("Toggle &Breakpoint")).shortcut(.f9, null).help("Sets/clears breakpoint at cursor location");
+        _ = (try debug_menu.item("&Clear All Breakpoints")).help("Removes all breakpoints");
+        _ = (try debug_menu.item("Break on &Errors")).help("Stops execution at first statement in error handler");
+        _ = (try debug_menu.item("&Set Next Statement")).disabled().help("Indicates next statement to be executed");
+        try debug_menu.end();
+
+        var calls_menu = try menubar.menu("&Calls", 10);
+        _ = (try calls_menu.item("&Untitled")).help("Displays next statement to be executed in module or procedure");
+        try calls_menu.end();
+
+        var options_menu = try menubar.menu("&Options", 15);
+        _ = (try options_menu.item("&Display...")).help("Changes display attributes");
+        _ = (try options_menu.item("Set &Paths...")).help("Sets default search paths");
+        _ = (try options_menu.item("Right &Mouse...")).help("Changes action of right mouse click");
+        // TODO: bullet point 'check boxes' to left of these items
+        _ = (try options_menu.item("&Syntax Checking")).help("Turns editor's syntax checking on or off."); // This '.' is [sic].
+        _ = (try options_menu.item("&Full Menus")).help("Toggles between Easy and Full Menu usage");
+        try options_menu.end();
+
+        var help_menu = try menubar.menu("&Help", 25);
+        _ = (try help_menu.item("&Index")).help("Displays help index");
+        _ = (try help_menu.item("&Contents")).help("Displays help table of contents");
+        _ = (try help_menu.item("&Topic: XXX")).shortcut(.f1, null).help("Displays information about the BASIC keyword the cursor is on");
+        _ = (try help_menu.item("&Help on Help")).shortcut(.f1, .shift).help("Displays help on help");
+        try help_menu.end();
 
         imtui.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
         var show_ruler = true;
@@ -223,11 +254,9 @@ pub fn main() !void {
             },
             .menubar => imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
             else => {
-                // XXX: these are still active even when menu/bar is focussed! How?
-
                 var help_button = try imtui.button(24, 1, 0x30, "<Shift+F1=Help>");
                 if (help_button.chosen()) {
-                    std.debug.print("TODO: trigger shift+f1\n", .{});
+                    // TODO do same as "&Help on Help"
                 }
                 var window_button = try imtui.button(24, 17, 0x30, "<F6=Window>");
                 if (window_button.chosen()) {
@@ -240,12 +269,14 @@ pub fn main() !void {
                     std.debug.print("run!\n", .{});
                 }
                 _ = try imtui.button(24, 48, 0x30, "<F8=Step>");
-            },
-        }
 
-        var sf1 = try imtui.shortcut(.f1, .shift);
-        if (sf1.chosen()) {
-            std.debug.print("Shift+F1 pressed!\n", .{});
+                // TODO During active execution, these change to:
+                // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
+
+                // TODO: When the Immediate window is focussed (regardless of
+                // active execution), these change to:
+                // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
+            },
         }
 
         var f6 = try imtui.shortcut(.f6, null);
