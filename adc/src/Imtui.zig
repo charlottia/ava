@@ -237,7 +237,7 @@ pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !
 
 pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !*ImtuiControls.Shortcut {
     var buf: [60]u8 = undefined; // shortcut.left_parenthesis.shift
-    const key = try std.fmt.bufPrint(&buf, "shortcut.{s}.{?s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" });
+    const key = try std.fmt.bufPrint(&buf, "shortcut.{s}.{s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" });
     if (self.controlById(.shortcut, key)) |s|
         return s;
 

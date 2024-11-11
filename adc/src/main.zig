@@ -137,7 +137,7 @@ pub fn main() !void {
 
         var imm_editor = try imtui.editor(21, 0, 24, 80, 1);
         imm_editor.title("Immediate");
-        // imm_editor.immediate();
+        imm_editor.immediate();
         imm_editor.end();
 
         var menubar = try imtui.menubar(0, 0, 80);
@@ -231,7 +231,8 @@ pub fn main() !void {
                 }
                 var window_button = try imtui.button(24, 17, 0x30, "<F6=Window>");
                 if (window_button.chosen()) {
-                    std.debug.print("Window pressed!\n", .{});
+                    // XXX
+                    imtui.focus_editor = (imtui.focus_editor + 1) % 2;
                 }
 
                 _ = try imtui.button(24, 29, 0x30, "<F2=Subs>");
@@ -249,7 +250,8 @@ pub fn main() !void {
 
         var f6 = try imtui.shortcut(.f6, null);
         if (f6.chosen()) {
-            std.debug.print("F6 pressed!\n", .{});
+            // XXX
+            imtui.focus_editor = (imtui.focus_editor + 1) % 2;
         }
 
         if (show_ruler) {
