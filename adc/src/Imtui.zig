@@ -4,7 +4,8 @@ const SDL = @import("sdl2");
 
 const TextMode = @import("./TextMode.zig").TextMode;
 const Font = @import("./Font.zig");
-const ImtuiControls = @import("./ImtuiControls.zig");
+
+pub const Controls = @import("./ImtuiControls.zig");
 
 const Imtui = @This();
 
@@ -34,19 +35,19 @@ alt_held: bool = false,
 focus: union(enum) {
     editor,
     menubar: struct { index: usize, open: bool },
-    menu: ImtuiControls.MenuItemReference,
+    menu: Controls.MenuItemReference,
 } = .editor,
 focus_editor: usize = 0,
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
 const Control = union(enum) {
-    button: *ImtuiControls.Button,
-    shortcut: *ImtuiControls.Shortcut,
-    menubar: *ImtuiControls.Menubar,
-    menu: *ImtuiControls.Menu,
-    menu_item: *ImtuiControls.MenuItem,
-    editor: *ImtuiControls.Editor,
+    button: *Controls.Button,
+    shortcut: *Controls.Shortcut,
+    menubar: *Controls.Menubar,
+    menu: *Controls.Menu,
+    menu_item: *Controls.MenuItem,
+    editor: *Controls.Editor,
 
     fn generation(self: Control) usize {
         return switch (self) {
@@ -210,18 +211,18 @@ fn controlById(self: *Imtui, comptime tag: std.meta.Tag(Control), id: []const u8
     return null;
 }
 
-pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*ImtuiControls.Menubar {
+pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*Controls.Menubar {
     if (self.controlById(.menubar, "menubar")) |mb| {
         mb.describe(r, c1, c2);
         return mb;
     }
 
-    const mb = try ImtuiControls.Menubar.create(self, r, c1, c2);
+    const mb = try Controls.Menubar.create(self, r, c1, c2);
     try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, "menubar"), .{ .menubar = mb });
     return mb;
 }
 
-pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_id: usize) !*ImtuiControls.Editor {
+pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_id: usize) !*Controls.Editor {
     var buf: [10]u8 = undefined; // editor.XYZ
     const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{editor_id});
     if (self.controlById(.editor, key)) |e| {
@@ -229,12 +230,12 @@ pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_i
         return e;
     }
 
-    const e = try ImtuiControls.Editor.create(self, editor_id, r1, c1, r2, c2);
+    const e = try Controls.Editor.create(self, editor_id, r1, c1, r2, c2);
     try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .editor = e });
     return e;
 }
 
-pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*ImtuiControls.Button {
+pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Controls.Button {
     var buf: [60]u8 = undefined; // button.blahblahblahblahblah
     const key = try std.fmt.bufPrint(&buf, "button.{s}", .{label});
     if (self.controlById(.button, key)) |b| {
@@ -242,27 +243,27 @@ pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !
         return b;
     }
 
-    const b = try ImtuiControls.Button.create(self, r, c, colour, label);
+    const b = try Controls.Button.create(self, r, c, colour, label);
     try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .button = b });
     return b;
 }
 
-pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !*ImtuiControls.Shortcut {
+pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !*Controls.Shortcut {
     var buf: [60]u8 = undefined; // shortcut.left_parenthesis.shift
     const key = try std.fmt.bufPrint(&buf, "shortcut.{s}.{s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" });
     if (self.controlById(.shortcut, key)) |s|
         return s;
 
-    const s = try ImtuiControls.Shortcut.create(self, keycode, modifier);
+    const s = try Controls.Shortcut.create(self, keycode, modifier);
     try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .shortcut = s });
     return s;
 }
 
-pub fn getMenubar(self: *Imtui) ?*ImtuiControls.Menubar {
+pub fn getMenubar(self: *Imtui) ?*Controls.Menubar {
     return self.controlById(.menubar, "menubar");
 }
 
-pub fn openMenu(self: *Imtui) ?*ImtuiControls.Menu {
+pub fn openMenu(self: *Imtui) ?*Controls.Menu {
     switch (self.focus) {
         .menubar => |mb| if (mb.open) return self.getMenubar().?.menus.items[mb.index],
         .menu => |m| return self.getMenubar().?.menus.items[m.index],
