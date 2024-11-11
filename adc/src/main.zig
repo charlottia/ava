@@ -20,72 +20,74 @@ pub fn main() !void {
     var args = try Args.parse(allocator);
     defer args.deinit();
 
-    var handle: std.posix.fd_t = undefined;
-    var reader: std.io.AnyReader = undefined;
-    var writer: std.io.AnyWriter = undefined;
+    const scale = args.scale;
 
-    switch (args.port) {
-        .serial => |path| {
-            const port = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch |err| switch (err) {
-                error.FileNotFound => std.debug.panic("file not found accessing '{s}'", .{path}),
-                error.Unexpected => std.debug.panic("unexpected error opening '{s}' -- not a serial port?", .{path}),
-                else => return err,
-            };
+    //     var handle: std.posix.fd_t = undefined;
+    //     var reader: std.io.AnyReader = undefined;
+    //     var writer: std.io.AnyWriter = undefined;
 
-            try serial.configureSerialPort(port, .{
-                .baud_rate = 1_500_000,
-            });
+    //     switch (args.port) {
+    //         .serial => |path| {
+    //             const port = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch |err| switch (err) {
+    //                 error.FileNotFound => std.debug.panic("file not found accessing '{s}'", .{path}),
+    //                 error.Unexpected => std.debug.panic("unexpected error opening '{s}' -- not a serial port?", .{path}),
+    //                 else => return err,
+    //             };
 
-            handle = port.handle;
-            reader = port.reader().any();
-            writer = port.writer().any();
-        },
-        .socket => |path| {
-            const port = std.net.connectUnixSocket(path) catch |err| switch (err) {
-                error.FileNotFound => std.debug.panic("file not found accessing '{s}'", .{path}),
-                error.ConnectionRefused => std.debug.panic("connection refused connecting to '{s}' -- cxxrtl not running?", .{path}),
-                else => return err,
-            };
+    //             try serial.configureSerialPort(port, .{
+    //                 .baud_rate = 1_500_000,
+    //             });
 
-            handle = port.handle;
-            reader = port.reader().any();
-            writer = port.writer().any();
-        },
-    }
+    //             handle = port.handle;
+    //             reader = port.reader().any();
+    //             writer = port.writer().any();
+    //         },
+    //         .socket => |path| {
+    //             const port = std.net.connectUnixSocket(path) catch |err| switch (err) {
+    //                 error.FileNotFound => std.debug.panic("file not found accessing '{s}'", .{path}),
+    //                 error.ConnectionRefused => std.debug.panic("connection refused connecting to '{s}' -- cxxrtl not running?", .{path}),
+    //                 else => return err,
+    //             };
 
-    return exe(allocator, args.filename, args.scale, handle, reader, writer);
-}
+    //             handle = port.handle;
+    //             reader = port.reader().any();
+    //             writer = port.writer().any();
+    //         },
+    //     }
 
-fn exe(
-    allocator: Allocator,
-    filename: ?[]const u8,
-    scale: f32,
-    handle: std.posix.fd_t,
-    reader: std.io.AnyReader,
-    writer: std.io.AnyWriter,
-) !void {
-    var et = try EventThread.init(allocator, reader, handle);
-    defer et.deinit();
+    //     return exe(allocator, args.filename, args.scale, handle, reader, writer);
+    // }
 
-    {
-        try proto.Request.write(.HELLO, writer);
-        const ev = et.readWait();
-        defer ev.deinit(allocator);
-        std.debug.assert(ev == .VERSION);
-        std.debug.print("connected to {s}\n", .{ev.VERSION});
-    }
+    // fn exe(
+    //     allocator: Allocator,
+    //     filename: ?[]const u8,
+    //     scale: f32,
+    //     handle: std.posix.fd_t,
+    //     reader: std.io.AnyReader,
+    //     writer: std.io.AnyWriter,
+    // ) !void {
+    //     var et = try EventThread.init(allocator, reader, handle);
+    //     defer et.deinit();
 
-    {
-        try proto.Request.write(.MACHINE_INIT, writer);
-        const ev = et.readWait();
-        defer ev.deinit(allocator);
-        std.debug.assert(ev == .OK);
-    }
+    //     {
+    //         try proto.Request.write(.HELLO, writer);
+    //         const ev = et.readWait();
+    //         defer ev.deinit(allocator);
+    //         std.debug.assert(ev == .VERSION);
+    //         std.debug.print("connected to {s}\n", .{ev.VERSION});
+    //     }
 
-    var c = try Compiler.init(allocator, null);
-    defer c.deinit();
+    //     {
+    //         try proto.Request.write(.MACHINE_INIT, writer);
+    //         const ev = et.readWait();
+    //         defer ev.deinit(allocator);
+    //         std.debug.assert(ev == .OK);
+    //     }
 
-    // ---
+    //     var c = try Compiler.init(allocator, null);
+    //     defer c.deinit();
+
+    //     // ---
 
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
@@ -116,7 +118,7 @@ fn exe(
 
     _ = try SDL.showCursor(false);
 
-    _ = filename;
+    // _ = filename;
     // var qb = try Kyuubey.init(allocator, renderer, font, filename);
     // defer qb.deinit();
 

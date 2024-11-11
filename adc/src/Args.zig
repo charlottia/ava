@@ -9,7 +9,7 @@ const Port = union(enum) {
 
 allocator: std.mem.Allocator,
 
-port: Port,
+port: ?Port,
 filename: ?[]const u8,
 scale: f32,
 
@@ -55,21 +55,22 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         }
     }
 
-    if (state != .root or port == null)
+    if (state != .root)
         usage(argv0);
 
     return .{
         .allocator = allocator,
-        .port = port.?,
+        .port = port,
         .filename = filename,
         .scale = scale,
     };
 }
 
 pub fn deinit(self: Args) void {
-    switch (self.port) {
-        .serial, .socket => |s| self.allocator.free(s),
-    }
+    if (self.port) |port|
+        switch (port) {
+            .serial, .socket => |s| self.allocator.free(s),
+        };
     if (self.filename) |f| self.allocator.free(f);
 }
 

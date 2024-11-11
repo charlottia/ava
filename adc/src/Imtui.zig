@@ -147,7 +147,6 @@ pub fn newFrame(self: *Imtui) !void {
             self.controls.removeByPtr(c.key_ptr);
 
             cit = self.controls.iterator();
-            std.debug.print("aging something out\n", .{});
         }
     }
 
