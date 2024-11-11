@@ -139,6 +139,7 @@ pub fn main() !void {
 
         var imm_editor = try imtui.editor(21, 0, 24, 80, 1);
         imm_editor.title("Immediate");
+        // imm_editor.immediate();
         imm_editor.end();
 
         var menubar = try imtui.menubar(0, 0, 80);
@@ -224,11 +225,20 @@ pub fn main() !void {
             },
             .menubar => imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
             else => {
-                if ((try imtui.button(24, 1, 0x30, "<Shift+F1=Help>")).chosen()) {
+                // XXX: these are still active even when menu/bar is focussed! How?
+
+                var help_button = try imtui.button(24, 1, 0x30, "<Shift+F1=Help>");
+                help_button.shortcut(SDL.Keycode.f1, .shift);
+                if (help_button.chosen()) {
                     std.debug.print("TODO: trigger shift+f1\n", .{});
                     bp = true;
                 }
-                _ = try imtui.button(24, 17, 0x30, "<F6=Window>");
+                var window_button = try imtui.button(24, 17, 0x30, "<F6=Window>");
+                window_button.shortcut(.f6, null);
+                if (window_button.chosen()) {
+                    std.debug.print("F6 pressed!\n", .{});
+                }
+
                 _ = try imtui.button(24, 29, 0x30, "<F2=Subs>");
                 if (!bp)
                     if ((try imtui.button(24, 39, 0x30, "<F5=Run>")).chosen()) {

@@ -32,10 +32,11 @@ mouse_menu_op_closable: bool = false, // XXX
 
 alt_held: bool = false,
 focus: union(enum) {
-    unknown,
+    editor,
     menubar: struct { index: usize, open: bool },
     menu: ImtuiControls.MenuItemReference,
-} = .unknown,
+} = .editor,
+focus_editor: usize = 0,
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
@@ -128,6 +129,10 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) void {
             try self.handleMouseUp(ev.button, ev.clicks);
             self.mouse_down = null;
         },
+        .window => |ev| {
+            if (ev.type == .close)
+                self.running = false;
+        },
         .quit => self.running = false,
         else => {},
     }
@@ -209,7 +214,7 @@ pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_i
         return e;
     }
 
-    const e = try ImtuiControls.Editor.create(self, r1, c1, r2, c2);
+    const e = try ImtuiControls.Editor.create(self, editor_id, r1, c1, r2, c2);
     try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .editor = e });
     return e;
 }
@@ -241,8 +246,6 @@ pub fn openMenu(self: *Imtui) ?*ImtuiControls.Menu {
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-    _ = modifiers;
-
     if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held) {
         self.alt_held = true;
         return;
@@ -267,13 +270,24 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                     mb.index = self.getMenubar().?.menus.items.len - 1
                 else
                     mb.index -= 1;
+                return;
             },
-            .right => mb.index = (mb.index + 1) % self.getMenubar().?.menus.items.len,
-            .up, .down => self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
+            .right => {
+                mb.index = (mb.index + 1) % self.getMenubar().?.menus.items.len;
+                return;
+            },
+            .up, .down => {
+                self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
+                return;
+            },
             .escape => {
-                self.focus = .unknown; // XXX
+                self.focus = .editor;
+                return;
             },
-            .@"return" => self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } },
+            .@"return" => {
+                self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
+                return;
+            },
             else => if (keycodeAlphanum(keycode)) {
                 for (self.getMenubar().?.menus.items, 0..) |m, mix|
                     if (acceleratorMatch(m.label, keycode)) {
@@ -289,10 +303,12 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                     m.index = self.getMenubar().?.menus.items.len - 1
                 else
                     m.index -= 1;
+                return;
             },
             .right => {
                 m.item = 0;
                 m.index = (m.index + 1) % self.getMenubar().?.menus.items.len;
+                return;
             },
             .up => while (true) {
                 if (m.item == 0)
@@ -301,27 +317,45 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                     m.item -= 1;
                 if (self.getMenubar().?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
-                break;
+                return;
             },
             .down => while (true) {
                 m.item = (m.item + 1) % self.getMenubar().?.menus.items[m.index].menu_items.items.len;
                 if (self.getMenubar().?.menus.items[m.index].menu_items.items[m.item] == null)
                     continue;
-                break;
+                return;
             },
             .escape => {
-                self.focus = .unknown; // XXX
+                self.focus = .editor;
+                return;
             },
-            .@"return" => self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?._chosen = true,
+            .@"return" => {
+                self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?._chosen = true;
+                return;
+            },
             else => if (keycodeAlphanum(keycode)) {
                 for (self.getMenubar().?.menus.items[m.index].menu_items.items) |*mi|
                     if (mi.* != null and acceleratorMatch(mi.*.?.label, keycode)) {
                         mi.*.?._chosen = true;
+                        return;
                     };
             },
         },
         else => {},
     }
+
+    var cit = self.controls.valueIterator();
+    while (cit.next()) |c|
+        switch (c.*) {
+            .button => |bu| {
+                if (bu._shortcut) |shortcut|
+                    if (shortcut.matches(keycode, modifiers)) {
+                        bu.*._chosen = true;
+                        return;
+                    };
+            },
+            else => {},
+        };
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
@@ -333,7 +367,7 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
         } else if (self.focus != .menubar) {
             self.focus = .{ .menubar = .{ .index = 0, .open = false } };
         } else {
-            self.focus = .unknown; // XXX
+            self.focus = .editor;
         }
     }
 }
@@ -375,7 +409,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
     }
 
     if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
-        self.focus = .unknown; // XXX
+        self.focus = .editor;
         return;
     }
 
@@ -389,20 +423,12 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
             switch (c.*) {
                 .button => |bu| {
                     if (bu.*.mouseIsOver(self)) {
-                        std.debug.print("button event target found mark\n", .{});
                         bu.*._chosen = true;
                         return;
                     }
                 },
                 else => {},
             };
-        // if (c.
-        // if (bu.*.generation == self.generation) {
-        //     if (bu.*.mouseIsOver(self)) {
-        //         bu.*._chosen = true;
-        //         return;
-        //     }
-        // } else std.debug.print("button failed gen check\n", .{});
     }
 }
 
@@ -452,7 +478,7 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
                 self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                 return;
             };
-        self.focus = .unknown; // XXX
+        self.focus = .editor;
         return;
     }
 
@@ -471,7 +497,7 @@ fn handleMenuMouseUp(self: *Imtui) void {
     if (self.openMenu()) |m| {
         if (m.mouseOverItem(self)) |i| {
             i._chosen = true;
-            self.focus = .unknown; // XXX
+            self.focus = .editor;
             return;
         }
 
@@ -480,7 +506,7 @@ fn handleMenuMouseUp(self: *Imtui) void {
             return;
         }
 
-        self.focus = .unknown; // XXX
+        self.focus = .editor;
     }
 }
 

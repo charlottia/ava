@@ -1,6 +1,21 @@
 const std = @import("std");
+const SDL = @import("sdl2");
 
 const Imtui = @import("./Imtui.zig");
+
+const ShortcutModifier = enum { shift, alt, ctrl };
+
+const Shortcut = struct {
+    keycode: SDL.Keycode,
+    modifier: ?ShortcutModifier,
+
+    pub fn matches(self: Shortcut, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) bool {
+        if (keycode != self.keycode) return false;
+        return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
+            (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
+            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
+    }
+};
 
 pub const Button = struct {
     imtui: *Imtui,
@@ -10,6 +25,7 @@ pub const Button = struct {
     colour: u8,
     label: []const u8,
 
+    _shortcut: ?Shortcut,
     _chosen: bool,
 
     pub fn create(imtui: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Button {
@@ -21,6 +37,7 @@ pub const Button = struct {
             .c = undefined,
             .colour = undefined,
             .label = label,
+            ._shortcut = undefined,
             ._chosen = false,
         };
         b.describe(r, c, colour);
@@ -31,12 +48,17 @@ pub const Button = struct {
         self.r = r;
         self.c = c;
         self.colour = colour;
+        self._shortcut = null;
         self.imtui.text_mode.paint(r, c, r + 1, c + self.label.len, colour, .Blank);
         self.imtui.text_mode.write(r, c, self.label);
     }
 
     pub fn deinit(self: *Button) void {
         self.imtui.allocator.destroy(self);
+    }
+
+    pub fn shortcut(self: *Button, keycode: SDL.Keycode, modifier: ?ShortcutModifier) void {
+        self._shortcut = .{ .keycode = keycode, .modifier = modifier };
     }
 
     pub fn mouseIsOver(self: *const Button, imtui: *const Imtui) bool {
@@ -352,22 +374,26 @@ pub const MenuItemReference = struct { index: usize, item: usize };
 pub const Editor = struct {
     imtui: *Imtui,
     generation: usize,
+    id: usize,
     r1: usize,
     c1: usize,
     r2: usize,
     c2: usize,
     _title: []const u8,
+    _immediate: bool,
 
-    pub fn create(imtui: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize) !*Editor {
+    pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !*Editor {
         var e = try imtui.allocator.create(Editor);
         e.* = .{
             .imtui = imtui,
             .generation = imtui.generation,
+            .id = id,
             .r1 = undefined,
             .c1 = undefined,
             .r2 = undefined,
             .c2 = undefined,
             ._title = undefined,
+            ._immediate = undefined,
         };
         e.describe(r1, c1, r2, c2);
         return e;
@@ -379,6 +405,7 @@ pub const Editor = struct {
         self.r2 = r2;
         self.c2 = c2;
         self._title = "";
+        self._immediate = false;
     }
 
     pub fn deinit(self: *Editor) void {
@@ -389,13 +416,17 @@ pub const Editor = struct {
         self._title = t;
     }
 
+    pub fn immediate(self: *Editor) void {
+        self._immediate = true;
+    }
+
     pub fn end(self: *Editor) void {
-        // XXX: r1==1 checks here are iffy.
-        const active = true; // XXX
-        const immediate = false; // XXX
+        const active = self.imtui.focus_editor == self.id;
         const fullscreened = false; // XXX
         const verticalScrollThumb = 0; // XXX
         const horizontalScrollThumb = 0; // XXX
+
+        // XXX: r1==1 checks here are iffy.
 
         self.imtui.text_mode.draw(self.r1, self.c1, 0x17, if (self.r1 == 1) .TopLeft else .VerticalRight);
         for (self.c1 + 1..self.c2 - 1) |x|
@@ -407,7 +438,7 @@ pub const Editor = struct {
         self.imtui.text_mode.write(self.r1, start, self._title);
         self.imtui.text_mode.draw(self.r1, self.c2 - 1, 0x17, if (self.r1 == 1) .TopRight else .VerticalLeft);
 
-        if (!immediate) {
+        if (!self._immediate) {
             self.imtui.text_mode.draw(self.r1, self.c2 - 5, 0x17, .VerticalLeft);
             self.imtui.text_mode.draw(self.r1, self.c2 - 4, 0x71, if (fullscreened) .ArrowVertical else .ArrowUp);
             self.imtui.text_mode.draw(self.r1, self.c2 - 3, 0x17, .VerticalRight);
@@ -419,7 +450,7 @@ pub const Editor = struct {
 
         // --8<-- editor contents go here --8<--
 
-        if (active and !immediate) {
+        if (active and !self._immediate) {
             if (self.r2 - self.r1 > 4) {
                 self.imtui.text_mode.draw(self.r1 + 1, self.c2 - 1, 0x70, .ArrowUp);
                 self.imtui.text_mode.paint(self.r1 + 2, self.c2 - 1, self.r2 - 2, self.c2, 0x70, .DotsLight);
