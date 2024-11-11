@@ -157,30 +157,30 @@ pub fn main() !void {
         _ = (try file_menu.item("&Print...")).help("Prints specified text or module");
         _ = (try file_menu.item("&DOS Shell")).help("Temporarily suspends ADC and invokes DOS shell"); // uhh
         try file_menu.separator();
-        var exit = (try file_menu.item("E&xit")).help("Exits ADC and returns to DOS");
+        var exit = (try file_menu.item("E&xit")).shortcut(.f4, .alt).help("Exits ADC and returns to DOS");
         if (exit.chosen()) {
             imtui.running = false;
         }
         try file_menu.end();
 
         var edit_menu = try menubar.menu("&Edit", 20);
-        _ = (try edit_menu.item("&Undo")).disabled().shortcut("Alt+Backspace").help("Restores current edited line to its original condition");
-        _ = (try edit_menu.item("Cu&t")).disabled().shortcut("Shift+Del").help("Deletes selected text and copies it to buffer");
-        _ = (try edit_menu.item("&Copy")).disabled().shortcut("Ctrl+Ins").help("Copies selected text to buffer");
-        _ = (try edit_menu.item("&Paste")).shortcut("Shift+Ins").help("Inserts buffer contents at current location");
-        _ = (try edit_menu.item("Cl&ear")).disabled().shortcut("Del").help("Deletes selected text without copying it to buffer");
+        _ = (try edit_menu.item("&Undo")).disabled().shortcut(.backspace, .alt).help("Restores current edited line to its original condition");
+        _ = (try edit_menu.item("Cu&t")).disabled().shortcut(.delete, .shift).help("Deletes selected text and copies it to buffer");
+        _ = (try edit_menu.item("&Copy")).disabled().shortcut(.insert, .ctrl).help("Copies selected text to buffer");
+        _ = (try edit_menu.item("&Paste")).shortcut(.insert, .shift).help("Inserts buffer contents at current location");
+        _ = (try edit_menu.item("Cl&ear")).disabled().shortcut(.delete, null).help("Deletes selected text without copying it to buffer");
         try edit_menu.separator();
         _ = (try edit_menu.item("New &SUB...")).help("Opens a window for a new subprogram");
         _ = (try edit_menu.item("New &FUNCTION...")).help("Opens a window for a new FUNCTION procedure");
         try edit_menu.end();
 
         var view_menu = try menubar.menu("&View", 21);
-        _ = (try view_menu.item("&SUBs...")).shortcut("F2").help("Displays a loaded SUB, FUNCTION, module, include file, or document");
-        _ = (try view_menu.item("N&ext SUB")).shortcut("Shift+F2").help("Displays next SUB or FUNCTION procedure in the active window");
+        _ = (try view_menu.item("&SUBs...")).shortcut(.f2, null).help("Displays a loaded SUB, FUNCTION, module, include file, or document");
+        _ = (try view_menu.item("N&ext SUB")).shortcut(.f2, .shift).help("Displays next SUB or FUNCTION procedure in the active window");
         _ = (try view_menu.item("S&plit")).help("Divides screen into two View windows");
         try view_menu.separator();
         _ = (try view_menu.item("&Next Statement")).help("Displays next statement to be executed");
-        _ = (try view_menu.item("O&utput Screen")).shortcut("F4").help("Displays output screen");
+        _ = (try view_menu.item("O&utput Screen")).shortcut(.f4, null).help("Displays output screen");
         try view_menu.separator();
         _ = (try view_menu.item("&Included File")).help("Displays include file for editing");
         _ = (try view_menu.item("Included &Lines")).help("Displays include file for viewing only (not for editing)");
@@ -188,16 +188,16 @@ pub fn main() !void {
 
         var search_menu = try menubar.menu("&Search", 24);
         _ = (try search_menu.item("&Find...")).help("Finds specified text");
-        _ = (try search_menu.item("&Selected Text")).shortcut("Ctrl+\\").help("Finds selected text");
-        _ = (try search_menu.item("&Repeat Last Find")).shortcut("F3").help("Finds next occurrence of text specified in previous search");
+        _ = (try search_menu.item("&Selected Text")).shortcut(.backslash, .ctrl).help("Finds selected text");
+        _ = (try search_menu.item("&Repeat Last Find")).shortcut(.f3, null).help("Finds next occurrence of text specified in previous search");
         _ = (try search_menu.item("&Change...")).help("Finds and changes specified text");
         _ = (try search_menu.item("&Label...")).help("Finds specified line label");
         try search_menu.end();
 
         var run_menu = try menubar.menu("&Run", 19);
-        _ = (try run_menu.item("&Start")).shortcut("Shift+F5").help("Runs current program");
+        _ = (try run_menu.item("&Start")).shortcut(.f5, .shift).help("Runs current program");
         _ = (try run_menu.item("&Restart")).help("Clears variables in preparation for restarting single stepping");
-        _ = (try run_menu.item("Co&ntinue")).shortcut("F5").help("Continues execution after a break");
+        _ = (try run_menu.item("Co&ntinue")).shortcut(.f5, null).help("Continues execution after a break");
         _ = (try run_menu.item("Modify &COMMAND$...")).help("Sets string returned by COMMAND$ function");
         try run_menu.separator();
         _ = (try run_menu.item("Make E&XE File...")).help("Creates executable file on disk");

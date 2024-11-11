@@ -69,6 +69,18 @@ const Control = union(enum) {
 
 pub const ShortcutModifier = enum { shift, alt, ctrl };
 
+pub const Shortcut = struct {
+    keycode: SDL.Keycode,
+    modifier: ?ShortcutModifier,
+
+    pub fn matches(self: Shortcut, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) bool {
+        if (keycode != self.keycode) return false;
+        return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
+            (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
+            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
+    }
+};
+
 // https://ejmastnak.com/tutorials/arch/typematic-rate/
 const TYPEMATIC_DELAY_MS = 500;
 const TYPEMATIC_REPEAT_MS = 1000 / 25;
@@ -358,10 +370,19 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         else => {},
     }
 
+    for (self.getMenubar().?.menus.items) |*m| {
+        for (m.*.menu_items.items) |*mi| {
+            if (mi.* != null) if (mi.*.?._shortcut) |s| if (s.matches(keycode, modifiers)) {
+                mi.*.?._chosen = true;
+                return;
+            };
+        }
+    }
+
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         switch (c.*) {
-            .shortcut => |s| if (s.matches(keycode, modifiers)) {
+            .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
                 s.*._chosen = true;
                 return;
             },

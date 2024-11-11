@@ -53,8 +53,7 @@ pub const Button = struct {
 pub const Shortcut = struct {
     imtui: *Imtui,
     generation: usize,
-    keycode: SDL.Keycode,
-    modifier: ?Imtui.ShortcutModifier,
+    shortcut: Imtui.Shortcut,
 
     _chosen: bool,
 
@@ -63,8 +62,7 @@ pub const Shortcut = struct {
         s.* = .{
             .imtui = imtui,
             .generation = imtui.generation,
-            .keycode = keycode,
-            .modifier = modifier,
+            .shortcut = .{ .keycode = keycode, .modifier = modifier },
             ._chosen = false,
         };
         return s;
@@ -72,13 +70,6 @@ pub const Shortcut = struct {
 
     pub fn deinit(self: *Shortcut) void {
         self.imtui.allocator.destroy(self);
-    }
-
-    pub fn matches(self: Shortcut, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) bool {
-        if (keycode != self.keycode) return false;
-        return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
-            (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
-            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
     }
 
     pub fn chosen(self: *Shortcut) bool {
@@ -284,8 +275,11 @@ pub const Menu = struct {
 
                 self.imtui.text_mode.writeAccelerated(row, self.menu_c1 + 2, it.label, it.enabled);
 
-                if (it.shortcut_key) |key|
-                    self.imtui.text_mode.write(row, self.menu_c2 - 1 - key.len, key);
+                if (it._shortcut) |shortcut| {
+                    var buf: [20]u8 = undefined;
+                    const text = formatShortcut(&buf, shortcut);
+                    self.imtui.text_mode.write(row, self.menu_c2 - 1 - text.len, text);
+                }
 
                 self.imtui.text_mode.draw(row, self.menu_c1 + self.width + 3, 0x70, .Vertical);
             } else {
@@ -324,13 +318,45 @@ pub const Menu = struct {
     }
 };
 
+fn formatShortcut(buf: []u8, shortcut: Imtui.Shortcut) []const u8 {
+    var i: usize = 0;
+    if (shortcut.modifier) |modifier| {
+        const tn = @tagName(modifier);
+        buf[i] = std.ascii.toUpper(tn[0]);
+        @memcpy(buf[i + 1 ..][0 .. tn.len - 1], tn[1..]);
+        buf[i + tn.len] = '+';
+        i += tn.len + 1;
+    }
+    switch (shortcut.keycode) {
+        .delete => {
+            @memcpy(buf[i..][0..3], "Del");
+            i += 3;
+        },
+        .insert => {
+            @memcpy(buf[i..][0..3], "Ins");
+            i += 3;
+        },
+        .backslash => {
+            buf[i] = '\\';
+            i += 1;
+        },
+        else => {
+            const tn = @tagName(shortcut.keycode);
+            buf[i] = std.ascii.toUpper(tn[0]);
+            @memcpy(buf[i + 1 ..][0 .. tn.len - 1], tn[1..]);
+            i += tn.len;
+        },
+    }
+    return buf[0..i];
+}
+
 pub const MenuItem = struct {
     imtui: *Imtui,
     generation: usize,
     label: []const u8,
     index: usize,
     enabled: bool,
-    shortcut_key: ?[]const u8,
+    _shortcut: ?Imtui.Shortcut,
     help_text: ?[]const u8,
 
     _chosen: bool,
@@ -343,7 +369,7 @@ pub const MenuItem = struct {
             .label = undefined,
             .index = undefined,
             .enabled = undefined,
-            .shortcut_key = undefined,
+            ._shortcut = undefined,
             .help_text = undefined,
             ._chosen = false,
         };
@@ -355,7 +381,7 @@ pub const MenuItem = struct {
         self.label = label;
         self.index = index;
         self.enabled = true;
-        self.shortcut_key = null;
+        self._shortcut = null;
         self.help_text = null;
     }
 
@@ -368,9 +394,8 @@ pub const MenuItem = struct {
         return self;
     }
 
-    pub fn shortcut(self: *MenuItem, key: []const u8) *MenuItem {
-        // TODO: we actually need to make this trigger!
-        self.shortcut_key = key;
+    pub fn shortcut(self: *MenuItem, keycode: SDL.Keycode, modifier: ?Imtui.ShortcutModifier) *MenuItem {
+        self._shortcut = .{ .keycode = keycode, .modifier = modifier };
         return self;
     }
 
