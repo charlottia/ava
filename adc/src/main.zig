@@ -20,6 +20,7 @@ pub fn main() !void {
     var args = try Args.parse(allocator);
     defer args.deinit();
 
+    const filename = args.filename;
     const scale = args.scale;
 
     //     var handle: std.posix.fd_t = undefined;
@@ -118,14 +119,16 @@ pub fn main() !void {
 
     _ = try SDL.showCursor(false);
 
-    // _ = filename;
     // var qb = try Kyuubey.init(allocator, renderer, font, filename);
     // defer qb.deinit();
 
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
-    var primary_source = try Imtui.Controls.Editor.Source.createUntitled(allocator);
+    var primary_source = if (filename) |f|
+        try Imtui.Controls.Editor.Source.createFromFile(allocator, f)
+    else
+        try Imtui.Controls.Editor.Source.createUntitled(allocator);
     defer primary_source.release();
 
     var immediate_source = try Imtui.Controls.Editor.Source.createImmediate(allocator);

@@ -52,6 +52,11 @@ pub fn deinit(self: *Editor) void {
 }
 
 pub fn source(self: *Editor, s: *Source) void {
+    // XXX no support for multiple calls in one frame.
+    // Want to avoid repeatedly rel/acq if we end up needing to do so, already
+    // have one field being written every frame.
+    if (self._source != null) unreachable;
+
     self._source = s;
     if (self._last_source != self._source)
         s.acquire();
@@ -118,28 +123,63 @@ pub fn end(self: *Editor) void {
     }
 }
 
-// This type is refcounted.
 pub const Source = struct {
     allocator: Allocator,
     ref_count: usize,
     title: []const u8,
 
+    lines: std.ArrayList(std.ArrayList(u8)),
+
     pub fn createUntitled(allocator: Allocator) !*Source {
         const s = try allocator.create(Source);
+        errdefer allocator.destroy(s);
         s.* = .{
             .allocator = allocator,
             .ref_count = 1,
             .title = try allocator.dupe(u8, "Untitled"),
+            .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
         };
         return s;
     }
 
     pub fn createImmediate(allocator: Allocator) !*Source {
         const s = try allocator.create(Source);
+        errdefer allocator.destroy(s);
         s.* = .{
             .allocator = allocator,
             .ref_count = 1,
             .title = try allocator.dupe(u8, "Immediate"),
+            .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
+        };
+        return s;
+    }
+
+    pub fn createFromFile(allocator: Allocator, filename: []const u8) !*Source {
+        const s = try allocator.create(Source);
+        errdefer allocator.destroy(s);
+
+        var lines = std.ArrayList(std.ArrayList(u8)).init(allocator);
+        errdefer {
+            for (lines.items) |line| line.deinit();
+            lines.deinit();
+        }
+
+        const f = try std.fs.cwd().openFile(filename, .{});
+        defer f.close();
+
+        while (try f.reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 10240)) |line|
+            try lines.append(std.ArrayList(u8).fromOwnedSlice(allocator, line));
+
+        const index = std.mem.lastIndexOfScalar(u8, filename, '/');
+
+        s.* = .{
+            .allocator = allocator,
+            .ref_count = 1,
+            .title = try std.ascii.allocUpperString(
+                allocator,
+                if (index) |ix| filename[ix + 1 ..] else filename,
+            ),
+            .lines = lines,
         };
         return s;
     }
@@ -154,6 +194,9 @@ pub const Source = struct {
 
         // deinit
         self.allocator.free(self.title);
+        for (self.lines.items) |line|
+            line.deinit();
+        self.lines.deinit();
         self.allocator.destroy(self);
     }
 };

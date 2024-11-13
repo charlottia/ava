@@ -41,29 +41,29 @@ pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, 
     };
 }
 
-pub fn deinit(self: *Editor) void {
-    self.allocator.free(self.title);
-    for (self.lines.items) |line|
-        line.deinit();
-    self.lines.deinit();
-}
+// pub fn deinit(self: *Editor) void {
+//     self.allocator.free(self.title);
+//     for (self.lines.items) |line|
+//         line.deinit();
+//     self.lines.deinit();
+// }
 
-pub fn load(self: *Editor, filename: []const u8) !void {
-    self.deinit();
-    self.lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
+// pub fn load(self: *Editor, filename: []const u8) !void {
+//     self.deinit();
+//     self.lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
 
-    const f = try std.fs.cwd().openFile(filename, .{});
-    defer f.close();
+//     const f = try std.fs.cwd().openFile(filename, .{});
+//     defer f.close();
 
-    while (try f.reader().readUntilDelimiterOrEofAlloc(self.allocator, '\n', 10240)) |line|
-        try self.lines.append(std.ArrayList(u8).fromOwnedSlice(self.allocator, line));
+//     while (try f.reader().readUntilDelimiterOrEofAlloc(self.allocator, '\n', 10240)) |line|
+//         try self.lines.append(std.ArrayList(u8).fromOwnedSlice(self.allocator, line));
 
-    const index = std.mem.lastIndexOfScalar(u8, filename, '/');
-    self.title = try std.ascii.allocUpperString(
-        self.allocator,
-        if (index) |ix| filename[ix + 1 ..] else filename,
-    );
-}
+//     const index = std.mem.lastIndexOfScalar(u8, filename, '/');
+//     self.title = try std.ascii.allocUpperString(
+//         self.allocator,
+//         if (index) |ix| filename[ix + 1 ..] else filename,
+//     );
+// }
 
 pub fn loadFrom(self: *Editor, other: *const Editor) !void {
     self.deinit();
