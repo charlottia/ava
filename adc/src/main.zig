@@ -125,6 +125,12 @@ pub fn main() !void {
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
+    var primary_source = try Imtui.Controls.Editor.Source.createUntitled(allocator);
+    defer primary_source.release();
+
+    var immediate_source = try Imtui.Controls.Editor.Source.createImmediate(allocator);
+    defer immediate_source.release();
+
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
             imtui.processEvent(ev);
@@ -132,12 +138,12 @@ pub fn main() !void {
         try imtui.newFrame();
 
         var editor = try imtui.editor(1, 0, 21, 80, 0);
-        editor.title("Untitled");
+        editor.source(primary_source);
         editor.end();
 
         var imm_editor = try imtui.editor(21, 0, 24, 80, 1);
-        imm_editor.title("Immediate");
         imm_editor.immediate();
+        imm_editor.source(immediate_source);
         imm_editor.end();
 
         var menubar = try imtui.menubar(0, 0, 80);

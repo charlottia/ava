@@ -1,3 +1,5 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
 const Imtui = @import("../Imtui.zig");
 
 const Editor = @This();
@@ -9,7 +11,8 @@ r1: usize,
 c1: usize,
 r2: usize,
 c2: usize,
-_title: []const u8,
+_last_source: ?*Source,
+_source: ?*Source,
 _immediate: bool,
 
 pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !*Editor {
@@ -22,7 +25,8 @@ pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usi
         .c1 = undefined,
         .r2 = undefined,
         .c2 = undefined,
-        ._title = undefined,
+        ._last_source = undefined,
+        ._source = null,
         ._immediate = undefined,
     };
     e.describe(r1, c1, r2, c2);
@@ -34,16 +38,23 @@ pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void 
     self.c1 = c1;
     self.r2 = r2;
     self.c2 = c2;
-    self._title = "";
+    self._last_source = self._source;
+    self._source = null;
     self._immediate = false;
 }
 
 pub fn deinit(self: *Editor) void {
+    if (self._last_source != self._source) {
+        if (self._last_source) |ls| ls.release();
+    }
+    if (self._source) |s| s.release();
     self.imtui.allocator.destroy(self);
 }
 
-pub fn title(self: *Editor, t: []const u8) void {
-    self._title = t;
+pub fn source(self: *Editor, s: *Source) void {
+    self._source = s;
+    if (self._last_source != self._source)
+        s.acquire();
 }
 
 pub fn immediate(self: *Editor) void {
@@ -51,6 +62,15 @@ pub fn immediate(self: *Editor) void {
 }
 
 pub fn end(self: *Editor) void {
+    if (self._last_source != self._source) {
+        if (self._last_source) |ls| {
+            ls.release();
+            self._last_source = null;
+        }
+    }
+
+    const src = self._source.?;
+
     const active = self.imtui.focus_editor == self.id;
     const fullscreened = false; // XXX
     const verticalScrollThumb = 0; // XXX
@@ -62,10 +82,10 @@ pub fn end(self: *Editor) void {
     for (self.c1 + 1..self.c2 - 1) |x|
         self.imtui.text_mode.draw(self.r1, x, 0x17, .Horizontal);
 
-    const start = self.c1 + (self.c2 - self._title.len) / 2;
+    const start = self.c1 + (self.c2 - src.title.len) / 2;
     const colour: u8 = if (active) 0x71 else 0x17;
-    self.imtui.text_mode.paint(self.r1, start - 1, self.r1 + 1, start + self._title.len + 1, colour, 0);
-    self.imtui.text_mode.write(self.r1, start, self._title);
+    self.imtui.text_mode.paint(self.r1, start - 1, self.r1 + 1, start + src.title.len + 1, colour, 0);
+    self.imtui.text_mode.write(self.r1, start, src.title);
     self.imtui.text_mode.draw(self.r1, self.c2 - 1, 0x17, if (self.r1 == 1) .TopRight else .VerticalLeft);
 
     if (!self._immediate) {
@@ -97,3 +117,43 @@ pub fn end(self: *Editor) void {
         }
     }
 }
+
+// This type is refcounted.
+pub const Source = struct {
+    allocator: Allocator,
+    ref_count: usize,
+    title: []const u8,
+
+    pub fn createUntitled(allocator: Allocator) !*Source {
+        const s = try allocator.create(Source);
+        s.* = .{
+            .allocator = allocator,
+            .ref_count = 1,
+            .title = try allocator.dupe(u8, "Untitled"),
+        };
+        return s;
+    }
+
+    pub fn createImmediate(allocator: Allocator) !*Source {
+        const s = try allocator.create(Source);
+        s.* = .{
+            .allocator = allocator,
+            .ref_count = 1,
+            .title = try allocator.dupe(u8, "Immediate"),
+        };
+        return s;
+    }
+
+    pub fn acquire(self: *Source) void {
+        self.ref_count += 1;
+    }
+
+    pub fn release(self: *Source) void {
+        self.ref_count -= 1;
+        if (self.ref_count > 0) return;
+
+        // deinit
+        self.allocator.free(self.title);
+        self.allocator.destroy(self);
+    }
+};
