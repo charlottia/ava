@@ -108,7 +108,7 @@ pub fn deinit(self: *Imtui) void {
     self.allocator.destroy(self);
 }
 
-pub fn processEvent(self: *Imtui, event: SDL.Event) void {
+pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
     switch (event) {
         .key_down => |key| {
             if (key.is_repeat) return;
@@ -368,7 +368,16 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                     };
             },
         },
-        else => {},
+        .editor => switch (keycode) {
+            // TODO: anything for "relaxed focus" which isn't Editor-dispatchable
+            else => {
+                // XXX: this is ridiculous and i cant take it seriously
+                var buf: [10]u8 = undefined; // editor.XYZ
+                const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{self.focus_editor});
+                const e = self.controlById(.editor, key).?;
+                try e.handleKeyPress(keycode, modifiers);
+            },
+        },
     }
 
     for (self.getMenubar().?.menus.items) |m| {

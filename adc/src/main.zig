@@ -119,9 +119,6 @@ pub fn main() !void {
 
     _ = try SDL.showCursor(false);
 
-    // var qb = try Kyuubey.init(allocator, renderer, font, filename);
-    // defer qb.deinit();
-
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
@@ -136,7 +133,7 @@ pub fn main() !void {
 
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
-            imtui.processEvent(ev);
+            try imtui.processEvent(ev);
 
         try imtui.newFrame();
 

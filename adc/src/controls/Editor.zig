@@ -1,5 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const SDL = @import("sdl2");
+
 const Imtui = @import("../Imtui.zig");
 
 const Editor = @This();
@@ -133,6 +135,157 @@ pub fn end(self: *Editor) void {
     }
 }
 
+pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    const src = self._source.?;
+
+    switch (keycode) {
+        .down => if (self.cursor_row < src.lines.items.len) {
+            self.cursor_row += 1;
+        },
+        .up => if (self.cursor_row > 0) {
+            self.cursor_row -= 1;
+        },
+        .left => if (self.cursor_col > 0) {
+            self.cursor_col -= 1;
+        },
+        .right => if (self.cursor_col < MAX_LINE) {
+            self.cursor_col += 1;
+        },
+        .home => self.cursor_col = if (self.maybeCurrentLine()) |line|
+            lineFirst(line.items)
+        else
+            0,
+        .end => self.cursor_col = if (self.maybeCurrentLine()) |line|
+            line.items.len
+        else
+            0,
+        .tab => {
+            var line = try self.currentLine();
+            while (line.items.len < MAX_LINE - 1) {
+                try line.insert(self.cursor_col, ' ');
+                self.cursor_col += 1;
+                if (self.cursor_col % 8 == 0)
+                    break;
+            }
+        },
+        .@"return" => try self.splitLine(),
+        .backspace => try self.deleteAt(.backspace),
+        .delete => try self.deleteAt(.delete),
+        else => if (isPrintableKey(keycode) and (try self.currentLine()).items.len < 254) {
+            var line = try self.currentLine();
+            if (line.items.len < self.cursor_col)
+                try line.appendNTimes(' ', self.cursor_col - line.items.len);
+            try line.insert(self.cursor_col, getCharacter(keycode, modifiers));
+            self.cursor_col += 1;
+        },
+    }
+
+    // XXX magic. this line used to be:
+    // const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
+    const adjust: usize = if (self.r2 - self.r1 - 1 <= 2) 1 else 2;
+    if (self.cursor_row < self.scroll_row) {
+        self.scroll_row = self.cursor_row;
+    } else if (self.cursor_row > self.scroll_row + self.r2 - self.r1 - 1 - adjust) {
+        self.scroll_row = self.cursor_row + adjust - (self.r2 - self.r1 - 1);
+    }
+
+    if (self.cursor_col < self.scroll_col) {
+        self.scroll_col = self.cursor_col;
+    } else if (self.cursor_col > self.scroll_col + 77) {
+        self.scroll_col = self.cursor_col - 77;
+    }
+}
+
+fn currentLine(self: *Editor) !*std.ArrayList(u8) {
+    const src = self._source.?;
+    if (self.cursor_row == src.lines.items.len)
+        try src.lines.append(std.ArrayList(u8).init(src.allocator));
+    return &src.lines.items[self.cursor_row];
+}
+
+fn maybeCurrentLine(self: *Editor) ?*std.ArrayList(u8) {
+    const src = self._source.?;
+    if (self.cursor_row == src.lines.items.len)
+        return null;
+    return &src.lines.items[self.cursor_row];
+}
+
+pub fn splitLine(self: *Editor) !void {
+    const src = self._source.?;
+
+    var current = try self.currentLine();
+    const first = lineFirst(current.items);
+    var next = std.ArrayList(u8).init(src.allocator);
+    try next.appendNTimes(' ', first);
+
+    const appending = if (self.cursor_col < current.items.len) current.items[self.cursor_col..] else "";
+    try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
+    try current.replaceRange(self.cursor_col, current.items.len - self.cursor_col, &.{});
+    try src.lines.insert(self.cursor_row + 1, next);
+
+    self.cursor_col = first;
+    self.cursor_row += 1;
+}
+
+pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
+    const src = self._source.?;
+
+    if (mode == .backspace and self.cursor_col == 0) {
+        if (self.cursor_row == 0) {
+            //  WRONG  //
+            //   WAY   //
+            // GO BACK //
+            return;
+        }
+
+        if (self.cursor_row == src.lines.items.len) {
+            self.cursor_row -= 1;
+            self.cursor_col = @intCast((try self.currentLine()).items.len);
+        } else {
+            const removed = src.lines.orderedRemove(self.cursor_row);
+            self.cursor_row -= 1;
+            self.cursor_col = @intCast((try self.currentLine()).items.len);
+            try (try self.currentLine()).appendSlice(removed.items);
+            removed.deinit();
+        }
+    } else if (mode == .backspace) {
+        // self.cursor_x > 0
+        const line = try self.currentLine();
+        const first = lineFirst(line.items);
+        if (self.cursor_col == first) {
+            var back_to: usize = 0;
+            if (self.cursor_row > 0) {
+                var y: usize = self.cursor_row - 1;
+                while (true) : (y -= 1) {
+                    const lf = lineFirst(src.lines.items[y].items);
+                    if (lf < first) {
+                        back_to = lf;
+                        break;
+                    }
+                    if (y == 0) break;
+                }
+            }
+            try line.replaceRange(0, first - back_to, &.{});
+            self.cursor_col = back_to;
+        } else {
+            if (self.cursor_col - 1 < line.items.len)
+                _ = line.orderedRemove(self.cursor_col - 1);
+            self.cursor_col -= 1;
+        }
+    } else if (self.cursor_col == (try self.currentLine()).items.len) {
+        // mode == .delete
+        if (self.cursor_row == src.lines.items.len - 1)
+            return;
+
+        const removed = src.lines.orderedRemove(self.cursor_row + 1);
+        try (try self.currentLine()).appendSlice(removed.items);
+        removed.deinit();
+    } else {
+        // mode == .delete, self.cursor_x < self.currentLine().items.len
+        _ = (try self.currentLine()).orderedRemove(self.cursor_col);
+    }
+}
+
 pub const Source = struct {
     allocator: Allocator,
     ref_count: usize,
@@ -209,4 +362,60 @@ pub const Source = struct {
         self.lines.deinit();
         self.allocator.destroy(self);
     }
+};
+
+fn lineFirst(line: []const u8) usize {
+    for (line, 0..) |c, i|
+        if (c != ' ')
+            return i;
+    return 0;
+}
+
+fn isPrintableKey(sym: SDL.Keycode) bool {
+    return @intFromEnum(sym) >= @intFromEnum(SDL.Keycode.space) and
+        @intFromEnum(sym) <= @intFromEnum(SDL.Keycode.z);
+}
+
+fn getCharacter(sym: SDL.Keycode, mod: SDL.KeyModifierSet) u8 {
+    if (@intFromEnum(sym) >= @intFromEnum(SDL.Keycode.a) and
+        @intFromEnum(sym) <= @intFromEnum(SDL.Keycode.z))
+    {
+        if (mod.get(.left_shift) or mod.get(.right_shift) or mod.get(.caps_lock)) {
+            return @as(u8, @intCast(@intFromEnum(sym))) - ('a' - 'A');
+        }
+        return @intCast(@intFromEnum(sym));
+    }
+
+    if (mod.get(.left_shift) or mod.get(.right_shift)) {
+        for (ShiftTable) |e| {
+            if (e.@"0" == sym)
+                return e.@"1";
+        }
+    }
+
+    return @intCast(@intFromEnum(sym));
+}
+
+const ShiftTable = [_]struct { SDL.Keycode, u8 }{
+    .{ .apostrophe, '"' },
+    .{ .comma, '<' },
+    .{ .minus, '_' },
+    .{ .period, '>' },
+    .{ .slash, '?' },
+    .{ .@"0", ')' },
+    .{ .@"1", '!' },
+    .{ .@"2", '@' },
+    .{ .@"3", '#' },
+    .{ .@"4", '$' },
+    .{ .@"5", '%' },
+    .{ .@"6", '^' },
+    .{ .@"7", '&' },
+    .{ .@"8", '*' },
+    .{ .@"9", '(' },
+    .{ .semicolon, ':' },
+    .{ .left_bracket, '{' },
+    .{ .backslash, '|' },
+    .{ .right_bracket, '}' },
+    .{ .grave, '~' },
+    .{ .equals, '+' },
 };
