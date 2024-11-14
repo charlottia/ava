@@ -80,8 +80,6 @@ pub fn end(self: *Editor) void {
 
     const active = self.imtui.focus_editor == self.id;
     const fullscreened = false; // XXX
-    const verticalScrollThumb = if (src.lines.items.len == 0) 0 else self.cursor_row * (self.r2 - self.r1 - 5) / src.lines.items.len;
-    const horizontalScrollThumb = self.scroll_col * (self.c2 - self.c1 - 5) / (MAX_LINE - (self.c2 - self.c1 - 3));
 
     // XXX: r1==1 checks here are iffy.
 
@@ -117,14 +115,14 @@ pub fn end(self: *Editor) void {
         if (self.r2 - self.r1 > 4) {
             self.imtui.text_mode.draw(self.r1 + 1, self.c2 - 1, 0x70, .ArrowUp);
             self.imtui.text_mode.paint(self.r1 + 2, self.c2 - 1, self.r2 - 2, self.c2, 0x70, .DotsLight);
-            self.imtui.text_mode.draw(self.r1 + 2 + verticalScrollThumb, self.c2 - 1, 0x00, .Blank);
+            self.imtui.text_mode.draw(self.r1 + 2 + self.verticalScrollThumb(), self.c2 - 1, 0x00, .Blank);
             self.imtui.text_mode.draw(self.r2 - 2, self.c2 - 1, 0x70, .ArrowDown);
         }
 
         if (self.r2 - self.r1 > 2) {
             self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 1, 0x70, .ArrowLeft);
             self.imtui.text_mode.paint(self.r2 - 1, self.c1 + 2, self.r2, self.c2 - 2, 0x70, .DotsLight);
-            self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 2 + horizontalScrollThumb, 0x00, .Blank);
+            self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 2 + self.horizontalScrollThumb(), 0x00, .Blank);
             self.imtui.text_mode.draw(self.r2 - 1, self.c2 - 2, 0x70, .ArrowRight);
         }
     }
@@ -163,6 +161,8 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
             line.items.len
         else
             0,
+        .page_up => self.pageUp(),
+        .page_down => self.pageDown(),
         .tab => {
             var line = try self.currentLine();
             while (line.items.len < MAX_LINE - 1) {
@@ -207,15 +207,47 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     const r = self.imtui.mouse_row;
     const c = self.imtui.mouse_col;
 
-    if (r == self.r1)
+    if (r == self.r1) {
+        // Fullscreen triggers on MouseUp.
+        // TODO: for this and all focus changes below, check that these won't
+        // effect processing of anything else adversely. Unclear what might not
+        // be anticipating a mid-frame focus change.
+        self.imtui.focus_editor = self.id;
         return;
+    }
 
     if (c > self.c1 and c < self.c2 - 1) {
         const hscroll = !self._immediate and r == self.r2 - 1;
         if (hscroll and self.imtui.focus_editor == self.id) {
-            std.debug.print("hscroll!\n", .{});
+            if (c == self.c1 + 1) {
+                if (self.scroll_col > 0) {
+                    self.scroll_col -= 1;
+                    self.cursor_col -= 1;
+                }
+            } else if (c > self.c1 + 1 and c < self.c2 - 2) {
+                const hst = self.horizontalScrollThumb();
+                if (c - 2 < hst)
+                    self.scroll_col = if (self.scroll_col >= 78) self.scroll_col - 78 else 0
+                else if (c - 2 > hst)
+                    self.scroll_col = if (self.scroll_col <= MAX_LINE - 77 - 78) self.scroll_col + 78 else MAX_LINE - 77
+                else
+                    self.scroll_col = (hst * (MAX_LINE - 77) + 74) / 75;
+                self.cursor_col = self.scroll_col;
+            } else if (c == self.c2 - 2) {
+                if (self.scroll_col < (MAX_LINE - 77)) {
+                    self.scroll_col += 1;
+                    self.cursor_col += 1;
+                }
+            }
+            if (self.cursor_col < self.scroll_col)
+                self.cursor_col = self.scroll_col
+            else if (self.cursor_col > self.scroll_col + 77)
+                self.cursor_col = self.scroll_col + 77;
         } else {
-            std.debug.print("wallump!\n", .{});
+            const eff_r = if (hscroll) r - 1 else r;
+            self.cursor_col = self.scroll_col + c - self.c1 - 1;
+            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len);
+            self.imtui.focus_editor = self.id;
         }
         return;
     }
@@ -224,15 +256,39 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
         if (r == self.r1 + 1) {
             std.debug.print("^\n", .{});
         } else if (r > self.r1 + 1 and r < self.r2 - 2) {
-            // const vst = self.verticalScrollThumb();
-            // if (y - self.top - 2 < vst)
-            //     self.pageUp()
-            // else if (y - self.top - 2 > vst)
-            //     self.pageDown()
-            // else {
-            //     // TODO: the thing, zhu li
-            // }
-            std.debug.print("X\n", .{});
+            // TODO: Vertical scrollbar behaviour has a knack to it I don't
+            // quite understand yet.  The horizontal scrollbar strictly relates
+            // to the actual scroll of the window (scroll_x) --- it has nothing
+            // to do with the cursor position itself (cursor_x) --- so it's
+            // easy and predictable.
+            //     The vertical scrollbar is totally different --- it shows the
+            // cursor's position in the (virtual) document.  Thus, when using the
+            // pgup/pgdn feature of it, we don't expect the thumb to go all
+            // the way to the top or bottom most of the time, since that'd only
+            // happen if cursor_y happened to land on 0 or self.lines.items.len.
+            //
+            // Let's make some observations:
+            //
+            // Scrolled to the very top, cursor on line 1. 1-18 are visible. (19
+            //     under HSB.)
+            // Clicking pgdn.
+            // Now 19-36 are visible, cursor on 19.
+            //
+            // Scrolled to very top, cursor on line 3. 1-18 visible.
+            // pgdn
+            // 19-36 visible, cursor now on line 21. (not moved.)
+            //
+            // Actual pgup/pgdn seem to do the exact same thing.
+
+            const vst = self.verticalScrollThumb();
+            if (r - self.r1 - 2 < vst)
+                self.pageUp()
+            else if (r - self.r1 - 2 > vst)
+                self.pageDown()
+            else {
+                // TODO: the thing, zhu li
+                std.debug.print("X\n", .{});
+            }
         } else if (r == self.r2 - 2) {
             std.debug.print("v\n", .{});
         }
@@ -240,6 +296,35 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     }
 
     std.debug.print("nothing; {d},{d}\n", .{ r, c });
+}
+
+pub fn handleMouseUp(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
+    _ = button;
+
+    const r = self.imtui.mouse_row;
+    const c = self.imtui.mouse_col;
+
+    if (r == self.r1) {
+        if ((!self._immediate and c == self.c2 - 4) or clicks == 2)
+            self.toggleFullscreen();
+        return;
+    }
+}
+
+fn verticalScrollThumb(self: *const Editor) usize {
+    return if (self._source.?.lines.items.len == 0)
+        0
+    else
+        self.cursor_row * (self.r2 - self.r1 - 5) / self._source.?.lines.items.len;
+}
+
+fn horizontalScrollThumb(self: *const Editor) usize {
+    return self.scroll_col * (self.c2 - self.c1 - 5) / (MAX_LINE - (self.c2 - self.c1 - 3));
+}
+
+fn toggleFullscreen(self: *Editor) void {
+    _ = self;
+    // XXX how do we impl this right now is next solve
 }
 
 fn currentLine(self: *Editor) !*std.ArrayList(u8) {
@@ -330,6 +415,18 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         // mode == .delete, self.cursor_x < self.currentLine().items.len
         _ = (try self.currentLine()).orderedRemove(self.cursor_col);
     }
+}
+
+pub fn pageUp(self: *Editor) void {
+    _ = self;
+    // self.scroll_y = if (self.scroll_y >=
+    std.debug.print("pgup\n", .{});
+}
+
+pub fn pageDown(self: *Editor) void {
+    _ = self;
+    // self.scroll_y = if (self.scroll_y >=
+    std.debug.print("pgdn\n", .{});
 }
 
 pub const Source = struct {

@@ -478,7 +478,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
                 }
             },
             .editor => |e| if (e.*.mouseIsOver()) {
-                try e.handleMouseDown(b, clicks);
+                return try e.handleMouseDown(b, clicks);
             },
 
             else => {},
@@ -493,11 +493,21 @@ fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton, old_row: usize, old_col: us
 }
 
 fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    _ = b;
-    _ = clicks;
-
     if (self.mouse_menu_op)
         return self.handleMenuMouseUp();
+
+    // XXX: this whole mouse up model surely will not hold in the face of
+    // clicking and dragging from one Editor to another (as it currently
+    // stands)! break it.
+    var cit = self.controls.valueIterator();
+    while (cit.next()) |c|
+        switch (c.*) {
+            .editor => |e| if (e.*.mouseIsOver()) {
+                return try e.handleMouseUp(b, clicks);
+            },
+
+            else => {},
+        };
 }
 
 fn handleMenuMouseDown(self: *Imtui) void {

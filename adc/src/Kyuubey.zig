@@ -55,36 +55,6 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     }
 }
 
-pub fn mouseDown(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
-    const x = self.mouse_x / self.char_width;
-    const y = self.mouse_y / self.char_height;
-
-    const active_editor = self.activeEditor();
-    if (active_editor.fullscreened != null) {
-        _ = active_editor.handleMouseDown(true, button, clicks, x, y);
-    } else for (&self.editors, 0..) |*e, i| {
-        if (!self.split_active and e.kind == .secondary)
-            continue;
-        if (e.handleMouseDown(self.editor_active == i, button, clicks, x, y)) {
-            self.editor_active = i;
-            break;
-        }
-    }
-
-    self.render();
-    try self.text_mode.present();
-}
-
-pub fn mouseUp(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
-    const x = self.mouse_x / self.char_width;
-    const y = self.mouse_y / self.char_height;
-
-    self.activeEditor().handleMouseUp(button, clicks, x, y);
-
-    self.render();
-    try self.text_mode.present();
-}
-
 pub fn mouseDrag(self: *Kyuubey, button: SDL.MouseButton, old_x_px: usize, old_y_px: usize) !void {
     const old_x = old_x_px / self.char_width;
     const old_y = old_y_px / self.char_height;
