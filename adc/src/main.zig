@@ -8,7 +8,6 @@ const Parser = @import("avabasic").Parser;
 const Compiler = @import("avabasic").Compiler;
 const Args = @import("./Args.zig");
 const EventThread = @import("./EventThread.zig");
-const Kyuubey = @import("./Kyuubey.zig");
 const Font = @import("./Font.zig");
 const Imtui = @import("./Imtui.zig");
 
@@ -122,14 +121,22 @@ pub fn main() !void {
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();
 
-    var primary_source = if (filename) |f|
+    // QB has files loaded in background, so we too should notice that not every
+    // Source need correspond with an Editor, and thus we need an owner for the
+    // library of open Sources.
+    // Initial Untitled doesn't behave any different to a regular Source in
+    // QBASIC, with the exception that it knows it lacks a name and/or backing
+    // filename to write back out to.
+    // Immediate is its whole own beast and is never confused for any other; it
+    // stays separate.
+
+    const primary_source = if (filename) |f|
         try Imtui.Controls.Editor.Source.createFromFile(allocator, f)
     else
         try Imtui.Controls.Editor.Source.createUntitled(allocator);
-    defer primary_source.release();
 
-    var immediate_source = try Imtui.Controls.Editor.Source.createImmediate(allocator);
-    defer immediate_source.release();
+    var adc = try Adc.init(imtui, primary_source);
+    defer adc.deinit();
 
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
@@ -137,16 +144,152 @@ pub fn main() !void {
 
         try imtui.newFrame();
 
-        var editor = try imtui.editor(1, 0, 21, 80, 0);
-        editor.source(primary_source);
+        try adc.render();
+
+        try imtui.render();
+
+        // std.debug.print("> ", .{});
+        // const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
+        // defer allocator.free(inp);
+
+        // if (std.ascii.eqlIgnoreCase(inp, "~heap")) {
+        //     try proto.Request.write(.DUMP_HEAP, writer);
+        //     const ev = et.readWait();
+        //     defer ev.deinit(allocator);
+        //     std.debug.assert(ev == .OK);
+        //     continue;
+        // }
+
+        // const sx = try Parser.parse(allocator, inp, null);
+        // defer Parser.free(allocator, sx);
+
+        // if (sx.len > 0) {
+        //     const code = try c.compileStmts(sx);
+        //     defer allocator.free(code);
+
+        //     try proto.Request.write(.{ .MACHINE_EXEC = code }, writer);
+        //     const ev = et.readWait();
+        //     defer ev.deinit(allocator);
+        //     std.debug.assert(ev == .OK);
+        // }
+    }
+}
+
+const Adc = struct {
+    imtui: *Imtui,
+
+    sources: std.ArrayList(*Imtui.Controls.Editor.Source),
+
+    // primary + secondary don't do their own acquire; sources holds all the
+    // lifetimes.
+    primary_source: *Imtui.Controls.Editor.Source,
+    secondary_source: *Imtui.Controls.Editor.Source,
+
+    immediate_source: *Imtui.Controls.Editor.Source,
+
+    view: union(enum) {
+        two: [2]usize,
+        three: [3]usize,
+    } = .{ .two = [2]usize{ 20, 3 } },
+    fullscreen: bool = false,
+
+    fn init(imtui: *Imtui, primary_source: *Imtui.Controls.Editor.Source) !Adc {
+        errdefer primary_source.release();
+
+        var sources = std.ArrayList(*Imtui.Controls.Editor.Source).init(imtui.allocator);
+        errdefer sources.deinit();
+        try sources.append(primary_source);
+
+        var immediate_source = try Imtui.Controls.Editor.Source.createImmediate(imtui.allocator);
+        errdefer immediate_source.release();
+
+        return .{
+            .imtui = imtui,
+            .sources = sources,
+            .primary_source = primary_source,
+            .secondary_source = primary_source,
+            .immediate_source = immediate_source,
+        };
+    }
+
+    fn deinit(self: Adc) void {
+        for (self.sources.items) |s|
+            s.release();
+        self.sources.deinit();
+        self.immediate_source.release();
+    }
+
+    fn render(self: *Adc) !void {
+        // We have 23 lines to work with in total.
+        // An editor must be at least 1 line long.
+        // Initial state is 2 editors, of heights 20 and 3.
+        // Post-split divides the first height in half, rounding onto the second;
+        // e.g. 19 and 4 splits into 9, 10 and 4.
+        // Undoing the split absorbs the second into the first.
+        // Immediate can be at most 11 lines high.
+        // Fullscreen shows only one editor on all 23 lines, including immediate.
+
+        // XXX ??? estupendo
+        const editor_height: usize = if (self.fullscreen)
+            if (self.imtui.focus_editor == 0)
+                23
+            else
+                0
+        else switch (self.view) {
+            inline .two, .three => |a| a[0],
+        };
+        const secondary_editor_height: usize = if (self.fullscreen)
+            if (self.imtui.focus_editor == 1)
+                23
+            else
+                0
+        else switch (self.view) {
+            .two => |_| 0,
+            .three => |a| a[1],
+        };
+        const imm_editor_height: usize = if (self.fullscreen)
+            if (self.imtui.focus_editor == 2)
+                23
+            else
+                0
+        else switch (self.view) {
+            .two => |a| a[1],
+            .three => |a| a[2],
+        };
+
+        const editor_top = 1;
+        const editor_bottom = editor_top + editor_height;
+
+        const secondary_editor_top = editor_bottom;
+        const secondary_editor_bottom = secondary_editor_top + secondary_editor_height;
+
+        const imm_editor_top = secondary_editor_bottom;
+        const imm_editor_bottom = imm_editor_top + imm_editor_height;
+        std.debug.assert(imm_editor_bottom == 24);
+
+        var editor = try self.imtui.editor(0, editor_top, 0, editor_bottom, 80);
+        editor.source(self.primary_source);
+        if (self.fullscreen and self.imtui.focus_editor != 0)
+            editor.hidden();
         editor.end();
 
-        var imm_editor = try imtui.editor(21, 0, 24, 80, 1);
+        var secondary_editor = try self.imtui.editor(1, secondary_editor_top, 0, secondary_editor_bottom, 80);
+        secondary_editor.source(self.secondary_source);
+        if (self.view == .two or (self.fullscreen and self.imtui.focus_editor != 1))
+            secondary_editor.hidden();
+        secondary_editor.end();
+
+        var imm_editor = try self.imtui.editor(2, imm_editor_top, 0, imm_editor_bottom, 80);
+        if (self.fullscreen and self.imtui.focus_editor != 2)
+            imm_editor.hidden();
         imm_editor.immediate();
-        imm_editor.source(immediate_source);
+        imm_editor.source(self.immediate_source);
         imm_editor.end();
 
-        var menubar = try imtui.menubar(0, 0, 80);
+        if (editor.toggledFullscreen() or secondary_editor.toggledFullscreen() or imm_editor.toggledFullscreen())
+            self.fullscreen = !self.fullscreen;
+
+        var menubar = try self.imtui.menubar(0, 0, 80);
 
         var file_menu = try menubar.menu("&File", 16);
         _ = (try file_menu.item("&New Program")).help("Removes currently loaded program from memory");
@@ -165,7 +308,7 @@ pub fn main() !void {
         try file_menu.separator();
         var exit = (try file_menu.item("E&xit")).help("Exits ADC and returns to DOS");
         if (exit.chosen()) {
-            imtui.running = false;
+            self.imtui.running = false;
         }
         try file_menu.end();
 
@@ -183,7 +326,9 @@ pub fn main() !void {
         var view_menu = try menubar.menu("&View", 21);
         _ = (try view_menu.item("&SUBs...")).shortcut(.f2, null).help("Displays a loaded SUB, FUNCTION, module, include file, or document");
         _ = (try view_menu.item("N&ext SUB")).shortcut(.f2, .shift).help("Displays next SUB or FUNCTION procedure in the active window");
-        _ = (try view_menu.item("S&plit")).help("Divides screen into two View windows");
+        var split_item = (try view_menu.item("S&plit")).help("Divides screen into two View windows");
+        if (split_item.chosen())
+            self.toggleSplit();
         try view_menu.separator();
         _ = (try view_menu.item("&Next Statement")).help("Displays next statement to be executed");
         _ = (try view_menu.item("O&utput Screen")).shortcut(.f4, null).help("Displays output screen");
@@ -248,33 +393,32 @@ pub fn main() !void {
         _ = (try help_menu.item("&Help on Help")).shortcut(.f1, .shift).help("Displays help on help");
         try help_menu.end();
 
-        imtui.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
+        self.imtui.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
         var show_ruler = true;
-        switch (imtui.focus) {
+        switch (self.imtui.focus) {
             .menu => |m| {
                 const help_text = menubar.itemAt(m).help_text.?;
-                imtui.text_mode.write(24, 1, "F1=Help");
-                imtui.text_mode.draw(24, 9, 0x30, .Vertical);
-                imtui.text_mode.write(24, 11, help_text);
+                self.imtui.text_mode.write(24, 1, "F1=Help");
+                self.imtui.text_mode.draw(24, 9, 0x30, .Vertical);
+                self.imtui.text_mode.write(24, 11, help_text);
                 show_ruler = (11 + help_text.len) <= 62;
             },
-            .menubar => imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
+            .menubar => self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
             else => {
-                var help_button = try imtui.button(24, 1, 0x30, "<Shift+F1=Help>");
+                var help_button = try self.imtui.button(24, 1, 0x30, "<Shift+F1=Help>");
                 if (help_button.chosen()) {
                     // TODO do same as "&Help on Help"
                 }
-                var window_button = try imtui.button(24, 17, 0x30, "<F6=Window>");
+                var window_button = try self.imtui.button(24, 17, 0x30, "<F6=Window>");
                 if (window_button.chosen()) {
-                    // XXX
-                    imtui.focus_editor = (imtui.focus_editor + 1) % 2;
+                    self.windowFunction();
                 }
 
-                _ = try imtui.button(24, 29, 0x30, "<F2=Subs>");
-                if ((try imtui.button(24, 39, 0x30, "<F5=Run>")).chosen()) {
+                _ = try self.imtui.button(24, 29, 0x30, "<F2=Subs>");
+                if ((try self.imtui.button(24, 39, 0x30, "<F5=Run>")).chosen()) {
                     std.debug.print("run!\n", .{});
                 }
-                _ = try imtui.button(24, 48, 0x30, "<F8=Step>");
+                _ = try self.imtui.button(24, 48, 0x30, "<F8=Step>");
 
                 // TODO During active execution, these change to:
                 // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
@@ -285,45 +429,38 @@ pub fn main() !void {
             },
         }
 
-        var f6 = try imtui.shortcut(.f6, null);
+        var f6 = try self.imtui.shortcut(.f6, null);
         if (f6.chosen()) {
-            // XXX
-            imtui.focus_editor = (imtui.focus_editor + 1) % 2;
+            self.windowFunction();
         }
 
         if (show_ruler) {
-            imtui.text_mode.draw(24, 62, 0x30, .Vertical);
+            self.imtui.text_mode.draw(24, 62, 0x30, .Vertical);
+            const e = try self.imtui.focusedEditor();
             var buf: [9]u8 = undefined;
-            // _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_row + 1, active_editor.cursor_col + 1 });
-            _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ 1, 1 });
-            imtui.text_mode.write(24, 70, &buf);
+            _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ e.cursor_row + 1, e.cursor_col + 1 });
+            self.imtui.text_mode.write(24, 70, &buf);
         }
-
-        try imtui.render();
-
-        // std.debug.print("> ", .{});
-        // const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
-        // defer allocator.free(inp);
-
-        // if (std.ascii.eqlIgnoreCase(inp, "~heap")) {
-        //     try proto.Request.write(.DUMP_HEAP, writer);
-        //     const ev = et.readWait();
-        //     defer ev.deinit(allocator);
-        //     std.debug.assert(ev == .OK);
-        //     continue;
-        // }
-
-        // const sx = try Parser.parse(allocator, inp, null);
-        // defer Parser.free(allocator, sx);
-
-        // if (sx.len > 0) {
-        //     const code = try c.compileStmts(sx);
-        //     defer allocator.free(code);
-
-        //     try proto.Request.write(.{ .MACHINE_EXEC = code }, writer);
-        //     const ev = et.readWait();
-        //     defer ev.deinit(allocator);
-        //     std.debug.assert(ev == .OK);
-        // }
     }
-}
+
+    fn windowFunction(self: *Adc) void {
+        if (self.view == .two) {
+            self.imtui.focus_editor = if (self.imtui.focus_editor == 0) 2 else 0;
+        } else {
+            self.imtui.focus_editor = (self.imtui.focus_editor + 1) % 3;
+        }
+    }
+
+    fn toggleSplit(self: *Adc) void {
+        self.fullscreen = false;
+        self.imtui.focus_editor = 0;
+
+        switch (self.view) {
+            .two => |a| {
+                self.secondary_source = self.primary_source;
+                self.view = .{ .three = [3]usize{ a[0] / 2, a[0] - (a[0] / 2), a[1] } };
+            },
+            .three => |a| self.view = .{ .two = [2]usize{ a[0] + a[1], a[2] } },
+        }
+    }
+};

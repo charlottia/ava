@@ -26,35 +26,6 @@ editors: [3]Editor,
 editor_active: usize,
 split_active: bool,
 
-pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void {
-    _ = mod;
-
-    if (sym == .f6) {
-        const prev = self.activeEditor();
-        var next_index = (self.editor_active + 1) % self.editors.len;
-        if (self.editors[next_index].kind == .secondary and !self.split_active)
-            next_index += 1;
-        const next = &self.editors[next_index];
-        self.editor_active = next_index;
-
-        if (prev.fullscreened != null) {
-            prev.toggleFullscreen();
-            next.toggleFullscreen();
-        }
-        self.render();
-        try self.text_mode.present();
-        return;
-    }
-
-    if (sym == .f7) {
-        // XXX: this doesn't belong on F7, I just don't have menus yet.
-        try self.toggleSplit();
-        self.render();
-        try self.text_mode.present();
-        return;
-    }
-}
-
 pub fn mouseDrag(self: *Kyuubey, button: SDL.MouseButton, old_x_px: usize, old_y_px: usize) !void {
     const old_x = old_x_px / self.char_width;
     const old_y = old_y_px / self.char_height;
@@ -75,32 +46,4 @@ pub fn mouseDrag(self: *Kyuubey, button: SDL.MouseButton, old_x_px: usize, old_y
     }
 
     _ = button;
-}
-
-fn toggleSplit(self: *Kyuubey) !void {
-    // TODO: does QB do anything fancy with differently-sized immediates? For now
-    // we just reset to the default view.
-    //
-    // Immediate window max height is 10.
-    // Means there's always room to split with 5+5. Uneven split favours bottom.
-
-    // QB split always leaves the view in non-fullscreen, with primary editor selected.
-
-    for (&self.editors) |*e|
-        if (e.fullscreened != null)
-            e.toggleFullscreen();
-
-    self.editor_active = 0;
-
-    if (!self.split_active) {
-        std.debug.assert(self.editors[0].height >= 11);
-        try self.editors[1].loadFrom(&self.editors[0]);
-        self.editors[0].height = 9;
-        self.editors[1].height = 9;
-        self.editors[1].top = 11;
-        self.split_active = true;
-    } else {
-        self.editors[0].height += self.editors[1].height + 1;
-        self.split_active = false;
-    }
 }

@@ -222,7 +222,7 @@ pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*Controls.Menubar 
     return mb;
 }
 
-pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_id: usize) !*Controls.Editor {
+pub fn editor(self: *Imtui, editor_id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !*Controls.Editor {
     var buf: [10]u8 = undefined; // editor.XYZ
     const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{editor_id});
     if (self.controlById(.editor, key)) |e| {
@@ -235,7 +235,7 @@ pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_i
     return e;
 }
 
-fn focusedEditor(self: *Imtui) !*Controls.Editor {
+pub fn focusedEditor(self: *Imtui) !*Controls.Editor {
     // XXX: this is ridiculous and i cant take it seriously
     var buf: [10]u8 = undefined; // editor.XYZ
     const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{self.focus_editor});
@@ -365,12 +365,14 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
             },
             .@"return" => {
                 self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?._chosen = true;
+                self.focus = .editor;
                 return;
             },
             else => if (keycodeAlphanum(keycode)) {
                 for (self.getMenubar().?.menus.items[m.index].menu_items.items) |mi|
                     if (mi != null and acceleratorMatch(mi.?.label, keycode)) {
                         mi.?._chosen = true;
+                        self.focus = .editor;
                         return;
                     };
             },

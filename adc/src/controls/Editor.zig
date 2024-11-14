@@ -15,12 +15,14 @@ r2: usize = undefined,
 c2: usize = undefined,
 _last_source: ?*Source = undefined,
 _source: ?*Source = null,
+_hidden: bool = undefined,
 _immediate: bool = undefined,
 
 cursor_row: usize = 0,
 cursor_col: usize = 0,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
+toggled_fullscreen: bool = false,
 
 pub const MAX_LINE = 255;
 
@@ -42,6 +44,7 @@ pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void 
     self.c2 = c2;
     self._last_source = self._source;
     self._source = null;
+    self._hidden = false;
     self._immediate = false;
 }
 
@@ -64,17 +67,23 @@ pub fn source(self: *Editor, s: *Source) void {
         s.acquire();
 }
 
+pub fn hidden(self: *Editor) void {
+    self._hidden = true;
+}
+
 pub fn immediate(self: *Editor) void {
     self._immediate = true;
 }
 
 pub fn end(self: *Editor) void {
-    if (self._last_source != self._source) {
+    if (self._last_source != self._source)
         if (self._last_source) |ls| {
             ls.release();
             self._last_source = null;
-        }
-    }
+        };
+
+    if (self._hidden)
+        return;
 
     const src = self._source.?;
 
@@ -294,8 +303,6 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
         }
         return;
     }
-
-    std.debug.print("nothing; {d},{d}\n", .{ r, c });
 }
 
 pub fn handleMouseUp(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
@@ -306,7 +313,7 @@ pub fn handleMouseUp(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
 
     if (r == self.r1) {
         if ((!self._immediate and c == self.c2 - 4) or clicks == 2)
-            self.toggleFullscreen();
+            self.toggled_fullscreen = true;
         return;
     }
 }
@@ -322,9 +329,9 @@ fn horizontalScrollThumb(self: *const Editor) usize {
     return self.scroll_col * (self.c2 - self.c1 - 5) / (MAX_LINE - (self.c2 - self.c1 - 3));
 }
 
-fn toggleFullscreen(self: *Editor) void {
-    _ = self;
-    // XXX how do we impl this right now is next solve
+pub fn toggledFullscreen(self: *Editor) bool {
+    defer self.toggled_fullscreen = false;
+    return self.toggled_fullscreen;
 }
 
 fn currentLine(self: *Editor) !*std.ArrayList(u8) {
