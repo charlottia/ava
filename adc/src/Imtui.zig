@@ -473,23 +473,14 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         switch (c.*) {
-            .button => |bu| {
-                // These don't discriminate on mouse button.
-                // TODO:
-                // Mouse down on button: button inverts.
-                // Mouse then up: button is chosen.
-                // Mouse dragged off: uninverts, can drag back over to re-invert,
-                //                    can't drag to other button like menus.
-                if (bu.*.mouseIsOver()) {
-                    bu.*._chosen = true;
-                    return;
-                }
+            .button => |bu| if (bu.*.mouseIsOver()) {
+                self.mouse_event_target = .{ .button = bu };
+                return try bu.handleMouseDown(b, clicks);
             },
             .editor => |e| if (e.*.mouseIsOver()) {
                 self.mouse_event_target = .{ .editor = e };
                 return try e.handleMouseDown(b, clicks);
             },
-
             else => {},
         };
 }
@@ -505,8 +496,10 @@ fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton, old_row: usize, old_col: us
 }
 
 fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    if (self.mouse_event_target) |target|
+    if (self.mouse_event_target) |target| {
         try target.handleMouseUp(b, clicks);
+        self.mouse_event_target = null;
+    }
 }
 
 fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {
