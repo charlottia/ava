@@ -135,6 +135,10 @@ pub fn end(self: *Editor) void {
     }
 }
 
+pub fn mouseIsOver(self: *const Editor) bool {
+    return self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+}
+
 pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     const src = self._source.?;
 
@@ -194,6 +198,48 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
     } else if (self.cursor_col > self.scroll_col + 77) {
         self.scroll_col = self.cursor_col - 77;
     }
+}
+
+pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
+    _ = button;
+    _ = clicks;
+
+    const r = self.imtui.mouse_row;
+    const c = self.imtui.mouse_col;
+
+    if (r == self.r1)
+        return;
+
+    if (c > self.c1 and c < self.c2 - 1) {
+        const hscroll = !self._immediate and r == self.r2 - 1;
+        if (hscroll and self.imtui.focus_editor == self.id) {
+            std.debug.print("hscroll!\n", .{});
+        } else {
+            std.debug.print("wallump!\n", .{});
+        }
+        return;
+    }
+
+    if (self.imtui.focus_editor == self.id and !self._immediate and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
+        if (r == self.r1 + 1) {
+            std.debug.print("^\n", .{});
+        } else if (r > self.r1 + 1 and r < self.r2 - 2) {
+            // const vst = self.verticalScrollThumb();
+            // if (y - self.top - 2 < vst)
+            //     self.pageUp()
+            // else if (y - self.top - 2 > vst)
+            //     self.pageDown()
+            // else {
+            //     // TODO: the thing, zhu li
+            // }
+            std.debug.print("X\n", .{});
+        } else if (r == self.r2 - 2) {
+            std.debug.print("v\n", .{});
+        }
+        return;
+    }
+
+    std.debug.print("nothing; {d},{d}\n", .{ r, c });
 }
 
 fn currentLine(self: *Editor) !*std.ArrayList(u8) {

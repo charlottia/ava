@@ -34,8 +34,8 @@ pub fn deinit(self: *Button) void {
     self.imtui.allocator.destroy(self);
 }
 
-pub fn mouseIsOver(self: *const Button, imtui: *const Imtui) bool {
-    return imtui.mouse_row == self.r and imtui.mouse_col >= self.c and imtui.mouse_col < self.c + self.label.len;
+pub fn mouseIsOver(self: *const Button) bool {
+    return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len;
 }
 
 pub fn chosen(self: *Button) bool {

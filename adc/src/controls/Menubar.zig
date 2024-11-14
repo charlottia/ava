@@ -63,6 +63,6 @@ pub fn itemAt(self: *const Menubar, ref: Imtui.Controls.MenuItemReference) *cons
     return self.menus.items[ref.index].menu_items.items[ref.item].?;
 }
 
-pub fn mouseIsOver(self: *const Menubar, imtui: *const Imtui) bool {
-    return imtui.mouse_row == self.r and imtui.mouse_col >= self.c1 and imtui.mouse_col < self.c2;
+pub fn mouseIsOver(self: *const Menubar) bool {
+    return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
 }

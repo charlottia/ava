@@ -146,18 +146,18 @@ pub fn end(self: *Menu) !void {
         self.imtui.text_mode.shadow(row, j);
 }
 
-pub fn mouseIsOver(self: *const Menu, imtui: *const Imtui) bool {
-    return imtui.mouse_row == self.r and imtui.mouse_col >= self.c1 and imtui.mouse_col < self.c2;
+pub fn mouseIsOver(self: *const Menu) bool {
+    return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
 }
 
-pub fn mouseIsOverItem(self: *Menu, imtui: *const Imtui) bool {
-    return imtui.mouse_row >= self.r + 2 and
-        imtui.mouse_row <= self.r + 2 + self.menu_items.items.len - 1 and
-        imtui.mouse_col >= self.menu_c1 and
-        imtui.mouse_col <= self.menu_c2;
+pub fn mouseIsOverItem(self: *Menu) bool {
+    return self.imtui.mouse_row >= self.r + 2 and
+        self.imtui.mouse_row <= self.r + 2 + self.menu_items.items.len - 1 and
+        self.imtui.mouse_col >= self.menu_c1 and
+        self.imtui.mouse_col <= self.menu_c2;
 }
 
-pub fn mouseOverItem(self: *Menu, imtui: *const Imtui) ?*Imtui.Controls.MenuItem {
-    if (!self.mouseIsOverItem(imtui)) return null;
-    return self.menu_items.items[imtui.mouse_row - self.r - 2];
+pub fn mouseOverItem(self: *Menu) ?*Imtui.Controls.MenuItem {
+    if (!self.mouseIsOverItem()) return null;
+    return self.menu_items.items[self.imtui.mouse_row - self.r - 2];
 }

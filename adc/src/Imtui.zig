@@ -235,6 +235,13 @@ pub fn editor(self: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, editor_i
     return e;
 }
 
+fn focusedEditor(self: *Imtui) !*Controls.Editor {
+    // XXX: this is ridiculous and i cant take it seriously
+    var buf: [10]u8 = undefined; // editor.XYZ
+    const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{self.focus_editor});
+    return self.controlById(.editor, key).?;
+}
+
 pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Controls.Button {
     var buf: [60]u8 = undefined; // button.blahblahblahblahblah
     const key = try std.fmt.bufPrint(&buf, "button.{s}", .{label});
@@ -371,10 +378,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         .editor => switch (keycode) {
             // TODO: anything for "relaxed focus" which isn't Editor-dispatchable
             else => {
-                // XXX: this is ridiculous and i cant take it seriously
-                var buf: [10]u8 = undefined; // editor.XYZ
-                const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{self.focus_editor});
-                const e = self.controlById(.editor, key).?;
+                const e = try self.focusedEditor();
                 try e.handleKeyPress(keycode, modifiers);
             },
         },
@@ -428,8 +432,6 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: us
 }
 
 fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    _ = clicks;
-
     // "mouse_menu_op" is a bit of hack. We might be able to generalise it by
     // saying that whatever control a mouse operation starts in then receives
     // further events until it ends (i.e. from down to up).
@@ -443,8 +445,8 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
     //    from an item? tbblobnoern
     self.mouse_menu_op = false;
 
-    if (b == .left and (self.getMenubar().?.mouseIsOver(self) or
-        (self.openMenu() != null and self.openMenu().?.mouseIsOverItem(self))))
+    if (b == .left and (self.getMenubar().?.mouseIsOver() or
+        (self.openMenu() != null and self.openMenu().?.mouseIsOverItem())))
     {
         self.mouse_menu_op = true;
         return self.handleMenuMouseDown();
@@ -452,31 +454,35 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
 
     if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
         self.focus = .editor;
-        return;
+        // fall through
     }
 
-    if (b == .left) {
-        // I don't think it's not critical to check for generational liveness in
-        // every possible access. If it has indeed aged out, then a false match
-        // here writes state that will never be read by the client, and the
-        // object will be collected at the start of the next frame.
-        var cit = self.controls.valueIterator();
-        while (cit.next()) |c|
-            switch (c.*) {
-                .button => |bu| {
-                    // TODO:
-                    // Mouse down on button: button inverts.
-                    // Mouse then up: button is chosen.
-                    // Mouse dragged off: uninverts, can drag back over to re-invert,
-                    //                    can't drag to other button like menus.
-                    if (bu.*.mouseIsOver(self)) {
-                        bu.*._chosen = true;
-                        return;
-                    }
-                },
-                else => {},
-            };
-    }
+    // I don't think it's critical to check for generational liveness in every
+    // possible access. If something has indeed aged out, then a false match
+    // here writes state that will never be read by user code, and the object
+    // will be collected at the start of the next frame.
+    // XXX: does the above still apply in view of Editors?
+    var cit = self.controls.valueIterator();
+    while (cit.next()) |c|
+        switch (c.*) {
+            .button => |bu| {
+                // These don't discriminate on mouse button.
+                // TODO:
+                // Mouse down on button: button inverts.
+                // Mouse then up: button is chosen.
+                // Mouse dragged off: uninverts, can drag back over to re-invert,
+                //                    can't drag to other button like menus.
+                if (bu.*.mouseIsOver()) {
+                    bu.*._chosen = true;
+                    return;
+                }
+            },
+            .editor => |e| if (e.*.mouseIsOver()) {
+                try e.handleMouseDown(b, clicks);
+            },
+
+            else => {},
+        };
 }
 
 fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
@@ -498,7 +504,7 @@ fn handleMenuMouseDown(self: *Imtui) void {
     self.mouse_menu_op_closable = false;
 
     for (self.getMenubar().?.menus.items, 0..) |m, mix|
-        if (m.mouseIsOver(self)) {
+        if (m.mouseIsOver()) {
             if (self.openMenu()) |om|
                 self.mouse_menu_op_closable = om.index == mix;
             self.focus = .{ .menubar = .{ .index = mix, .open = true } };
@@ -506,7 +512,7 @@ fn handleMenuMouseDown(self: *Imtui) void {
         };
 
     if (self.openMenu()) |m|
-        if (m.mouseOverItem(self)) |i| {
+        if (m.mouseOverItem()) |i| {
             self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
             return;
         };
@@ -518,7 +524,7 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
 
     if (self.mouse_row == self.getMenubar().?.r) {
         for (self.getMenubar().?.menus.items, 0..) |m, mix|
-            if (m.mouseIsOver(self)) {
+            if (m.mouseIsOver()) {
                 if (self.openMenu()) |om|
                     self.mouse_menu_op_closable = self.mouse_menu_op_closable and
                         om.index == mix;
@@ -530,7 +536,7 @@ fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
     }
 
     if (self.openMenu()) |m| {
-        if (m.mouseOverItem(self)) |i| {
+        if (m.mouseOverItem()) |i| {
             self.mouse_menu_op_closable = false;
             self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
         } else self.focus = .{ .menubar = .{ .index = m.index, .open = true } };
@@ -542,13 +548,13 @@ fn handleMenuMouseUp(self: *Imtui) void {
     self.mouse_menu_op = false;
 
     if (self.openMenu()) |m| {
-        if (m.mouseOverItem(self)) |i| {
+        if (m.mouseOverItem()) |i| {
             i._chosen = true;
             self.focus = .editor;
             return;
         }
 
-        if (m.mouseIsOver(self) and !self.mouse_menu_op_closable) {
+        if (m.mouseIsOver() and !self.mouse_menu_op_closable) {
             self.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
             return;
         }
