@@ -1,4 +1,5 @@
 const std = @import("std");
+const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
 
@@ -13,6 +14,8 @@ c2: usize = undefined,
 offset: usize = undefined,
 menus: std.ArrayListUnmanaged(*Imtui.Controls.Menu) = .{},
 menus_at: usize = undefined,
+
+op_closable: bool = false,
 
 pub fn create(imtui: *Imtui, r: usize, c1: usize, c2: usize) !*Menubar {
     var mb = try imtui.allocator.create(Menubar);
@@ -65,4 +68,71 @@ pub fn itemAt(self: *const Menubar, ref: Imtui.Controls.MenuItemReference) *cons
 
 pub fn mouseIsOver(self: *const Menubar) bool {
     return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+}
+
+pub fn handleMouseDown(self: *Menubar, b: SDL.MouseButton, clicks: u8) !void {
+    _ = b;
+    _ = clicks;
+
+    self.op_closable = false;
+
+    for (self.menus.items, 0..) |m, mix|
+        if (m.mouseIsOver()) {
+            if (self.imtui.openMenu()) |om|
+                self.op_closable = om.index == mix;
+            self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
+            return;
+        };
+
+    if (self.imtui.openMenu()) |m|
+        if (m.mouseOverItem()) |i| {
+            self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+            return;
+        };
+}
+
+pub fn handleMouseDrag(self: *Menubar, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+    _ = b;
+    _ = old_row;
+    _ = old_col;
+
+    if (self.imtui.mouse_row == self.r) {
+        for (self.menus.items, 0..) |m, mix|
+            if (m.mouseIsOver()) {
+                if (self.imtui.openMenu()) |om|
+                    self.op_closable = self.op_closable and om.index == mix;
+                self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
+                return;
+            };
+        self.imtui.focus = .editor;
+        return;
+    }
+
+    if (self.imtui.openMenu()) |m| {
+        if (m.mouseOverItem()) |i| {
+            self.op_closable = false;
+            self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+        } else self.imtui.focus = .{ .menubar = .{ .index = m.index, .open = true } };
+        return;
+    }
+}
+
+pub fn handleMouseUp(self: *Menubar, b: SDL.MouseButton, clicks: u8) !void {
+    _ = b;
+    _ = clicks;
+
+    if (self.imtui.openMenu()) |m| {
+        if (m.mouseOverItem()) |i| {
+            i._chosen = true;
+            self.imtui.focus = .editor;
+            return;
+        }
+
+        if (m.mouseIsOver() and !self.op_closable) {
+            self.imtui.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
+            return;
+        }
+
+        self.imtui.focus = .editor;
+    }
 }

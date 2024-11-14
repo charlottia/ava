@@ -28,7 +28,7 @@ mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
 
-mouse_menu_op: bool = false,
+mouse_event_target: ?Control = null,
 mouse_menu_op_closable: bool = false, // XXX
 
 alt_held: bool = false,
@@ -64,6 +64,22 @@ const Control = union(enum) {
     fn deinit(self: Control) void {
         switch (self) {
             inline else => |c| c.deinit(),
+        }
+    }
+
+    fn handleMouseDrag(self: Control, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDrag")) {
+                try c.handleMouseDrag(b, old_row, old_col);
+            },
+        }
+    }
+
+    fn handleMouseUp(self: Control, b: SDL.MouseButton, clicks: u8) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseUp")) {
+                try c.handleMouseUp(b, clicks);
+            },
         }
     }
 };
@@ -386,14 +402,13 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         },
     }
 
-    for (self.getMenubar().?.menus.items) |m| {
+    for (self.getMenubar().?.menus.items) |m|
         for (m.menu_items.items) |mi| {
             if (mi != null) if (mi.?._shortcut) |s| if (s.matches(keycode, modifiers)) {
                 mi.?._chosen = true;
                 return;
             };
-        }
-    }
+        };
 
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
@@ -434,24 +449,15 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: us
 }
 
 fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    // "mouse_menu_op" is a bit of hack. We might be able to generalise it by
-    // saying that whatever control a mouse operation starts in then receives
-    // further events until it ends (i.e. from down to up).
-    //
-    // ^- This is obviously the way it should be?? This suggests a slightly more
-    //    generic object model (the one we're currently pretending to have);
-    //    controls directly receiving the mouse events. Is the Menubar a whole
-    //    receiver, or do individual items receive events? If the latter, how do
-    //    we deal with e.g. mouse drag from menubar (on no particular item) over
-    //    an item toggling that menu, in the same way it happens when starting
-    //    from an item? tbblobnoern
-    self.mouse_menu_op = false;
+    self.mouse_event_target = null;
 
     if (b == .left and (self.getMenubar().?.mouseIsOver() or
         (self.openMenu() != null and self.openMenu().?.mouseIsOverItem())))
     {
-        self.mouse_menu_op = true;
-        return self.handleMenuMouseDown();
+        // meu Deus.
+        self.mouse_event_target = .{ .menubar = self.getMenubar().? };
+        try self.getMenubar().?.handleMouseDown(b, clicks);
+        return;
     }
 
     if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
@@ -480,6 +486,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
                 }
             },
             .editor => |e| if (e.*.mouseIsOver()) {
+                self.mouse_event_target = .{ .editor = e };
                 return try e.handleMouseDown(b, clicks);
             },
 
@@ -488,91 +495,18 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
 }
 
 fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
-    _ = b;
+    // N.B.! Right now it's only happenstance that self.mouse_event_target's
+    // value is never freed underneath it, since the "user" code so far never
+    // doesn't construct a menubar or one of its editors from frame to frame.
+    // If we added a target that could, we'd probably get a use-after-free.
 
-    if (self.mouse_menu_op)
-        return self.handleMenuMouseDrag(old_row, old_col);
+    if (self.mouse_event_target) |target|
+        try target.handleMouseDrag(b, old_row, old_col);
 }
 
 fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    if (self.mouse_menu_op)
-        return self.handleMenuMouseUp();
-
-    // XXX: this whole mouse up model surely will not hold in the face of
-    // clicking and dragging from one Editor to another (as it currently
-    // stands)! break it.
-    var cit = self.controls.valueIterator();
-    while (cit.next()) |c|
-        switch (c.*) {
-            .editor => |e| if (e.*.mouseIsOver()) {
-                return try e.handleMouseUp(b, clicks);
-            },
-
-            else => {},
-        };
-}
-
-fn handleMenuMouseDown(self: *Imtui) void {
-    self.mouse_menu_op_closable = false;
-
-    for (self.getMenubar().?.menus.items, 0..) |m, mix|
-        if (m.mouseIsOver()) {
-            if (self.openMenu()) |om|
-                self.mouse_menu_op_closable = om.index == mix;
-            self.focus = .{ .menubar = .{ .index = mix, .open = true } };
-            return;
-        };
-
-    if (self.openMenu()) |m|
-        if (m.mouseOverItem()) |i| {
-            self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-            return;
-        };
-}
-
-fn handleMenuMouseDrag(self: *Imtui, old_row: usize, old_col: usize) !void {
-    _ = old_row;
-    _ = old_col;
-
-    if (self.mouse_row == self.getMenubar().?.r) {
-        for (self.getMenubar().?.menus.items, 0..) |m, mix|
-            if (m.mouseIsOver()) {
-                if (self.openMenu()) |om|
-                    self.mouse_menu_op_closable = self.mouse_menu_op_closable and
-                        om.index == mix;
-                self.focus = .{ .menubar = .{ .index = mix, .open = true } };
-                return;
-            };
-        self.focus = .editor;
-        return;
-    }
-
-    if (self.openMenu()) |m| {
-        if (m.mouseOverItem()) |i| {
-            self.mouse_menu_op_closable = false;
-            self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-        } else self.focus = .{ .menubar = .{ .index = m.index, .open = true } };
-        return;
-    }
-}
-
-fn handleMenuMouseUp(self: *Imtui) void {
-    self.mouse_menu_op = false;
-
-    if (self.openMenu()) |m| {
-        if (m.mouseOverItem()) |i| {
-            i._chosen = true;
-            self.focus = .editor;
-            return;
-        }
-
-        if (m.mouseIsOver() and !self.mouse_menu_op_closable) {
-            self.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
-            return;
-        }
-
-        self.focus = .editor;
-    }
+    if (self.mouse_event_target) |target|
+        try target.handleMouseUp(b, clicks);
 }
 
 fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {
