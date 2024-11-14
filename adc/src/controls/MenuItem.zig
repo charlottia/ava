@@ -6,25 +6,19 @@ const MenuItem = @This();
 
 imtui: *Imtui,
 generation: usize,
-label: []const u8,
-index: usize,
-enabled: bool,
-_shortcut: ?Imtui.Shortcut,
-help_text: ?[]const u8,
+label: []const u8 = undefined,
+index: usize = undefined,
+enabled: bool = undefined,
+_shortcut: ?Imtui.Shortcut = undefined,
+help_text: ?[]const u8 = undefined,
 
-_chosen: bool,
+_chosen: bool = false,
 
 pub fn create(imtui: *Imtui, label: []const u8, index: usize) !*MenuItem {
     var i = try imtui.allocator.create(MenuItem);
     i.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .label = undefined,
-        .index = undefined,
-        .enabled = undefined,
-        ._shortcut = undefined,
-        .help_text = undefined,
-        ._chosen = false,
     };
     i.describe(label, index);
     return i;

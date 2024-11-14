@@ -4,17 +4,17 @@ const SDL = @import("sdl2");
 
 const Editor = @This();
 
-pub const Kind = enum {
-    primary,
-    secondary,
-    immediate,
-};
+// pub const Kind = enum {
+//     primary,
+//     secondary,
+//     immediate,
+// };
 
-allocator: Allocator,
-title: []const u8,
-kind: Kind,
+// allocator: Allocator,
+// title: []const u8,
+// kind: Kind,
 
-lines: std.ArrayList(std.ArrayList(u8)),
+// lines: std.ArrayList(std.ArrayList(u8)),
 
 top: usize,
 height: usize,
@@ -23,23 +23,23 @@ fullscreened: ?struct {
     old_height: usize,
 } = null,
 
-cursor_row: usize = 0,
-cursor_col: usize = 0,
-scroll_row: usize = 0,
-scroll_col: usize = 0,
+// cursor_row: usize = 0,
+// cursor_col: usize = 0,
+// scroll_row: usize = 0,
+// scroll_col: usize = 0,
 
 pub const MAX_LINE = 255;
 
-pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, kind: Kind) !Editor {
-    return .{
-        .allocator = allocator,
-        .title = try allocator.dupe(u8, title),
-        .kind = kind,
-        .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
-        .top = top,
-        .height = height,
-    };
-}
+// pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, kind: Kind) !Editor {
+//     return .{
+//         .allocator = allocator,
+//         .title = try allocator.dupe(u8, title),
+//         .kind = kind,
+//         .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
+//         .top = top,
+//         .height = height,
+//     };
+// }
 
 // pub fn deinit(self: *Editor) void {
 //     self.allocator.free(self.title);

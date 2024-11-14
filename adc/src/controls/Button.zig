@@ -4,23 +4,19 @@ const Button = @This();
 
 imtui: *Imtui,
 generation: usize,
-r: usize,
-c: usize,
-colour: u8,
+r: usize = undefined,
+c: usize = undefined,
+colour: u8 = undefined,
 label: []const u8,
 
-_chosen: bool,
+_chosen: bool = false,
 
 pub fn create(imtui: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Button {
     var b = try imtui.allocator.create(Button);
     b.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .r = undefined,
-        .c = undefined,
-        .colour = undefined,
         .label = label,
-        ._chosen = false,
     };
     b.describe(r, c, colour);
     return b;

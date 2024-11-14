@@ -7,13 +7,20 @@ const Editor = @This();
 imtui: *Imtui,
 generation: usize,
 id: usize,
-r1: usize,
-c1: usize,
-r2: usize,
-c2: usize,
-_last_source: ?*Source,
-_source: ?*Source,
-_immediate: bool,
+r1: usize = undefined,
+c1: usize = undefined,
+r2: usize = undefined,
+c2: usize = undefined,
+_last_source: ?*Source = undefined,
+_source: ?*Source = null,
+_immediate: bool = undefined,
+
+cursor_row: usize = 0,
+cursor_col: usize = 0,
+scroll_row: usize = 0,
+scroll_col: usize = 0,
+
+pub const MAX_LINE = 255;
 
 pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !*Editor {
     var e = try imtui.allocator.create(Editor);
@@ -21,13 +28,6 @@ pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usi
         .imtui = imtui,
         .generation = imtui.generation,
         .id = id,
-        .r1 = undefined,
-        .c1 = undefined,
-        .r2 = undefined,
-        .c2 = undefined,
-        ._last_source = undefined,
-        ._source = null,
-        ._immediate = undefined,
     };
     e.describe(r1, c1, r2, c2);
     return e;
@@ -104,7 +104,12 @@ pub fn end(self: *Editor) void {
     self.imtui.text_mode.paint(self.r1 + 1, self.c2 - 1, self.r2, self.c2, 0x17, .Vertical);
     self.imtui.text_mode.paint(self.r1 + 1, self.c1 + 1, self.r2, self.c2 - 1, 0x17, .Blank);
 
-    // --8<-- editor contents go here --8<--
+    for (0..@min(self.r2 - self.r1 - 1, src.lines.items.len - self.scroll_row)) |y| {
+        const line = &src.lines.items[self.scroll_row + y];
+        const upper = @min(line.items.len, self.c2 - self.c1 - 2 + self.scroll_col);
+        if (upper > self.scroll_col)
+            self.imtui.text_mode.write(y + self.r1 + 1, self.c1 + 1, line.items[self.scroll_col..upper]);
+    }
 
     if (active and !self._immediate) {
         if (self.r2 - self.r1 > 4) {
@@ -120,6 +125,11 @@ pub fn end(self: *Editor) void {
             self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 2 + horizontalScrollThumb, 0x00, .Blank);
             self.imtui.text_mode.draw(self.r2 - 1, self.c2 - 2, 0x70, .ArrowRight);
         }
+    }
+
+    if (active and self.imtui.focus == .editor) {
+        self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
+        self.imtui.text_mode.cursor_row = self.cursor_row + 1 - self.scroll_row + self.r1;
     }
 }
 

@@ -6,32 +6,23 @@ const Menu = @This();
 
 imtui: *Imtui,
 generation: usize,
-r: usize,
-c1: usize,
-c2: usize,
-label: []const u8,
-index: usize,
-width: usize,
-menu_c1: usize,
-menu_c2: usize,
+r: usize = undefined,
+c1: usize = undefined,
+c2: usize = undefined,
+label: []const u8 = undefined,
+index: usize = undefined,
+width: usize = undefined,
+menu_c1: usize = undefined,
+menu_c2: usize = undefined,
 
 menu_items: std.ArrayListUnmanaged(?*Imtui.Controls.MenuItem) = .{},
-menu_items_at: usize,
+menu_items_at: usize = undefined,
 
 pub fn create(imtui: *Imtui, r: usize, c: usize, label: []const u8, index: usize, width: usize) !*Menu {
     var m = try imtui.allocator.create(Menu);
     m.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .r = undefined,
-        .c1 = undefined,
-        .c2 = undefined,
-        .label = undefined,
-        .index = undefined,
-        .width = undefined,
-        .menu_c1 = undefined,
-        .menu_c2 = undefined,
-        .menu_items_at = undefined,
     };
     m.describe(r, c, label, index, width);
     return m;

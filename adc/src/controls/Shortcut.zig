@@ -8,7 +8,7 @@ imtui: *Imtui,
 generation: usize,
 shortcut: Imtui.Shortcut,
 
-_chosen: bool,
+_chosen: bool = false,
 
 pub fn create(imtui: *Imtui, keycode: SDL.Keycode, modifier: ?Imtui.ShortcutModifier) !*Shortcut {
     const s = try imtui.allocator.create(Shortcut);
@@ -16,7 +16,6 @@ pub fn create(imtui: *Imtui, keycode: SDL.Keycode, modifier: ?Imtui.ShortcutModi
         .imtui = imtui,
         .generation = imtui.generation,
         .shortcut = .{ .keycode = keycode, .modifier = modifier },
-        ._chosen = false,
     };
     return s;
 }

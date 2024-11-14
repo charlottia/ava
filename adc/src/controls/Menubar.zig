@@ -6,25 +6,19 @@ const Menubar = @This();
 
 imtui: *Imtui,
 generation: usize,
-r: usize,
-c1: usize,
-c2: usize,
+r: usize = undefined,
+c1: usize = undefined,
+c2: usize = undefined,
 
-offset: usize,
-menus: std.ArrayListUnmanaged(*Imtui.Controls.Menu),
-menus_at: usize,
+offset: usize = undefined,
+menus: std.ArrayListUnmanaged(*Imtui.Controls.Menu) = .{},
+menus_at: usize = undefined,
 
 pub fn create(imtui: *Imtui, r: usize, c1: usize, c2: usize) !*Menubar {
     var mb = try imtui.allocator.create(Menubar);
     mb.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .r = undefined,
-        .c1 = undefined,
-        .c2 = undefined,
-        .offset = undefined,
-        .menus = .{},
-        .menus_at = undefined,
     };
     mb.describe(r, c1, c2);
     return mb;
