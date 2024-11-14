@@ -57,10 +57,8 @@ pub fn handleMouseDown(self: *Button, b: SDL.MouseButton, clicks: u8) !void {
     self.inverted = true;
 }
 
-pub fn handleMouseDrag(self: *Button, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+pub fn handleMouseDrag(self: *Button, b: SDL.MouseButton) !void {
     _ = b;
-    _ = old_row;
-    _ = old_col;
 
     self.inverted = self.mouseIsOver();
 }

@@ -507,8 +507,8 @@ const Adc = struct {
     fn secondaryDown(a: *[3]usize) void {
         // gives from secondary to primary
         // if secondary empty, gives from imm
-        if (a[1] == 0) {
-            if (a[2] > 0) {
+        if (a[1] == 1) {
+            if (a[2] > 1) {
                 a[0] += 1;
                 a[2] -= 1;
             }
@@ -519,7 +519,7 @@ const Adc = struct {
     }
 
     fn secondaryUp(a: *[3]usize) void {
-        if (a[0] > 0) {
+        if (a[0] > 1) {
             a[0] -= 1;
             a[1] += 1;
         }

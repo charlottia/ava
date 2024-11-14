@@ -91,10 +91,8 @@ pub fn handleMouseDown(self: *Menubar, b: SDL.MouseButton, clicks: u8) !void {
         };
 }
 
-pub fn handleMouseDrag(self: *Menubar, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+pub fn handleMouseDrag(self: *Menubar, b: SDL.MouseButton) !void {
     _ = b;
-    _ = old_row;
-    _ = old_col;
 
     if (self.imtui.mouse_row == self.r) {
         for (self.menus.items, 0..) |m, mix|

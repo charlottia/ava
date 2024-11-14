@@ -23,6 +23,7 @@ cursor_col: usize = 0,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
 toggled_fullscreen: bool = false,
+dragging_title: bool = false,
 header_dragged_to: ?usize = null,
 
 pub const MAX_LINE = 255;
@@ -83,7 +84,7 @@ pub fn end(self: *Editor) void {
             self._last_source = null;
         };
 
-    if (self._hidden)
+    if (self._hidden or self.r1 == self.r2)
         return;
 
     const src = self._source.?;
@@ -206,8 +207,8 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
 
     if (self.cursor_col < self.scroll_col) {
         self.scroll_col = self.cursor_col;
-    } else if (self.cursor_col > self.scroll_col + 77) {
-        self.scroll_col = self.cursor_col - 77;
+    } else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3)) {
+        self.scroll_col = self.cursor_col - (self.c2 - self.c1 - 3);
     }
 }
 
@@ -218,12 +219,15 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     const r = self.imtui.mouse_row;
     const c = self.imtui.mouse_col;
 
+    self.dragging_title = false;
+
     if (r == self.r1) {
         // Fullscreen triggers on MouseUp.
         // TODO: for this and all focus changes below, check that these won't
         // effect processing of anything else adversely. Unclear what might not
         // be anticipating a mid-frame focus change.
         self.imtui.focus_editor = self.id;
+        self.dragging_title = true;
         return;
     }
 
@@ -238,22 +242,22 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
             } else if (c > self.c1 + 1 and c < self.c2 - 2) {
                 const hst = self.horizontalScrollThumb();
                 if (c - 2 < hst)
-                    self.scroll_col = if (self.scroll_col >= 78) self.scroll_col - 78 else 0
+                    self.scroll_col = if (self.scroll_col >= (self.c2 - self.c1 - 2)) self.scroll_col - (self.c2 - self.c1 - 2) else 0
                 else if (c - 2 > hst)
-                    self.scroll_col = if (self.scroll_col <= MAX_LINE - 77 - 78) self.scroll_col + 78 else MAX_LINE - 77
+                    self.scroll_col = if (self.scroll_col <= MAX_LINE - (self.c2 - self.c1 - 3) - (self.c2 - self.c1 - 2)) self.scroll_col + (self.c2 - self.c1 - 2) else MAX_LINE - (self.c2 - self.c1 - 3)
                 else
-                    self.scroll_col = (hst * (MAX_LINE - 77) + 74) / 75;
+                    self.scroll_col = (hst * (MAX_LINE - (self.c2 - self.c1 - 3)) + (self.c2 - self.c1 - 6)) / (self.c2 - self.c1 - 5);
                 self.cursor_col = self.scroll_col;
             } else if (c == self.c2 - 2) {
-                if (self.scroll_col < (MAX_LINE - 77)) {
+                if (self.scroll_col < (MAX_LINE - (self.c2 - self.c1 - 3))) {
                     self.scroll_col += 1;
                     self.cursor_col += 1;
                 }
             }
             if (self.cursor_col < self.scroll_col)
                 self.cursor_col = self.scroll_col
-            else if (self.cursor_col > self.scroll_col + 77)
-                self.cursor_col = self.scroll_col + 77;
+            else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
+                self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
         } else {
             const eff_r = if (hscroll) r - 1 else r;
             self.cursor_col = self.scroll_col + c - self.c1 - 1;
@@ -307,12 +311,10 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     }
 }
 
-pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton) !void {
     _ = b;
-    _ = old_col;
 
-    // XXX this is clanky and drops fast drags; QBASIC doesn't.
-    if (old_row == self.r1 and self.imtui.mouse_row != old_row) {
+    if (self.dragging_title and self.r1 != self.imtui.mouse_row) {
         self.header_dragged_to = self.imtui.mouse_row;
         return;
     }

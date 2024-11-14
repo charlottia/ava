@@ -65,10 +65,10 @@ const Control = union(enum) {
         }
     }
 
-    fn handleMouseDrag(self: Control, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+    fn handleMouseDrag(self: Control, b: SDL.MouseButton) !void {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDrag")) {
-                try c.handleMouseDrag(b, old_row, old_col);
+                try c.handleMouseDrag(b);
             },
         }
     }
@@ -140,10 +140,10 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
         .mouse_motion => |ev| {
             const pos = self.interpolateMouse(ev);
             self.text_mode.positionMouseAt(pos.x, pos.y);
-            if (self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col)) |old_loc| {
-                if (self.mouse_down) |b|
-                    try self.handleMouseDrag(b, old_loc.r, old_loc.c);
-            }
+            if (self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col))
+                if (self.mouse_down) |b| {
+                    try self.handleMouseDrag(b);
+                };
         },
         .mouse_button_down => |ev| {
             const pos = self.interpolateMouse(ev);
@@ -433,17 +433,14 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
     }
 }
 
-fn handleMouseAt(self: *Imtui, row: usize, col: usize) ?struct { r: usize, c: usize } {
+fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
     const old_mouse_row = self.mouse_row;
     const old_mouse_col = self.mouse_col;
 
     self.mouse_row = row;
     self.mouse_col = col;
 
-    if (old_mouse_row != self.mouse_row or old_mouse_col != self.mouse_col)
-        return .{ .r = old_mouse_row, .c = old_mouse_col };
-
-    return null;
+    return old_mouse_row != self.mouse_row or old_mouse_col != self.mouse_col;
 }
 
 fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
@@ -483,14 +480,14 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
         };
 }
 
-fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton) !void {
     // N.B.! Right now it's only happenstance that self.mouse_event_target's
     // value is never freed underneath it, since the "user" code so far never
     // doesn't construct a menubar or one of its editors from frame to frame.
     // If we added a target that could, we'd probably get a use-after-free.
 
     if (self.mouse_event_target) |target|
-        try target.handleMouseDrag(b, old_row, old_col);
+        try target.handleMouseDrag(b);
 }
 
 fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
