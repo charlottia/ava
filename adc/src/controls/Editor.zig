@@ -23,6 +23,7 @@ cursor_col: usize = 0,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
 toggled_fullscreen: bool = false,
+header_dragged_to: ?usize = null,
 
 pub const MAX_LINE = 255;
 
@@ -195,6 +196,7 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
 
     // XXX magic. this line used to be:
     // const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
+    // XXX keypress while resizing or while empty window focussed = explode
     const adjust: usize = if (self.r2 - self.r1 - 1 <= 2) 1 else 2;
     if (self.cursor_row < self.scroll_row) {
         self.scroll_row = self.cursor_row;
@@ -305,6 +307,17 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     }
 }
 
+pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton, old_row: usize, old_col: usize) !void {
+    _ = b;
+    _ = old_col;
+
+    // XXX this is clanky and drops fast drags; QBASIC doesn't.
+    if (old_row == self.r1 and self.imtui.mouse_row != old_row) {
+        self.header_dragged_to = self.imtui.mouse_row;
+        return;
+    }
+}
+
 pub fn handleMouseUp(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
     _ = button;
 
@@ -332,6 +345,11 @@ fn horizontalScrollThumb(self: *const Editor) usize {
 pub fn toggledFullscreen(self: *Editor) bool {
     defer self.toggled_fullscreen = false;
     return self.toggled_fullscreen;
+}
+
+pub fn headerDraggedTo(self: *Editor) ?usize {
+    defer self.header_dragged_to = null;
+    return self.header_dragged_to;
 }
 
 fn currentLine(self: *Editor) !*std.ArrayList(u8) {

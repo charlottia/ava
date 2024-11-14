@@ -276,12 +276,39 @@ const Adc = struct {
         var secondary_editor = try self.imtui.editor(1, secondary_editor_top, 0, secondary_editor_bottom, 80);
         secondary_editor.source(self.secondary_source);
         if (self.view == .two or (self.fullscreen and self.imtui.focus_editor != 1))
-            secondary_editor.hidden();
+            secondary_editor.hidden()
+        else if (secondary_editor.headerDraggedTo()) |row| if (row >= 2 and row <= 22) {
+            const a = &self.view.three;
+            if (row > secondary_editor_top) {
+                for (0..row - secondary_editor_top) |_|
+                    secondaryDown(a);
+            } else if (row < secondary_editor_top) {
+                for (0..secondary_editor_top - row) |_|
+                    secondaryUp(a);
+            }
+        };
         secondary_editor.end();
 
         var imm_editor = try self.imtui.editor(2, imm_editor_top, 0, imm_editor_bottom, 80);
         if (self.fullscreen and self.imtui.focus_editor != 2)
-            imm_editor.hidden();
+            imm_editor.hidden()
+        else if (!self.fullscreen)
+            if (imm_editor.headerDraggedTo()) |row| if (row >= 13 and row <= 23) {
+                const new_imm_h = 24 - row;
+                switch (self.view) {
+                    .two => |_| self.view = .{ .two = [2]usize{ 23 - new_imm_h, new_imm_h } },
+                    .three => |*a| {
+                        if (new_imm_h < a[2]) {
+                            for (0..a[2] - new_imm_h) |_|
+                                immDown(a);
+                        } else if (new_imm_h > a[2]) {
+                            for (0..new_imm_h - a[2]) |_|
+                                immUp(a);
+                        }
+                    },
+                }
+            };
+
         imm_editor.immediate();
         imm_editor.source(self.immediate_source);
         imm_editor.end();
@@ -461,6 +488,40 @@ const Adc = struct {
                 self.view = .{ .three = [3]usize{ a[0] / 2, a[0] - (a[0] / 2), a[1] } };
             },
             .three => |a| self.view = .{ .two = [2]usize{ a[0] + a[1], a[2] } },
+        }
+    }
+
+    fn immDown(a: *[3]usize) void {
+        a[1] += 1;
+        a[2] -= 1;
+    }
+
+    fn immUp(a: *[3]usize) void {
+        a[2] += 1;
+        if (a[1] > 1)
+            a[1] -= 1
+        else
+            a[0] -= 1;
+    }
+
+    fn secondaryDown(a: *[3]usize) void {
+        // gives from secondary to primary
+        // if secondary empty, gives from imm
+        if (a[1] == 0) {
+            if (a[2] > 0) {
+                a[0] += 1;
+                a[2] -= 1;
+            }
+        } else {
+            a[0] += 1;
+            a[1] -= 1;
+        }
+    }
+
+    fn secondaryUp(a: *[3]usize) void {
+        if (a[0] > 0) {
+            a[0] -= 1;
+            a[1] += 1;
         }
     }
 };

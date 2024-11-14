@@ -27,9 +27,7 @@ typematic_on: bool = false,
 mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
-
 mouse_event_target: ?Control = null,
-mouse_menu_op_closable: bool = false, // XXX
 
 alt_held: bool = false,
 focus: union(enum) {
