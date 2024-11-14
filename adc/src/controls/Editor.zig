@@ -78,8 +78,8 @@ pub fn end(self: *Editor) void {
 
     const active = self.imtui.focus_editor == self.id;
     const fullscreened = false; // XXX
-    const verticalScrollThumb = 0; // XXX
-    const horizontalScrollThumb = 0; // XXX
+    const verticalScrollThumb = if (src.lines.items.len == 0) 0 else self.cursor_row * (self.r2 - self.r1 - 5) / src.lines.items.len;
+    const horizontalScrollThumb = self.scroll_col * (self.c2 - self.c1 - 5) / (MAX_LINE - (self.c2 - self.c1 - 3));
 
     // XXX: r1==1 checks here are iffy.
 

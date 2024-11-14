@@ -26,34 +26,6 @@ editors: [3]Editor,
 editor_active: usize,
 split_active: bool,
 
-pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, filename: ?[]const u8) !*Kyuubey {
-    const qb = try allocator.create(Kyuubey);
-    qb.* = Kyuubey{
-        .allocator = allocator,
-        .text_mode = try TextMode(25, 80).init(renderer, font),
-        .char_width = font.char_width,
-        .char_height = font.char_height,
-        .editors = .{
-            try Editor.init(allocator, "Untitled", 1, 19, .primary),
-            try Editor.init(allocator, "Untitled", 11, 9, .secondary),
-            try Editor.init(allocator, "Immediate", 21, 2, .immediate),
-        },
-        .editor_active = 0,
-        .split_active = false,
-    };
-    if (filename) |f| {
-        try qb.editors[0].load(f);
-        // try qb.editors[1].load(f);
-    }
-    qb.render();
-    return qb;
-}
-
-pub fn deinit(self: *Kyuubey) void {
-    for (&self.editors) |*e| e.deinit();
-    self.allocator.destroy(self);
-}
-
 fn activeEditor(self: *Kyuubey) *Editor {
     return &self.editors[self.editor_active];
 }
@@ -241,7 +213,7 @@ fn toggleSplit(self: *Kyuubey) !void {
     // Immediate window max height is 10.
     // Means there's always room to split with 5+5. Uneven split favours bottom.
 
-    // QB always leaves the view in non-fullscreen, with primary editor selected.
+    // QB split always leaves the view in non-fullscreen, with primary editor selected.
 
     for (&self.editors) |*e|
         if (e.fullscreened != null)
@@ -261,118 +233,6 @@ fn toggleSplit(self: *Kyuubey) !void {
         self.split_active = false;
     }
 }
-
-// pub fn render(self: *Kyuubey) void {
-//     self.text_mode.clear(0x17);
-//     self.text_mode.paint(0, 0, 1, 80, 0x70, .Blank);
-
-//     var offset: usize = 2;
-//     inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
-//         // XXX option.name.len includes a & -- we currently rely on this!!
-//         if (std.mem.eql(u8, option.name, "&Help"))
-//             offset = 73;
-//         if (self.menubar_focus and self.selected_menu == i)
-//             self.text_mode.paint(0, offset, 1, offset + option.name.len + 1, 0x07, .Blank);
-//         self.text_mode.writeAccelerated(
-//             0,
-//             offset + 1,
-//             option.name,
-//             !self.menu_open and (self.alt_held or self.menubar_focus),
-//         );
-//         offset += option.name.len + 1;
-//     }
-
-//     const active_editor = self.activeEditor();
-//     if (active_editor.fullscreened != null) {
-//         self.renderEditor(active_editor, true);
-//     } else for (&self.editors, 0..) |*e, i| {
-//         if (!self.split_active and e.kind == .secondary)
-//             continue;
-//         self.renderEditor(e, self.editor_active == i);
-//     }
-
-//     // Draw open menus on top of anything else.
-//     var menu_help_text: ?[]const u8 = null;
-//     if (self.menu_open)
-//         menu_help_text = self.renderMenu();
-
-//     self.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
-
-//     offset = 1;
-//     if (menu_help_text) |t| {
-//         self.text_mode.write(24, offset, "F1=Help");
-//         offset += "F1=Help".len + 1;
-//         self.text_mode.draw(24, offset, 0x30, .Vertical);
-//         offset += 2;
-//         self.text_mode.write(24, offset, t);
-//         offset += t.len;
-//     } else if (self.menubar_focus) {
-//         inline for (&.{ "F1=Help", "Enter=Display Menu", "Esc=Cancel", "Arrow=Next Item" }) |item| {
-//             self.text_mode.write(24, offset, item);
-//             offset += item.len + 3;
-//         }
-//     } else {
-//         inline for (&.{ "<Shift+F1=Help>", "<F6=Window>", "<F2=Subs>", "<F5=Run>", "<F8=Step>" }) |item| {
-//             self.text_mode.write(24, offset, item);
-//             offset += item.len + 1;
-//         }
-//     }
-
-//     if (offset <= 62) {
-//         self.text_mode.draw(24, 62, 0x30, .Vertical);
-//         var buf: [9]u8 = undefined;
-//         _ = std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ active_editor.cursor_row + 1, active_editor.cursor_col + 1 }) catch unreachable;
-//         self.text_mode.write(24, 70, &buf);
-//     }
-
-//     self.text_mode.cursor_col = active_editor.cursor_col + 1 - active_editor.scroll_col;
-//     self.text_mode.cursor_row = active_editor.cursor_row + 1 - active_editor.scroll_row + active_editor.top;
-// }
-
-// fn renderEditor(self: *Kyuubey, editor: *Editor, _: bool) void {
-//     self.text_mode.draw(editor.top, 0, 0x17, if (editor.top == 1) .TopLeft else .VerticalRight);
-//     for (1..79) |x|
-//         self.text_mode.draw(editor.top, x, 0x17, .Horizontal);
-
-//     const start = 40 - editor.title.len / 2;
-//     const colour: u8 = if (active) 0x71 else 0x17;
-//     self.text_mode.paint(editor.top, start - 1, editor.top + 1, start + editor.title.len + 1, colour, 0);
-//     self.text_mode.write(editor.top, start, editor.title);
-//     self.text_mode.draw(editor.top, 79, 0x17, if (editor.top == 1) .TopRight else .VerticalLeft);
-
-//     if (editor.kind != .immediate) {
-//         self.text_mode.draw(editor.top, 75, 0x17, .VerticalLeft);
-//         self.text_mode.draw(editor.top, 76, 0x71, if (editor.fullscreened != null) .ArrowVertical else .ArrowUp);
-//         self.text_mode.draw(editor.top, 77, 0x17, .VerticalRight);
-//     }
-
-//     self.text_mode.paint(editor.top + 1, 0, editor.top + editor.height + 1, 1, 0x17, .Vertical);
-//     self.text_mode.paint(editor.top + 1, 79, editor.top + editor.height + 1, 80, 0x17, .Vertical);
-//     self.text_mode.paint(editor.top + 1, 1, editor.top + editor.height + 1, 79, 0x17, .Blank);
-
-//     for (0..@min(editor.height, editor.lines.items.len - editor.scroll_row)) |y| {
-//         const line = &editor.lines.items[editor.scroll_row + y];
-//         const upper = @min(line.items.len, 78 + editor.scroll_col);
-//         if (upper > editor.scroll_col)
-//             self.text_mode.write(y + editor.top + 1, 1, line.items[editor.scroll_col..upper]);
-//     }
-
-//     if (active and editor.kind != .immediate) {
-//         if (editor.height > 3) {
-//             self.text_mode.draw(editor.top + 1, 79, 0x70, .ArrowUp);
-//             self.text_mode.paint(editor.top + 2, 79, editor.top + editor.height, 80, 0x70, .DotsLight);
-//             self.text_mode.draw(editor.top + 2 + editor.verticalScrollThumb(), 79, 0x00, .Blank);
-//             self.text_mode.draw(editor.top + editor.height - 1, 79, 0x70, .ArrowDown);
-//         }
-
-//         if (editor.height > 1) {
-//             self.text_mode.draw(editor.top + editor.height, 1, 0x70, .ArrowLeft);
-//             self.text_mode.paint(editor.top + editor.height, 2, editor.top + editor.height + 1, 78, 0x70, .DotsLight);
-//             self.text_mode.draw(editor.top + editor.height, 2 + editor.horizontalScrollThumb(), 0x00, .Blank);
-//             self.text_mode.draw(editor.top + editor.height, 78, 0x70, .ArrowRight);
-//         }
-//     }
-// }
 
 fn isPrintableKey(sym: SDL.Keycode) bool {
     return @intFromEnum(sym) >= @intFromEnum(SDL.Keycode.space) and

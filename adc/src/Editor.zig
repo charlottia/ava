@@ -4,18 +4,6 @@ const SDL = @import("sdl2");
 
 const Editor = @This();
 
-// pub const Kind = enum {
-//     primary,
-//     secondary,
-//     immediate,
-// };
-
-// allocator: Allocator,
-// title: []const u8,
-// kind: Kind,
-
-// lines: std.ArrayList(std.ArrayList(u8)),
-
 top: usize,
 height: usize,
 fullscreened: ?struct {
@@ -23,60 +11,7 @@ fullscreened: ?struct {
     old_height: usize,
 } = null,
 
-// cursor_row: usize = 0,
-// cursor_col: usize = 0,
-// scroll_row: usize = 0,
-// scroll_col: usize = 0,
-
 pub const MAX_LINE = 255;
-
-// pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, kind: Kind) !Editor {
-//     return .{
-//         .allocator = allocator,
-//         .title = try allocator.dupe(u8, title),
-//         .kind = kind,
-//         .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
-//         .top = top,
-//         .height = height,
-//     };
-// }
-
-// pub fn deinit(self: *Editor) void {
-//     self.allocator.free(self.title);
-//     for (self.lines.items) |line|
-//         line.deinit();
-//     self.lines.deinit();
-// }
-
-// pub fn load(self: *Editor, filename: []const u8) !void {
-//     self.deinit();
-//     self.lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
-
-//     const f = try std.fs.cwd().openFile(filename, .{});
-//     defer f.close();
-
-//     while (try f.reader().readUntilDelimiterOrEofAlloc(self.allocator, '\n', 10240)) |line|
-//         try self.lines.append(std.ArrayList(u8).fromOwnedSlice(self.allocator, line));
-
-//     const index = std.mem.lastIndexOfScalar(u8, filename, '/');
-//     self.title = try std.ascii.allocUpperString(
-//         self.allocator,
-//         if (index) |ix| filename[ix + 1 ..] else filename,
-//     );
-// }
-
-pub fn loadFrom(self: *Editor, other: *const Editor) !void {
-    self.deinit();
-    self.lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
-
-    for (other.lines.items) |*ol|
-        try self.lines.append(std.ArrayList(u8).fromOwnedSlice(
-            self.allocator,
-            try self.allocator.dupe(u8, ol.items),
-        ));
-
-    self.title = try self.allocator.dupe(u8, other.title);
-}
 
 pub fn currentLine(self: *Editor) !*std.ArrayList(u8) {
     if (self.cursor_row == self.lines.items.len)
@@ -290,14 +225,4 @@ pub fn pageDown(self: *Editor) void {
     _ = self;
     // self.scroll_y = if (self.scroll_y >=
     // std.debug.print("pgup\n", .{})
-}
-
-pub fn horizontalScrollThumb(self: *const Editor) usize {
-    return self.scroll_col * 75 / (MAX_LINE - 77);
-}
-
-pub fn verticalScrollThumb(self: *const Editor) usize {
-    if (self.lines.items.len == 0)
-        return 0;
-    return self.cursor_row * (self.height - 4) / self.lines.items.len;
 }
