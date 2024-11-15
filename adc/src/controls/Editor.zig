@@ -381,14 +381,15 @@ fn maybeCurrentLine(self: *Editor) ?*std.ArrayList(u8) {
 pub fn splitLine(self: *Editor) !void {
     const src = self._source.?;
 
-    var current = try self.currentLine();
-    const first = lineFirst(current.items);
+    var line = try self.currentLine();
+    const first = lineFirst(line.items);
     var next = std.ArrayList(u8).init(src.allocator);
     try next.appendNTimes(' ', first);
 
-    const appending = if (self.cursor_col < current.items.len) current.items[self.cursor_col..] else "";
+    const appending = if (self.cursor_col < line.items.len) line.items[self.cursor_col..] else "";
     try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
-    try current.replaceRange(self.cursor_col, current.items.len - self.cursor_col, &.{});
+    if (line.items.len > self.cursor_col)
+        try line.replaceRange(self.cursor_col, line.items.len - self.cursor_col, &.{});
     try src.lines.insert(self.cursor_row + 1, next);
 
     self.cursor_col = first;

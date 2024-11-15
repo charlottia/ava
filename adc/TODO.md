@@ -23,7 +23,7 @@
 * [-] split view of same document: updates other on changing line
   * right now it updates immediately; we probably want to buffer the Source in
     the Editor and sync back on certain events.
-* [x] don't process document events with zero-sized editor focussed 🐈‍⬛
+* [x] don't process document events with zero-sized editor focussed
   * confirmed this is indeed the precise behaviour from QB. wonder if we
     actually knew that, somewhere deep down; feels like it!
-* [ ] click in Immediate editor somewhere not at col 1, press enter, crash
+* [x] click in Immediate editor somewhere not at col 1, press enter, crash 🐈‍⬛
