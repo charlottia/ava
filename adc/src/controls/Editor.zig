@@ -90,7 +90,6 @@ pub fn end(self: *Editor) void {
     const src = self._source.?;
 
     const active = self.imtui.focus_editor == self.id;
-    const fullscreened = false; // XXX
 
     // XXX: r1==1 checks here are iffy.
 
@@ -107,7 +106,8 @@ pub fn end(self: *Editor) void {
     if (!self._immediate) {
         // TODO: fullscreen control separate, rendered on top?
         self.imtui.text_mode.draw(self.r1, self.c2 - 5, 0x17, .VerticalLeft);
-        self.imtui.text_mode.draw(self.r1, self.c2 - 4, 0x71, if (fullscreened) .ArrowVertical else .ArrowUp);
+        // XXX: heuristic.
+        self.imtui.text_mode.draw(self.r1, self.c2 - 4, 0x71, if (self.r2 - self.r1 == 23) .ArrowVertical else .ArrowUp);
         self.imtui.text_mode.draw(self.r1, self.c2 - 3, 0x17, .VerticalRight);
     }
 
@@ -139,6 +139,7 @@ pub fn end(self: *Editor) void {
     }
 
     if (active and self.imtui.focus == .editor) {
+        self.imtui.text_mode.cursor_inhibit = self.imtui.text_mode.cursor_inhibit or (self.r2 - self.r1 == 1);
         self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
         self.imtui.text_mode.cursor_row = self.cursor_row + 1 - self.scroll_row + self.r1;
     }
@@ -201,7 +202,7 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
     const adjust: usize = if (self.r2 - self.r1 - 1 <= 2) 1 else 2;
     if (self.cursor_row < self.scroll_row) {
         self.scroll_row = self.cursor_row;
-    } else if (self.cursor_row > self.scroll_row + self.r2 - self.r1 - 1 - adjust) {
+    } else if (self.r2 - self.r1 > 1 and self.cursor_row > self.scroll_row + self.r2 - self.r1 - 1 - adjust) {
         self.scroll_row = self.cursor_row + adjust - (self.r2 - self.r1 - 1);
     }
 

@@ -169,11 +169,13 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
 }
 
 pub fn render(self: *Imtui) !void {
-    self.text_mode.cursor_inhibit = self.focus == .menu or self.focus == .menubar;
+    self.text_mode.cursor_inhibit = self.text_mode.cursor_inhibit or self.focus == .menu or self.focus == .menubar;
     try self.text_mode.present(self.delta_tick);
 }
 
 pub fn newFrame(self: *Imtui) !void {
+    self.text_mode.cursor_inhibit = false;
+
     var cit = self.controls.iterator();
     while (cit.next()) |c| {
         if (c.value_ptr.generation() != self.generation) {
