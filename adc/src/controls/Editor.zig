@@ -87,6 +87,23 @@ pub fn end(self: *Editor) void {
     if (self._hidden or self.r1 == self.r2)
         return;
 
+    // XXX magic. this line used to be:
+    // const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
+    // Pretty sure the immediate wants to have a certain relationship between
+    // the top or bottom of the window and the current line. Something.
+    const adjust: usize = if (self.r2 - self.r1 - 1 <= 2) 1 else 2;
+    if (self.cursor_row < self.scroll_row) {
+        self.scroll_row = self.cursor_row;
+    } else if (self.r2 - self.r1 > 1 and self.cursor_row > self.scroll_row + self.r2 - self.r1 - 1 - adjust) {
+        self.scroll_row = self.cursor_row + adjust - (self.r2 - self.r1 - 1);
+    }
+
+    if (self.cursor_col < self.scroll_col) {
+        self.scroll_col = self.cursor_col;
+    } else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3)) {
+        self.scroll_col = self.cursor_col - (self.c2 - self.c1 - 3);
+    }
+
     const src = self._source.?;
 
     const active = self.imtui.focus_editor == self.id;
@@ -142,6 +159,8 @@ pub fn end(self: *Editor) void {
         self.imtui.text_mode.cursor_inhibit = self.imtui.text_mode.cursor_inhibit or (self.r2 - self.r1 == 1);
         self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
         self.imtui.text_mode.cursor_row = self.cursor_row + 1 - self.scroll_row + self.r1;
+        if (self.imtui.text_mode.cursor_row >= 25)
+            std.debug.panic("cursor_row: {d} + 1 - scroll_row {d} + r1 {d} = {d}\n", .{ self.cursor_row, self.scroll_row, self.r1, self.imtui.text_mode.cursor_row });
     }
 }
 
@@ -151,6 +170,12 @@ pub fn mouseIsOver(self: *const Editor) bool {
 
 pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     const src = self._source.?;
+
+    const no_cursor = self.r2 - self.r1 <= 1;
+    if (no_cursor)
+        // Don't forget about this! Anything Editor-specific which doesn't get
+        // disabled when the cursor is invisible needs to be above here.
+        return;
 
     switch (keycode) {
         .down => if (self.cursor_row < src.lines.items.len) {
@@ -194,22 +219,6 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
             try line.insert(self.cursor_col, getCharacter(keycode, modifiers));
             self.cursor_col += 1;
         },
-    }
-
-    // XXX magic. this line used to be:
-    // const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
-    // XXX keypress while resizing or while empty window focussed = explode
-    const adjust: usize = if (self.r2 - self.r1 - 1 <= 2) 1 else 2;
-    if (self.cursor_row < self.scroll_row) {
-        self.scroll_row = self.cursor_row;
-    } else if (self.r2 - self.r1 > 1 and self.cursor_row > self.scroll_row + self.r2 - self.r1 - 1 - adjust) {
-        self.scroll_row = self.cursor_row + adjust - (self.r2 - self.r1 - 1);
-    }
-
-    if (self.cursor_col < self.scroll_col) {
-        self.scroll_col = self.cursor_col;
-    } else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3)) {
-        self.scroll_col = self.cursor_col - (self.c2 - self.c1 - 3);
     }
 }
 

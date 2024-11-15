@@ -81,6 +81,8 @@ pub fn TextMode(H: usize, W: usize) type {
             }
 
             if (self.cursor_on and !self.cursor_inhibit) {
+                if (self.cursor_row >= H or self.cursor_col >= W)
+                    std.debug.panic("cursed: {d},{d}", .{ self.cursor_row, self.cursor_col });
                 const pair = self.screen[self.cursor_row * W + self.cursor_col];
                 const fg = Font.CgaColors[(pair >> 8) & 0xF];
                 try self.renderer.setColorRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xFF), @intCast(fg & 0xFF), 255);

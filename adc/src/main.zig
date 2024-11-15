@@ -308,7 +308,6 @@ const Adc = struct {
                     },
                 }
             };
-
         imm_editor.immediate();
         imm_editor.source(self.immediate_source);
         imm_editor.end();
