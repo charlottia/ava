@@ -6,7 +6,7 @@
   * [x] clicking *on* the thumb seems to just reset cursor_x to scroll_x
     * [x] it also sets scroll_x to the earliest position for that thumb.
   * [x] the cursor's position should otherwise remain constant
-  * [-] all the above for vertical too --- it's weird. 🐈
+  * [-] all the above for vertical too --- it's weird. 🐈 🐈‍⬛
 * [ ] mouse wheel scrolling
 * [x] fullscreen
 * [x] F6 cycles windows; when one is fullscreen, cycles them through in turn.
@@ -26,4 +26,4 @@
 * [x] don't process document events with zero-sized editor focussed
   * confirmed this is indeed the precise behaviour from QB. wonder if we
     actually knew that, somewhere deep down; feels like it!
-* [x] click in Immediate editor somewhere not at col 1, press enter, crash 🐈‍⬛
+* [x] click in Immediate editor somewhere not at col 1, press enter, crash
