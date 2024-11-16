@@ -315,8 +315,14 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
             else if (r - self.r1 - 2 > vst)
                 self.pageDown()
             else {
-                // TODO: the thing, zhu li
-                std.debug.print("X\n", .{});
+                // ~~I can't quite get this to the exact same algorithm as
+                // QBASIC!!! Agh!! What gives!!! Daifuku!!~~
+                // nvm that got it
+                const start: f32 = @ceil(@as(f32, @floatFromInt(self._source.?.lines.items.len)) *
+                    @as(f32, @floatFromInt(vst)) /
+                    @as(f32, @floatFromInt(self.r2 - self.r1 - 4 - 1)));
+                self.cursor_row = @intFromFloat(start);
+                self.scroll_row = @intFromFloat(start);
             }
         } else if (r == self.r2 - 2) {
             // Ask me about the pages in my diary required to work this condition out!
