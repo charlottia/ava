@@ -285,30 +285,6 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
                 self.scroll_row -= 1;
             }
         } else if (r > self.r1 + 1 and r < self.r2 - 2) {
-            // TODO: Vertical scrollbar behaviour has a knack to it I don't
-            // quite understand yet.  The horizontal scrollbar strictly relates
-            // to the actual scroll of the window (scroll_x) --- it has nothing
-            // to do with the cursor position itself (cursor_x) --- so it's
-            // easy and predictable.
-            //     The vertical scrollbar is totally different --- it shows the
-            // cursor's position in the (virtual) document.  Thus, when using the
-            // pgup/pgdn feature of it, we don't expect the thumb to go all
-            // the way to the top or bottom most of the time, since that'd only
-            // happen if cursor_y happened to land on 0 or self.lines.items.len.
-            //
-            // Let's make some observations:
-            //
-            // Scrolled to the very top, cursor on line 1. 1-18 are visible. (19
-            //     under HSB.)
-            // Clicking pgdn.
-            // Now 19-36 are visible, cursor on 19.
-            //
-            // Scrolled to very top, cursor on line 3. 1-18 visible.
-            // pgdn
-            // 19-36 visible, cursor now on line 21. (not moved.)
-            //
-            // Actual pgup/pgdn seem to do the exact same thing.
-
             const vst = self.verticalScrollThumb();
             if (r - self.r1 - 2 < vst)
                 self.pageUp()
