@@ -88,4 +88,14 @@ If only I had listened to my elders. Can't believe I already had it.
 Now I have to work out how pgup/pgdn work. This is one of the annoying behaviour
 repro bits!! Keep at it babe!
 
+---
 
+\o/ Onto selections.
+
+Pressing down shift seems to record current row/col.
+If cursor then moved to same row, different col, select within the line text covered.
+Note that c2 shift c3 selects what's at c2, but c2 shift c1 selects c1.
+If the cursor is moved to a diff row, then line select all rows inclusive of start and end.
+Moving back to the same row resumes inline selection.
+
+TODO: interaction between selections and various controls and actions. (scroll/pgdn/etc.)

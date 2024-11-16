@@ -20,6 +20,10 @@ _immediate: bool = undefined,
 
 cursor_row: usize = 0,
 cursor_col: usize = 0,
+shift_start: ?struct {
+    cursor_row: usize,
+    cursor_col: usize,
+} = null,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
 toggled_fullscreen: bool = false,
@@ -133,6 +137,22 @@ pub fn end(self: *Editor) void {
     self.imtui.text_mode.paint(self.r1 + 1, self.c1 + 1, self.r2, self.c2 - 1, 0x17, .Blank);
 
     for (0..@min(self.r2 - self.r1 - 1, src.lines.items.len - self.scroll_row)) |y| {
+        if (self.shift_start) |shf| if (shf.cursor_row == self.cursor_row) {
+            if (self.scroll_row + y == self.cursor_row) {
+                // TODO NEXT: these work great, but don't account for scroll_col at all yet.
+                if (self.cursor_col < shf.cursor_col)
+                    // within-line, to left of origin
+                    self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1 + self.cursor_col, y + self.r1 + 2, self.c1 + 1 + shf.cursor_col, 0x71, .Blank)
+                else // within-line, on or to right of origin
+                    self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1 + shf.cursor_col, y + self.r1 + 2, self.c1 + 1 + self.cursor_col, 0x71, .Blank);
+            }
+        } else {
+            // across line
+            // self.imtui.text_mode.paint(
+            // for (@min(shf.cursor_row, self.cursor_row)..@max(shf.cursor_row, self.cursor_row) + 1) |r| {
+            //     _ = r;
+            // }
+        };
         const line = &src.lines.items[self.scroll_row + y];
         const upper = @min(line.items.len, self.c2 - self.c1 - 2 + self.scroll_col);
         if (upper > self.scroll_col)
@@ -159,8 +179,6 @@ pub fn end(self: *Editor) void {
         self.imtui.text_mode.cursor_inhibit = self.imtui.text_mode.cursor_inhibit or (self.r2 - self.r1 == 1);
         self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
         self.imtui.text_mode.cursor_row = self.cursor_row + 1 - self.scroll_row + self.r1;
-        if (self.imtui.text_mode.cursor_row >= 25)
-            std.debug.panic("cursor_row: {d} + 1 - scroll_row {d} + r1 {d} = {d}\n", .{ self.cursor_row, self.scroll_row, self.r1, self.imtui.text_mode.cursor_row });
     }
 }
 
@@ -176,6 +194,16 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         // Don't forget about this! Anything Editor-specific which doesn't get
         // disabled when the cursor is invisible needs to be above here.
         return;
+
+    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
+        // We probably wanna do this in a few more places too (like else{} below).
+        self.shift_start = null
+    else if (self.shift_start == null)
+        // We probably wanna restrict the cases this is applicable in.
+        self.shift_start = .{
+            .cursor_row = self.cursor_row,
+            .cursor_col = self.cursor_col,
+        };
 
     switch (keycode) {
         .down => if (self.cursor_row < src.lines.items.len) {
