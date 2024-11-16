@@ -471,15 +471,21 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
 }
 
 pub fn pageUp(self: *Editor) void {
-    _ = self;
-    // self.scroll_y = if (self.scroll_y >=
-    std.debug.print("pgup\n", .{});
+    const decrement = self.r2 - self.r1 - 2;
+    if (self.scroll_row == 0)
+        return;
+
+    self.scroll_row -|= decrement;
+    self.cursor_row -|= decrement;
 }
 
 pub fn pageDown(self: *Editor) void {
-    _ = self;
-    // self.scroll_y = if (self.scroll_y >=
-    std.debug.print("pgdn\n", .{});
+    const increment = self.r2 - self.r1 - 2;
+    if (self.scroll_row + increment >= self._source.?.lines.items.len)
+        return;
+
+    self.scroll_row += increment;
+    self.cursor_row = @min(self.cursor_row + increment, self._source.?.lines.items.len - 1);
 }
 
 pub const Source = struct {

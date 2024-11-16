@@ -59,3 +59,33 @@ above the hscroll.
 Scroll down: starting {scroll,cursor}_row are identical.
 What's the limit?
 The last line that is visible above the hscroll is the virtual line.
+
+---
+
+Clicking the vscroll thumb seems to set both scroll_row and cursor_row to the
+line indicated by that scroll position.
+
+Having deduced that exactly lets us ensure we actually are doing the vst
+calculation correctly ...
+
+we are! Yay. Sure enuogh, the exact formula is there in reverse lol. Fml.
+
+We have:
+
+cr = sr = n*vst/(r2-r1-5)
+
+They have:
+
+vst = cr*(r2-r1-5)/n
+
+n*vst = cr*(r2-r1-5)
+n*vst/(r2-r1-5) = cr
+
+If only I had listened to my elders. Can't believe I already had it.
+
+---
+
+Now I have to work out how pgup/pgdn work. This is one of the annoying behaviour
+repro bits!! Keep at it babe!
+
+
