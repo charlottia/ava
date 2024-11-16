@@ -27,3 +27,35 @@
   * confirmed this is indeed the precise behaviour from QB. wonder if we
     actually knew that, somewhere deep down; feels like it!
 * [x] click in Immediate editor somewhere not at col 1, press enter, crash
+
+
+
+---
+
+Vertical scroll bar first can appear when an editor is 5 high: titlebar, 3 lines
+of editing (with vscroll on right), 1 line hscroll (which we remember disappears
+when the window isn't active). hscroll appears when the window is active & r2-r1
+is >= 3. (at r2-r1=1, it's only a draggable titlebar, and =2 it's 1 editable
+line.)
+
+^ and v move scroll_row by exactly 1, without affecting cursor_row unless it's
+required to keep the cursor in bounds. Remember that "bounds" here includes
+the hscroll (which will always be there: if we get small enough for hscroll to
+vanish, we're too small for a visible vscroll).
+
+the highest we go is scroll_row=0. the lowest means the last displayed line
+(above hscroll) is the virtual line after EOF. (again, hscroll is always
+there to be blocked by if we're vscrolling to begin with. there'll be an empty
+(non-existent) line behind hscroll when we make a different editor active;
+that's fine.
+
+
+What's the sensible way to determine whether or not we need to adjust
+cursor_row?
+
+Scroll up: the starting {scroll,cursor}_row is situated on the last visible line
+above the hscroll.
+
+Scroll down: starting {scroll,cursor}_row are identical.
+What's the limit?
+The last line that is visible above the hscroll is the virtual line.

@@ -279,7 +279,11 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
 
     if (self.imtui.focus_editor == self.id and !self._immediate and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
         if (r == self.r1 + 1) {
-            std.debug.print("^\n", .{});
+            if (self.scroll_row > 0) {
+                if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 3)
+                    self.cursor_row -= 1;
+                self.scroll_row -= 1;
+            }
         } else if (r > self.r1 + 1 and r < self.r2 - 2) {
             // TODO: Vertical scrollbar behaviour has a knack to it I don't
             // quite understand yet.  The horizontal scrollbar strictly relates
@@ -315,7 +319,12 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
                 std.debug.print("X\n", .{});
             }
         } else if (r == self.r2 - 2) {
-            std.debug.print("v\n", .{});
+            // Ask me about the pages in my diary required to work this condition out!
+            if (self.scroll_row < self._source.?.lines.items.len - (self.r2 - self.r1 - 2 - 1)) {
+                if (self.cursor_row == self.scroll_row)
+                    self.cursor_row += 1;
+                self.scroll_row += 1;
+            }
         }
         return;
     }
