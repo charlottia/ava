@@ -139,12 +139,28 @@ pub fn end(self: *Editor) void {
     for (0..@min(self.r2 - self.r1 - 1, src.lines.items.len - self.scroll_row)) |y| {
         if (self.shift_start) |shf| if (shf.cursor_row == self.cursor_row) {
             if (self.scroll_row + y == self.cursor_row) {
-                // TODO NEXT: these work great, but don't account for scroll_col at all yet.
                 if (self.cursor_col < shf.cursor_col)
                     // within-line, to left of origin
-                    self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1 + self.cursor_col, y + self.r1 + 2, self.c1 + 1 + shf.cursor_col, 0x71, .Blank)
-                else // within-line, on or to right of origin
-                    self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1 + shf.cursor_col, y + self.r1 + 2, self.c1 + 1 + self.cursor_col, 0x71, .Blank);
+                    // origin may be off-screen to right
+                    self.imtui.text_mode.paint(
+                        y + self.r1 + 1,
+                        self.c1 + 1 + self.cursor_col - self.scroll_col,
+                        y + self.r1 + 2,
+                        @min(self.c2 - 1, self.c1 + 1 + shf.cursor_col - self.scroll_col),
+                        0x71,
+                        .Blank,
+                    )
+                else
+                    // within-line, on or to right of origin
+                    // origin may be off-screen to left
+                    self.imtui.text_mode.paint(
+                        y + self.r1 + 1,
+                        @max(self.c1 + 1, (self.c1 + 1 + shf.cursor_col) -| self.scroll_col),
+                        y + self.r1 + 2,
+                        self.c1 + 1 + self.cursor_col - self.scroll_col,
+                        0x71,
+                        .Blank,
+                    );
             }
         } else {
             // across line
@@ -258,6 +274,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     const c = self.imtui.mouse_col;
 
     self.dragging_title = false;
+    self.shift_start = null;
 
     if (r == self.r1) {
         // Fullscreen triggers on MouseUp.
