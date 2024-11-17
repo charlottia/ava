@@ -290,7 +290,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     if (r == self.r1) {
         // Fullscreen triggers on MouseUp.
         // TODO: for this and all focus changes below, check that these won't
-        // effect processing of anything else adversely. Unclear what might not
+        // affect processing of anything else adversely. Unclear what might not
         // be anticipating a mid-frame focus change.
         self.imtui.focus_editor = self.id;
         self.dragging = .header;

@@ -1,7 +1,7 @@
 * [x] click to set cursor
 * [x] selection (shift)
 * [-] selection (drag)
-  * [-] dragging to edge to select wider 🐈 🐈‍⬛
+  * [ ] dragging to edge to select wider
 * [x] scroll bars (clicking on arrows adjusts scroll by exactly 1; clicking in a
       space moves one entire page in that direction, capping at the end)
   * [x] clicking *on* the thumb seems to just reset cursor_x to scroll_x
@@ -14,7 +14,7 @@
 * [x] split either splits main in 2, or unsplits. (always un-fullscreens.)
 * [x] click and drag to resize middle/imm editor.
 * [x] menus
-* [ ] typematic but for click&hold on scrollbar
+* [-] typematic but for click&hold on scrollbar 🐈 🐈‍⬛
 * [x] no actual 255 character limit; QB reallocates on save
   * mitigated this Enough for now.
 * [x] consider redoing this with 'controls' instead of manually drawing and
@@ -30,6 +30,9 @@
 * [x] click in Immediate editor somewhere not at col 1, press enter, crash
 * [ ] focussing a different Editor drops the Editor's selection
   * doesn't happen when just using menus, otherwise how do you Edit->Copy?
+
+* dragging immediate kinda borken rn?? focus transfers to editor, can crash it.
+  * oh ofc it's the clickmatic WIP.
 
 
 ---

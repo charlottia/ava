@@ -19,15 +19,44 @@ generation: usize = 0,
 last_tick: u64,
 delta_tick: u64 = 0,
 
-keydown_tick: ?u64 = null,
 keydown_sym: SDL.Keycode = .unknown,
 keydown_mod: SDL.KeyModifierSet = undefined,
 typematic_on: bool = false,
+typematic_tick: ?u64 = null,
 
 mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
 mouse_event_target: ?Control = null,
+// Clickmatic requires a model shift above: we want to continue dispatching
+// click events to the same target, as long as our cursor position remains over
+// that same target. The tricky part is defining what a target is: one example
+// is one of the click-to-move-1 scrollbar ends ("<", ">", "^", "v"). Those are
+// unit-sized so it makes sense that dragging your mouse away from it doesn't
+// continue to trigger it, and triggers resume if you drag your mouse back.
+// On the other hand, we have the scroll bar area the thumb tracks in: it's
+// split in two (if not scrolled all the way to one end), with a click and
+// drag in the region of one allowing repeated triggers on that space. Query:
+// is the valid target the _original_ space, or does it shrink/vanish?
+// Answer: it does shrink! You have to keep moving the mouse to it to keep
+// scrolling.
+//
+// Follow-up question: what state do we need to store to match that target? What
+// would identify a target? It updates over time so we definitely need to get an
+// object we can query each frame.
+// Answer: We can maybe just use the mouse_event_target and ask it to do any
+// more specific matching required.
+// Action item: check all references to mouse_event_target & verify the
+// semantics will hold up.
+// Notes:
+// - mouse_event_target is only set for Buttons and Editors at present.
+// - handleMouseDrag is only called on mouse_event_targets.
+// - handleMouseUp is also only called on mouse_event_targets (and clears
+//   mouse_event_target).
+// This is plenty; the main things it needs to work on are scroll-related, which
+// are all contained within Editor.
+clickmatic_on: bool = false,
+clickmatic_tick: ?u64 = null, // Only set when a mouse_event_target is moused down on.
 
 alt_held: bool = false,
 focus: union(enum) {
@@ -100,6 +129,9 @@ pub const Shortcut = struct {
 const TYPEMATIC_DELAY_MS = 500;
 const TYPEMATIC_REPEAT_MS = 1000 / 25;
 
+const CLICKMATIC_DELAY_MS = 500;
+const CLICKMATIC_REPEAT_MS = 1000 / 8;
+
 pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f32) !*Imtui {
     const imtui = try allocator.create(Imtui);
     imtui.* = .{
@@ -127,15 +159,15 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
         .key_down => |key| {
             if (key.is_repeat) return;
             try self.handleKeyPress(key.keycode, key.modifiers);
-            self.keydown_tick = SDL.getTicks64();
             self.keydown_sym = key.keycode;
             self.keydown_mod = key.modifiers;
             self.typematic_on = false;
+            self.typematic_tick = SDL.getTicks64();
         },
         .key_up => |key| {
             // We don't try to match key down to up.
             try self.handleKeyUp(key.keycode);
-            self.keydown_tick = null;
+            self.typematic_tick = null;
         },
         .mouse_motion => |ev| {
             const pos = self.interpolateMouse(ev);
@@ -151,6 +183,9 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
             _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
             try self.handleMouseDown(ev.button, ev.clicks);
             self.mouse_down = ev.button;
+            self.clickmatic_on = false;
+            if (self.mouse_event_target != null)
+                self.clickmatic_tick = SDL.getTicks64();
         },
         .mouse_button_up => |ev| {
             const pos = self.interpolateMouse(ev);
@@ -158,6 +193,7 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
             _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
             try self.handleMouseUp(ev.button, ev.clicks);
             self.mouse_down = null;
+            self.clickmatic_tick = null;
         },
         .window => |ev| {
             if (ev.type == .close)
@@ -193,14 +229,25 @@ pub fn newFrame(self: *Imtui) !void {
     self.delta_tick = this_tick - self.last_tick;
     defer self.last_tick = this_tick;
 
-    if (self.keydown_tick) |keydown_tick| {
-        if (!self.typematic_on and this_tick >= keydown_tick + TYPEMATIC_DELAY_MS) {
+    if (self.typematic_tick) |typematic_tick| {
+        if (!self.typematic_on and this_tick >= typematic_tick + TYPEMATIC_DELAY_MS) {
             self.typematic_on = true;
-            self.keydown_tick = keydown_tick + TYPEMATIC_DELAY_MS;
+            self.typematic_tick = typematic_tick + TYPEMATIC_DELAY_MS;
             try self.handleKeyPress(self.keydown_sym, self.keydown_mod);
-        } else if (self.typematic_on and this_tick >= keydown_tick + TYPEMATIC_REPEAT_MS) {
-            self.keydown_tick = keydown_tick + TYPEMATIC_REPEAT_MS;
+        } else if (self.typematic_on and this_tick >= typematic_tick + TYPEMATIC_REPEAT_MS) {
+            self.typematic_tick = typematic_tick + TYPEMATIC_REPEAT_MS;
             try self.handleKeyPress(self.keydown_sym, self.keydown_mod);
+        }
+    }
+
+    if (self.clickmatic_tick) |clickmatic_tick| {
+        if (!self.clickmatic_on and this_tick >= clickmatic_tick + CLICKMATIC_DELAY_MS) {
+            self.clickmatic_on = true;
+            self.clickmatic_tick = clickmatic_tick + CLICKMATIC_DELAY_MS;
+            try self.handleMouseDown(self.mouse_down.?, 0);
+        } else if (self.clickmatic_on and this_tick >= clickmatic_tick + CLICKMATIC_REPEAT_MS) {
+            self.clickmatic_tick = clickmatic_tick + CLICKMATIC_REPEAT_MS;
+            try self.handleMouseDown(self.mouse_down.?, 0);
         }
     }
 
@@ -220,7 +267,6 @@ fn controlById(self: *Imtui, comptime tag: std.meta.Tag(Control), id: []const u8
         }
     }
 
-    std.debug.print("controlById invalidating\n", .{});
     self.allocator.free(e.key_ptr.*);
     e.value_ptr.deinit();
     self.controls.removeByPtr(e.key_ptr);
