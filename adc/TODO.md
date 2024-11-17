@@ -1,6 +1,6 @@
 * [x] click to set cursor
-* [-] selection (shift) 🐈 🐈‍⬛
-* [ ] selection (drag)
+* [x] selection (shift)
+* [-] selection (drag) 🐈 🐈‍⬛
 * [x] scroll bars (clicking on arrows adjusts scroll by exactly 1; clicking in a
       space moves one entire page in that direction, capping at the end)
   * [x] clicking *on* the thumb seems to just reset cursor_x to scroll_x

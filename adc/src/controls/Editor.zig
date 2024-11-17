@@ -163,11 +163,11 @@ pub fn end(self: *Editor) void {
                     );
             }
         } else {
-            // across line
-            // self.imtui.text_mode.paint(
-            // for (@min(shf.cursor_row, self.cursor_row)..@max(shf.cursor_row, self.cursor_row) + 1) |r| {
-            //     _ = r;
-            // }
+            if (self.scroll_row + y >= @min(self.cursor_row, shf.cursor_row) and
+                self.scroll_row + y <= @max(self.cursor_row, shf.cursor_row))
+            {
+                self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1, y + self.r1 + 2, self.c2 - 1, 0x71, .Blank);
+            }
         };
         const line = &src.lines.items[self.scroll_row + y];
         const upper = @min(line.items.len, self.c2 - self.c1 - 2 + self.scroll_col);
@@ -347,7 +347,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
             }
         } else if (r == self.r2 - 2) {
             // Ask me about the pages in my diary required to work this condition out!
-            if (self.scroll_row < self._source.?.lines.items.len - (self.r2 - self.r1 - 2 - 1)) {
+            if (self.scroll_row < self._source.?.lines.items.len -| (self.r2 - self.r1 - 2 - 1)) {
                 if (self.cursor_row == self.scroll_row)
                     self.cursor_row += 1;
                 self.scroll_row += 1;
