@@ -20,15 +20,16 @@ _immediate: bool = undefined,
 
 cursor_row: usize = 0,
 cursor_col: usize = 0,
-shift_start: ?struct {
+shift_down: bool = false,
+selection_start: ?struct {
     cursor_row: usize,
     cursor_col: usize,
 } = null,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
 toggled_fullscreen: bool = false,
-dragging_title: bool = false,
-header_dragged_to: ?usize = null,
+dragging: ?enum { header, text } = null,
+dragged_header_to: ?usize = null,
 
 pub const MAX_LINE = 255;
 
@@ -137,7 +138,7 @@ pub fn end(self: *Editor) void {
     self.imtui.text_mode.paint(self.r1 + 1, self.c1 + 1, self.r2, self.c2 - 1, 0x17, .Blank);
 
     for (0..@min(self.r2 - self.r1 - 1, src.lines.items.len - self.scroll_row)) |y| {
-        if (self.shift_start) |shf| if (shf.cursor_row == self.cursor_row) {
+        if (self.selection_start) |shf| if (shf.cursor_row == self.cursor_row) {
             if (self.scroll_row + y == self.cursor_row) {
                 if (self.cursor_col < shf.cursor_col)
                     // within-line, to left of origin
@@ -211,15 +212,19 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         // disabled when the cursor is invisible needs to be above here.
         return;
 
-    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
+    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
         // We probably wanna do this in a few more places too (like else{} below).
-        self.shift_start = null
-    else if (self.shift_start == null)
-        // We probably wanna restrict the cases this is applicable in.
-        self.shift_start = .{
-            .cursor_row = self.cursor_row,
-            .cursor_col = self.cursor_col,
-        };
+        self.selection_start = null;
+        self.shift_down = false;
+    } else {
+        self.shift_down = true;
+        if (self.selection_start == null)
+            // We probably wanna restrict the cases this is applicable in.
+            self.selection_start = .{
+                .cursor_row = self.cursor_row,
+                .cursor_col = self.cursor_col,
+            };
+    }
 
     switch (keycode) {
         .down => if (self.cursor_row < src.lines.items.len) {
@@ -266,6 +271,11 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
     }
 }
 
+pub fn handleKeyUp(self: *Editor, keycode: SDL.Keycode) !void {
+    if (keycode == .left_shift or keycode == .right_shift)
+        self.shift_down = false;
+}
+
 pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
     _ = button;
     _ = clicks;
@@ -273,8 +283,9 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
     const r = self.imtui.mouse_row;
     const c = self.imtui.mouse_col;
 
-    self.dragging_title = false;
-    self.shift_start = null;
+    self.dragging = null;
+    if (!self.shift_down)
+        self.selection_start = null;
 
     if (r == self.r1) {
         // Fullscreen triggers on MouseUp.
@@ -282,13 +293,14 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
         // effect processing of anything else adversely. Unclear what might not
         // be anticipating a mid-frame focus change.
         self.imtui.focus_editor = self.id;
-        self.dragging_title = true;
+        self.dragging = .header;
         return;
     }
 
     if (c > self.c1 and c < self.c2 - 1) {
         const hscroll = !self._immediate and r == self.r2 - 1;
         if (hscroll and self.imtui.focus_editor == self.id) {
+            self.selection_start = null;
             if (c == self.c1 + 1) {
                 if (self.scroll_col > 0) {
                     self.scroll_col -= 1;
@@ -318,11 +330,18 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
             self.cursor_col = self.scroll_col + c - self.c1 - 1;
             self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len);
             self.imtui.focus_editor = self.id;
+            self.dragging = .text;
+            if (!self.shift_down)
+                self.selection_start = .{
+                    .cursor_row = self.cursor_row,
+                    .cursor_col = self.cursor_col,
+                };
         }
         return;
     }
 
     if (self.imtui.focus_editor == self.id and !self._immediate and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
+        self.selection_start = null;
         if (r == self.r1 + 1) {
             if (self.scroll_row > 0) {
                 if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 3)
@@ -360,9 +379,22 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
 pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton) !void {
     _ = b;
 
-    if (self.dragging_title and self.r1 != self.imtui.mouse_row) {
-        self.header_dragged_to = self.imtui.mouse_row;
+    if (self.dragging == .header and self.r1 != self.imtui.mouse_row) {
+        self.dragged_header_to = self.imtui.mouse_row;
         return;
+    }
+
+    if (self.dragging == .text) {
+        // TODO: repro when dragging off the window on some side
+        if (self.imtui.mouse_col > self.c1 and self.imtui.mouse_col < self.c2 - 1 and
+            self.imtui.mouse_row != self.r1)
+        {
+            // for now, just within
+            const hscroll = !self._immediate and self.imtui.mouse_row == self.r2 - 1;
+            const eff_r = if (hscroll) self.imtui.mouse_row - 1 else self.imtui.mouse_row;
+            self.cursor_col = self.scroll_col + self.imtui.mouse_col - self.c1 - 1;
+            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len);
+        }
     }
 }
 
@@ -396,8 +428,8 @@ pub fn toggledFullscreen(self: *Editor) bool {
 }
 
 pub fn headerDraggedTo(self: *Editor) ?usize {
-    defer self.header_dragged_to = null;
-    return self.header_dragged_to;
+    defer self.dragged_header_to = null;
+    return self.dragged_header_to;
 }
 
 fn currentLine(self: *Editor) !*std.ArrayList(u8) {

@@ -1,6 +1,7 @@
 * [x] click to set cursor
 * [x] selection (shift)
-* [-] selection (drag) 🐈 🐈‍⬛
+* [-] selection (drag)
+  * [-] dragging to edge to select wider 🐈 🐈‍⬛
 * [x] scroll bars (clicking on arrows adjusts scroll by exactly 1; clicking in a
       space moves one entire page in that direction, capping at the end)
   * [x] clicking *on* the thumb seems to just reset cursor_x to scroll_x
@@ -27,7 +28,8 @@
   * confirmed this is indeed the precise behaviour from QB. wonder if we
     actually knew that, somewhere deep down; feels like it!
 * [x] click in Immediate editor somewhere not at col 1, press enter, crash
-
+* [ ] focussing a different Editor drops the Editor's selection
+  * doesn't happen when just using menus, otherwise how do you Edit->Copy?
 
 
 ---

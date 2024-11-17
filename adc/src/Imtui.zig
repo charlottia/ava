@@ -433,6 +433,11 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
             self.focus = .editor;
         }
     }
+
+    if (self.focus == .editor) {
+        const e = try self.focusedEditor();
+        try e.handleKeyUp(keycode);
+    }
 }
 
 fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
