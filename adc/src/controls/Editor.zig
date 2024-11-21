@@ -30,7 +30,16 @@ scroll_col: usize = 0,
 toggled_fullscreen: bool = false,
 dragging: ?enum { header, text } = null,
 dragged_header_to: ?usize = null,
-clickmatic_target: ?enum { hscr_left, hscr_right } = null,
+clickmatic_target: ?enum {
+    hscr_left,
+    hscr_right,
+    hscr_toward_left,
+    hscr_toward_right,
+    vscr_up,
+    vscr_down,
+    vscr_toward_up,
+    vscr_toward_down,
+} = null,
 
 pub const MAX_LINE = 255;
 
@@ -313,16 +322,23 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
                     self.scroll_col -= 1;
                     self.cursor_col -= 1;
                 }
-            } else if (c > self.c1 + 1 and c < self.c2 - 2 and !ct_match) {
-                self.selection_start = null;
+            } else if (c > self.c1 + 1 and c < self.c2 - 2) {
                 const hst = self.horizontalScrollThumb();
-                if (c - 2 < hst)
-                    self.scroll_col = if (self.scroll_col >= (self.c2 - self.c1 - 2)) self.scroll_col - (self.c2 - self.c1 - 2) else 0
-                else if (c - 2 > hst)
-                    self.scroll_col = if (self.scroll_col <= MAX_LINE - (self.c2 - self.c1 - 3) - (self.c2 - self.c1 - 2)) self.scroll_col + (self.c2 - self.c1 - 2) else MAX_LINE - (self.c2 - self.c1 - 3)
-                else
+                if (c - 2 < hst and (!ct_match or self.clickmatic_target == .hscr_toward_left)) {
+                    self.selection_start = null;
+                    self.clickmatic_target = .hscr_toward_left;
+                    self.cursor_col = self.scroll_col;
+                    self.scroll_col = if (self.scroll_col >= (self.c2 - self.c1 - 2)) self.scroll_col - (self.c2 - self.c1 - 2) else 0;
+                } else if (c - 2 > hst and (!ct_match or self.clickmatic_target == .hscr_toward_right)) {
+                    self.selection_start = null;
+                    self.clickmatic_target = .hscr_toward_right;
+                    self.cursor_col = self.scroll_col;
+                    self.scroll_col = if (self.scroll_col <= MAX_LINE - (self.c2 - self.c1 - 3) - (self.c2 - self.c1 - 2)) self.scroll_col + (self.c2 - self.c1 - 2) else MAX_LINE - (self.c2 - self.c1 - 3);
+                } else if (!ct_match) {
+                    self.selection_start = null;
+                    self.cursor_col = self.scroll_col;
                     self.scroll_col = (hst * (MAX_LINE - (self.c2 - self.c1 - 3)) + (self.c2 - self.c1 - 6)) / (self.c2 - self.c1 - 5);
-                self.cursor_col = self.scroll_col;
+                }
             } else if (c == self.c2 - 2 and (!ct_match or self.clickmatic_target == .hscr_right)) {
                 self.selection_start = null;
                 self.clickmatic_target = .hscr_right;
@@ -351,20 +367,26 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
     }
 
     if (self.imtui.focus_editor == self.id and !self._immediate and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
-        self.selection_start = null;
-        if (r == self.r1 + 1 and !ct_match) {
+        if (r == self.r1 + 1 and (!ct_match or self.clickmatic_target == .vscr_up)) {
+            self.selection_start = null;
+            self.clickmatic_target = .vscr_up;
             if (self.scroll_row > 0) {
                 if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 3)
                     self.cursor_row -= 1;
                 self.scroll_row -= 1;
             }
-        } else if (r > self.r1 + 1 and r < self.r2 - 2 and !ct_match) {
+        } else if (r > self.r1 + 1 and r < self.r2 - 2) {
             const vst = self.verticalScrollThumb();
-            if (r - self.r1 - 2 < vst)
-                self.pageUp()
-            else if (r - self.r1 - 2 > vst)
-                self.pageDown()
-            else {
+            if (r - self.r1 - 2 < vst and (!ct_match or self.clickmatic_target == .vscr_toward_up)) {
+                self.selection_start = null;
+                self.clickmatic_target = .vscr_toward_up;
+                self.pageUp();
+            } else if (r - self.r1 - 2 > vst and (!ct_match or self.clickmatic_target == .vscr_toward_down)) {
+                self.selection_start = null;
+                self.clickmatic_target = .vscr_toward_down;
+                self.pageDown();
+            } else if (!ct_match) {
+                self.selection_start = null;
                 // ~~I can't quite get this to the exact same algorithm as
                 // QBASIC!!! Agh!! What gives!!! Daifuku!!~~
                 // nvm that got it
@@ -374,7 +396,9 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
                 self.cursor_row = @intFromFloat(start);
                 self.scroll_row = @intFromFloat(start);
             }
-        } else if (r == self.r2 - 2 and !ct_match) {
+        } else if (r == self.r2 - 2 and (!ct_match or self.clickmatic_target == .vscr_down)) {
+            self.selection_start = null;
+            self.clickmatic_target = .vscr_down;
             // Ask me about the pages in my diary required to work this condition out!
             if (self.scroll_row < self._source.?.lines.items.len -| (self.r2 - self.r1 - 2 - 1)) {
                 if (self.cursor_row == self.scroll_row)
