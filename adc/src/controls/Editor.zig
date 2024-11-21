@@ -30,6 +30,7 @@ scroll_col: usize = 0,
 toggled_fullscreen: bool = false,
 dragging: ?enum { header, text } = null,
 dragged_header_to: ?usize = null,
+clickmatic_target: ?enum { hscr_left, hscr_right } = null,
 
 pub const MAX_LINE = 255;
 
@@ -276,37 +277,44 @@ pub fn handleKeyUp(self: *Editor, keycode: SDL.Keycode) !void {
         self.shift_down = false;
 }
 
-pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
+pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_match: bool) !void {
     _ = button;
     _ = clicks;
 
     const r = self.imtui.mouse_row;
     const c = self.imtui.mouse_col;
 
-    self.dragging = null;
-    if (!self.shift_down)
-        self.selection_start = null;
+    if (!ct_match) {
+        self.dragging = null;
+        if (!self.shift_down)
+            self.selection_start = null;
+        self.clickmatic_target = null;
+    }
 
     if (r == self.r1) {
-        // Fullscreen triggers on MouseUp.
-        // TODO: for this and all focus changes below, check that these won't
-        // affect processing of anything else adversely. Unclear what might not
-        // be anticipating a mid-frame focus change.
-        self.imtui.focus_editor = self.id;
-        self.dragging = .header;
+        if (!ct_match) {
+            // Fullscreen triggers on MouseUp.
+            // TODO: for this and all focus changes below, check that these won't
+            // affect processing of anything else adversely. Unclear what might not
+            // be anticipating a mid-frame focus change.
+            self.imtui.focus_editor = self.id;
+            self.dragging = .header;
+        }
         return;
     }
 
     if (c > self.c1 and c < self.c2 - 1) {
         const hscroll = !self._immediate and r == self.r2 - 1;
         if (hscroll and self.imtui.focus_editor == self.id) {
-            self.selection_start = null;
-            if (c == self.c1 + 1) {
+            if (c == self.c1 + 1 and (!ct_match or self.clickmatic_target == .hscr_left)) {
+                self.selection_start = null;
+                self.clickmatic_target = .hscr_left;
                 if (self.scroll_col > 0) {
                     self.scroll_col -= 1;
                     self.cursor_col -= 1;
                 }
-            } else if (c > self.c1 + 1 and c < self.c2 - 2) {
+            } else if (c > self.c1 + 1 and c < self.c2 - 2 and !ct_match) {
+                self.selection_start = null;
                 const hst = self.horizontalScrollThumb();
                 if (c - 2 < hst)
                     self.scroll_col = if (self.scroll_col >= (self.c2 - self.c1 - 2)) self.scroll_col - (self.c2 - self.c1 - 2) else 0
@@ -315,7 +323,9 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
                 else
                     self.scroll_col = (hst * (MAX_LINE - (self.c2 - self.c1 - 3)) + (self.c2 - self.c1 - 6)) / (self.c2 - self.c1 - 5);
                 self.cursor_col = self.scroll_col;
-            } else if (c == self.c2 - 2) {
+            } else if (c == self.c2 - 2 and (!ct_match or self.clickmatic_target == .hscr_right)) {
+                self.selection_start = null;
+                self.clickmatic_target = .hscr_right;
                 if (self.scroll_col < (MAX_LINE - (self.c2 - self.c1 - 3))) {
                     self.scroll_col += 1;
                     self.cursor_col += 1;
@@ -325,7 +335,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
                 self.cursor_col = self.scroll_col
             else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
                 self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
-        } else {
+        } else if (!ct_match) {
             const eff_r = if (hscroll) r - 1 else r;
             self.cursor_col = self.scroll_col + c - self.c1 - 1;
             self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len);
@@ -342,13 +352,13 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
 
     if (self.imtui.focus_editor == self.id and !self._immediate and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
         self.selection_start = null;
-        if (r == self.r1 + 1) {
+        if (r == self.r1 + 1 and !ct_match) {
             if (self.scroll_row > 0) {
                 if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 3)
                     self.cursor_row -= 1;
                 self.scroll_row -= 1;
             }
-        } else if (r > self.r1 + 1 and r < self.r2 - 2) {
+        } else if (r > self.r1 + 1 and r < self.r2 - 2 and !ct_match) {
             const vst = self.verticalScrollThumb();
             if (r - self.r1 - 2 < vst)
                 self.pageUp()
@@ -364,7 +374,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8) !void
                 self.cursor_row = @intFromFloat(start);
                 self.scroll_row = @intFromFloat(start);
             }
-        } else if (r == self.r2 - 2) {
+        } else if (r == self.r2 - 2 and !ct_match) {
             // Ask me about the pages in my diary required to work this condition out!
             if (self.scroll_row < self._source.?.lines.items.len -| (self.r2 - self.r1 - 2 - 1)) {
                 if (self.cursor_row == self.scroll_row)

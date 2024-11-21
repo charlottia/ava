@@ -181,7 +181,7 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
             const pos = self.interpolateMouse(ev);
             self.text_mode.positionMouseAt(pos.x, pos.y);
             _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
-            try self.handleMouseDown(ev.button, ev.clicks);
+            self.mouse_event_target = try self.handleMouseDown(ev.button, ev.clicks, false);
             self.mouse_down = ev.button;
             self.clickmatic_on = false;
             if (self.mouse_event_target != null)
@@ -192,6 +192,7 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
             self.text_mode.positionMouseAt(pos.x, pos.y);
             _ = self.handleMouseAt(self.text_mode.mouse_row, self.text_mode.mouse_col);
             try self.handleMouseUp(ev.button, ev.clicks);
+            self.mouse_event_target = null;
             self.mouse_down = null;
             self.clickmatic_tick = null;
         },
@@ -241,14 +242,23 @@ pub fn newFrame(self: *Imtui) !void {
     }
 
     if (self.clickmatic_tick) |clickmatic_tick| {
+        var trigger = false;
         if (!self.clickmatic_on and this_tick >= clickmatic_tick + CLICKMATIC_DELAY_MS) {
             self.clickmatic_on = true;
             self.clickmatic_tick = clickmatic_tick + CLICKMATIC_DELAY_MS;
-            try self.handleMouseDown(self.mouse_down.?, 0);
+            trigger = true;
         } else if (self.clickmatic_on and this_tick >= clickmatic_tick + CLICKMATIC_REPEAT_MS) {
             self.clickmatic_tick = clickmatic_tick + CLICKMATIC_REPEAT_MS;
-            try self.handleMouseDown(self.mouse_down.?, 0);
+            trigger = true;
         }
+
+        const target = self.mouse_event_target.?; // Assumed to be present if clickmatic_tick is.
+        if (trigger)
+            switch (target) {
+                .button => |bu| try bu.handleMouseDown(self.mouse_down.?, 0),
+                .editor => |e| try e.handleMouseDown(self.mouse_down.?, 0, true),
+                else => {},
+            };
     }
 
     self.text_mode.clear(0x07);
@@ -496,16 +506,13 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
     return old_mouse_row != self.mouse_row or old_mouse_col != self.mouse_col;
 }
 
-fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    self.mouse_event_target = null;
-
+fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, ct_match: bool) !?Control {
     if (b == .left and (self.getMenubar().?.mouseIsOver() or
         (self.openMenu() != null and self.openMenu().?.mouseIsOverItem())))
     {
         // meu Deus.
-        self.mouse_event_target = .{ .menubar = self.getMenubar().? };
         try self.getMenubar().?.handleMouseDown(b, clicks);
-        return;
+        return .{ .menubar = self.getMenubar().? };
     }
 
     if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
@@ -522,15 +529,17 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
     while (cit.next()) |c|
         switch (c.*) {
             .button => |bu| if (bu.*.mouseIsOver()) {
-                self.mouse_event_target = .{ .button = bu };
-                return try bu.handleMouseDown(b, clicks);
+                try bu.handleMouseDown(b, clicks);
+                return .{ .button = bu };
             },
             .editor => |e| if (e.*.mouseIsOver()) {
-                self.mouse_event_target = .{ .editor = e };
-                return try e.handleMouseDown(b, clicks);
+                try e.handleMouseDown(b, clicks, ct_match);
+                return .{ .editor = e };
             },
             else => {},
         };
+
+    return null;
 }
 
 fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton) !void {
@@ -544,10 +553,8 @@ fn handleMouseDrag(self: *Imtui, b: SDL.MouseButton) !void {
 }
 
 fn handleMouseUp(self: *Imtui, b: SDL.MouseButton, clicks: u8) !void {
-    if (self.mouse_event_target) |target| {
+    if (self.mouse_event_target) |target|
         try target.handleMouseUp(b, clicks);
-        self.mouse_event_target = null;
-    }
 }
 
 fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: usize } {

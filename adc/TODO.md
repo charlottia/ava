@@ -31,9 +31,6 @@
 * [ ] focussing a different Editor drops the Editor's selection
   * doesn't happen when just using menus, otherwise how do you Edit->Copy?
 
-* dragging immediate kinda borken rn?? focus transfers to editor, can crash it.
-  * oh ofc it's the clickmatic WIP.
-
 
 ---
 
