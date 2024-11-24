@@ -19,4 +19,4 @@
 
 ## License
 
-Ava is released under the [two-clause BSD license](LICENSE.txt).
+Ava is released under the [zero-clause BSD license](LICENSE.txt).
