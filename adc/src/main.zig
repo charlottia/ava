@@ -10,6 +10,7 @@ const Args = @import("./Args.zig");
 const EventThread = @import("./EventThread.zig");
 const Font = @import("./Font.zig");
 const Imtui = @import("./Imtui.zig");
+const Preferences = @import("./Preferences.zig");
 
 extern fn SetProcessDPIAware() bool;
 
@@ -91,6 +92,12 @@ pub fn main() !void {
 
     //     // ---
 
+    var prefs = try Preferences.init(allocator, .{
+        .full_menus = false,
+    });
+    try prefs.save();
+    defer prefs.deinit();
+
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
 
@@ -169,7 +176,7 @@ pub fn main() !void {
     else
         try Imtui.Controls.Editor.Source.createUntitled(allocator);
 
-    var adc = try Adc.init(imtui, primary_source);
+    var adc = try Adc.init(imtui, prefs, primary_source);
     defer adc.deinit();
 
     while (imtui.running) {
@@ -211,6 +218,7 @@ pub fn main() !void {
 
 const Adc = struct {
     imtui: *Imtui,
+    preferences: Preferences,
 
     sources: std.ArrayList(*Imtui.Controls.Editor.Source),
 
@@ -226,9 +234,9 @@ const Adc = struct {
         three: [3]usize,
     } = .{ .two = [2]usize{ 20, 3 } },
     fullscreen: bool = false,
-    full_menus: bool = false,
+    full_menus: bool,
 
-    fn init(imtui: *Imtui, primary_source: *Imtui.Controls.Editor.Source) !Adc {
+    fn init(imtui: *Imtui, preferences: Preferences, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
 
         var sources = std.ArrayList(*Imtui.Controls.Editor.Source).init(imtui.allocator);
@@ -240,10 +248,12 @@ const Adc = struct {
 
         return .{
             .imtui = imtui,
+            .preferences = preferences,
             .sources = sources,
             .primary_source = primary_source,
             .secondary_source = primary_source,
             .immediate_source = immediate_source,
+            .full_menus = preferences.get(bool, .full_menus),
         };
     }
 
@@ -474,8 +484,11 @@ const Adc = struct {
         var full_menus = (try options_menu.item("&Full Menus")).help("Toggles between Easy and Full Menu usage");
         if (self.full_menus)
             full_menus.bullet();
-        if (full_menus.chosen())
+        if (full_menus.chosen()) {
             self.full_menus = !self.full_menus;
+            self.preferences.set(.{ .full_menus = self.full_menus });
+            try self.preferences.save();
+        }
         try options_menu.end();
 
         var help_menu = try menubar.menu("&Help", 25);

@@ -35,6 +35,12 @@ pub fn build(b: *std.Build) void {
     }).module("serial");
     exe.root_module.addImport("serial", serial_mod);
 
+    const known_folders_mod = b.dependency("known-folders", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("known-folders");
+    exe.root_module.addImport("known-folders", known_folders_mod);
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

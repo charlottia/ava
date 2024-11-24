@@ -17,6 +17,10 @@
             .url = "https://github.com/kivikakk/SDL.zig/archive/9d18b804dbf0bafd5191c5309110c4f479a35998.tar.gz",
             .hash = "1220b9707cae5f66bbf8979c128092e31fe5ff5e24369f536dcf4eb82eff6071488f",
         },
+        .@"known-folders" = .{
+            .url = "git+https://github.com/ziglibs/known-folders.git#1cceeb70e77dec941a4178160ff6c8d05a74de6f",
+            .hash = "12205f5e7505c96573f6fc5144592ec38942fb0a326d692f9cddc0c7dd38f9028f29",
+        },
     },
     .paths = .{
         "README.md",

@@ -2,6 +2,7 @@ Some last low-hanging fruit to forage for.
 
 * [x] dot-point menu toggles
 * [x] "easy" menus
+  * [x] save settings
 * [ ] display customisation
   * [ ] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
   * [ ] scroll bars on/off
