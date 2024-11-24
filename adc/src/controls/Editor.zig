@@ -293,7 +293,6 @@ pub fn handleKeyUp(self: *Editor, keycode: SDL.Keycode) !void {
 }
 
 pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_match: bool) !void {
-    _ = button;
     _ = clicks;
 
     const r = self.imtui.mouse_row;
@@ -306,12 +305,16 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
         self.clickmatic_target = null;
     }
 
+    if (ct_match and self.imtui.focus_editor == self.id and self.dragging == .text) {
+        // Transform clickmatic events to drag events when dragging text so you
+        // can drag to an edge and continue selecting.
+        try self.handleMouseDrag(button);
+        return;
+    }
+
     if (r == self.r1) {
         if (!ct_match) {
-            // Fullscreen triggers on MouseUp.
-            // TODO: for this and all focus changes below, check that these won't
-            // affect processing of anything else adversely. Unclear what might not
-            // be anticipating a mid-frame focus change.
+            // Fullscreen triggers on MouseUp, not here.
             self.imtui.focus_editor = self.id;
             self.dragging = .header;
         }
@@ -320,14 +323,11 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
 
     if (c > self.c1 and c < self.c2 - 1) {
         const hscroll = self.showHScrollWhenActive() and r == self.r2 - 1;
-        if (hscroll and self.imtui.focus_editor == self.id) {
+        if (self.imtui.focus_editor == self.id and hscroll) {
             if (c == self.c1 + 1 and (!ct_match or self.clickmatic_target == .hscr_left)) {
                 self.selection_start = null;
                 self.clickmatic_target = .hscr_left;
-                if (self.scroll_col > 0) {
-                    self.scroll_col -= 1;
-                    self.cursor_col -= 1;
-                }
+                self.hscrLeft();
             } else if (c > self.c1 + 1 and c < self.c2 - 2) {
                 const hst = self.horizontalScrollThumb();
                 if (c - 2 < hst and (!ct_match or self.clickmatic_target == .hscr_toward_left)) {
@@ -348,10 +348,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
             } else if (c == self.c2 - 2 and (!ct_match or self.clickmatic_target == .hscr_right)) {
                 self.selection_start = null;
                 self.clickmatic_target = .hscr_right;
-                if (self.scroll_col < (MAX_LINE - (self.c2 - self.c1 - 3))) {
-                    self.scroll_col += 1;
-                    self.cursor_col += 1;
-                }
+                self.hscrRight();
             }
             if (self.cursor_col < self.scroll_col)
                 self.cursor_col = self.scroll_col
@@ -372,15 +369,11 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
         return;
     }
 
-    if (self.imtui.focus_editor == self.id and !self._immediate and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
+    if (self.imtui.focus_editor == self.id and self.showVScrollWhenActive() and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
         if (r == self.r1 + 1 and (!ct_match or self.clickmatic_target == .vscr_up)) {
             self.selection_start = null;
             self.clickmatic_target = .vscr_up;
-            if (self.scroll_row > 0) {
-                if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 3)
-                    self.cursor_row -= 1;
-                self.scroll_row -= 1;
-            }
+            self.vscrUp();
         } else if (r > self.r1 + 1 and r < self.r2 - 2) {
             const vst = self.verticalScrollThumb();
             if (r - self.r1 - 2 < vst and (!ct_match or self.clickmatic_target == .vscr_toward_up)) {
@@ -405,12 +398,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
         } else if (r == self.r2 - 2 and (!ct_match or self.clickmatic_target == .vscr_down)) {
             self.selection_start = null;
             self.clickmatic_target = .vscr_down;
-            // Ask me about the pages in my diary required to work this condition out!
-            if (self.scroll_row < self._source.?.lines.items.len -| (self.r2 - self.r1 - 2 - 1)) {
-                if (self.cursor_row == self.scroll_row)
-                    self.cursor_row += 1;
-                self.scroll_row += 1;
-            }
+            self.vscrDown();
         }
         return;
     }
@@ -427,20 +415,24 @@ pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton) !void {
     if (self.dragging == .text) {
         const hscroll = self.showHScrollWhenActive();
 
-        if (self.imtui.mouse_col <= self.c1 or self.imtui.mouse_col >= self.c2 - 1) {
-            std.debug.print("horizontal drag at ({d},{d})\n", .{ self.imtui.mouse_row, self.imtui.mouse_col });
-        } else if (self.imtui.mouse_row <= self.r1 or self.imtui.mouse_row >= self.r2 - @intFromBool(hscroll)) {
-            std.debug.print("vertical drag at ({d},{d})\n", .{ self.imtui.mouse_row, self.imtui.mouse_col });
-        } else if (self.imtui.mouse_col > self.c1 and self.imtui.mouse_col < self.c2 - 1 and
+        if (self.imtui.mouse_col <= self.c1)
+            self.hscrLeft()
+        else if (self.imtui.mouse_col >= self.c2 - 1)
+            self.hscrRight()
+        else if (self.imtui.mouse_row <= self.r1)
+            self.vscrUp()
+        else if (self.imtui.mouse_row >= self.r2 - @intFromBool(hscroll))
+            self.vscrDown()
+        else if (self.imtui.mouse_col > self.c1 and self.imtui.mouse_col < self.c2 - 1 and
             self.imtui.mouse_row != self.r1)
         {
-            std.debug.print("text drag at ({d},{d})\n", .{ self.imtui.mouse_row, self.imtui.mouse_col });
             self.cursor_col = self.scroll_col + self.imtui.mouse_col - self.c1 - 1;
             self.cursor_row = @min(
                 self.scroll_row + self.imtui.mouse_row -| self.r1 -| 1,
                 self._source.?.lines.items.len -| 1, // deny virtual line if possible
             );
         }
+        return;
     }
 }
 
@@ -476,6 +468,37 @@ pub fn toggledFullscreen(self: *Editor) bool {
 pub fn headerDraggedTo(self: *Editor) ?usize {
     defer self.dragged_header_to = null;
     return self.dragged_header_to;
+}
+
+fn hscrLeft(self: *Editor) void {
+    if (self.scroll_col > 0) {
+        self.scroll_col -= 1;
+        self.cursor_col -= 1;
+    }
+}
+
+fn hscrRight(self: *Editor) void {
+    if (self.scroll_col < (MAX_LINE - (self.c2 - self.c1 - 3))) {
+        self.scroll_col += 1;
+        self.cursor_col += 1;
+    }
+}
+
+fn vscrUp(self: *Editor) void {
+    if (self.scroll_row > 0) {
+        if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 3)
+            self.cursor_row -= 1;
+        self.scroll_row -= 1;
+    }
+}
+
+fn vscrDown(self: *Editor) void {
+    // Ask me about the pages in my diary required to work this condition out!
+    if (self.scroll_row < self._source.?.lines.items.len -| (self.r2 - self.r1 - 2 - 1)) {
+        if (self.cursor_row == self.scroll_row)
+            self.cursor_row += 1;
+        self.scroll_row += 1;
+    }
 }
 
 fn currentLine(self: *Editor) !*std.ArrayList(u8) {

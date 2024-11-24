@@ -1,14 +1,14 @@
 * [x] click to set cursor
 * [x] selection (shift)
 * [*] selection (drag)
-  * [-] dragging to edge to select wider 🐈 🐈‍⬛
+  * [x] dragging to edge to select wider
     * dragging in an editor, if the cursor is outside the editable area
       horizontally (c==0/79), it scrolls once per tick in that direction, if
       possible.
     * if it's *not* outside horizontally, but is outside vertically, it scrolls
       once per tick in that direction, if possible. (hscroll is considered
       "outside".)
-    * [ ] moving the cursor within that same section also causes a scroll-by-1
+    * [x] moving the cursor within that same section also causes a scroll-by-1
           (on top of clickmatic).
 * [x] scroll bars (clicking on arrows adjusts scroll by exactly 1; clicking in a
       space moves one entire page in that direction, capping at the end)
@@ -16,7 +16,7 @@
     * [x] it also sets scroll_x to the earliest position for that thumb.
   * [x] the cursor's position should otherwise remain constant
   * [x] all the above for vertical too --- it's weird.
-* [ ] mouse wheel scrolling
+* [ ] mouse wheel scrolling  🐈 🐈‍⬛
 * [x] fullscreen
 * [x] F6 cycles windows; when one is fullscreen, cycles them through in turn.
 * [x] split either splits main in 2, or unsplits. (always un-fullscreens.)
