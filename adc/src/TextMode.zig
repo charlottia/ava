@@ -31,7 +31,8 @@ pub fn TextMode(H: usize, W: usize) type {
 
         screen: [W * H]u16 = [_]u16{0x0700} ** (W * H),
         renderer: SDL.Renderer,
-        font: *Font,
+        font: Font,
+        font_rendered: Font.Rendered,
         mouse_row: usize = H - 1,
         mouse_col: usize = W - 1,
         flip_timer: i16 = FLIP_MS, // XXX? imelik tunne
@@ -41,12 +42,16 @@ pub fn TextMode(H: usize, W: usize) type {
         cursor_row: usize = 0,
         cursor_col: usize = 0,
 
-        pub fn init(renderer: SDL.Renderer, font: *Font) !Self {
-            try font.prepare(renderer);
+        pub fn init(renderer: SDL.Renderer, font: Font) !Self {
             return .{
                 .renderer = renderer,
                 .font = font,
+                .font_rendered = try font.prepare(renderer),
             };
+        }
+
+        pub fn deinit(self: *const Self) void {
+            self.font_rendered.deinit();
         }
 
         pub fn positionMouseAt(self: *Self, mouse_x: usize, mouse_y: usize) void {
@@ -66,7 +71,7 @@ pub fn TextMode(H: usize, W: usize) type {
                         (pair & 0xFF)
                 else
                     pair;
-                try self.font.render(self.renderer, p, c, r);
+                try self.font_rendered.render(self.renderer, p, c, r);
 
                 if (c == W - 1) {
                     c = 0;

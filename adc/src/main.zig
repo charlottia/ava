@@ -97,7 +97,6 @@ pub fn main() !void {
     var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
     defer font.deinit();
 
-    // var ddpi: f32 = -1;
     var hdpi: f32 = -1;
     var vdpi: f32 = -1;
 
@@ -134,7 +133,8 @@ pub fn main() !void {
         // We didn't get a hidpi window, but we'd probably like one? (e.g. Wayland??)
         std.log.debug("manual hidpi", .{});
         eff_scale = 2;
-        // TODO: expose this in SDL.zig.
+        // XXX: this is exposed in more recent SDL.zig, but they're now
+        // targetting 0.14.0-dev and we aren't.
         SDL.c.SDL_SetWindowSize(window.ptr, @intCast(request_width * 2), @intCast(request_height * 2));
         try renderer.setScale(eff_scale, eff_scale);
     } else {

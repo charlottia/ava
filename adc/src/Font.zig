@@ -9,9 +9,6 @@ char_width: usize,
 char_height: usize,
 chars: []const []const u16,
 
-charset_prepared: bool = false,
-charset: [256]SDL.Texture = undefined,
-
 pub const CgaColors = [16]u24{
     0x000000,
     0x0000AA,
@@ -31,7 +28,7 @@ pub const CgaColors = [16]u24{
     0xFFFFFF,
 };
 
-pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !*Font {
+pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
     var char_width: usize = undefined;
     var char_height: usize = undefined;
 
@@ -87,32 +84,49 @@ pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !*Font {
 
     if (parser_state != .ended) return error.BadGlyph;
 
-    const s = try allocator.create(Font);
-    errdefer allocator.destroy(s);
-    s.* = .{
+    return .{
         .allocator = allocator,
         .char_width = char_width,
         .char_height = char_height,
         .chars = try chars.toOwnedSlice(),
     };
-    return s;
 }
 
-pub fn deinit(self: *Font) void {
+pub fn deinit(self: *const Font) void {
     for (self.chars) |c|
         self.allocator.free(c);
     self.allocator.free(self.chars);
-
-    if (self.charset_prepared)
-        for (self.charset) |t|
-            t.destroy();
-
-    self.allocator.destroy(self);
 }
 
-pub fn prepare(self: *Font, renderer: SDL.Renderer) !void {
-    std.debug.assert(!self.charset_prepared);
+pub const Rendered = struct {
+    allocator: Allocator,
+    char_width: usize,
+    char_height: usize,
+    charset: [256]SDL.Texture,
 
+    pub fn deinit(self: *const Rendered) void {
+        for (self.charset) |t|
+            t.destroy();
+    }
+
+    pub fn render(self: *const Rendered, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
+        const bg = CgaColors[(pair >> (8 + 4)) & 0x7];
+        const fg = CgaColors[(pair >> 8) & 0xf];
+        const character: u8 = @intCast(pair & 0xff);
+
+        try renderer.setColorRGBA(@intCast(bg >> 16), @intCast((bg >> 8) & 0xff), @intCast(bg & 0xff), 255);
+        try renderer.fillRect(.{ .x = @intCast(x * self.char_width), .y = @intCast(y * self.char_height), .width = @intCast(self.char_width), .height = @intCast(self.char_height) });
+
+        try self.charset[character].setColorModRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xff), @intCast(fg & 0xff), 255);
+        try renderer.copy(
+            self.charset[character],
+            .{ .x = @intCast(x * self.char_width), .y = @intCast(y * self.char_height), .width = @intCast(self.char_width), .height = @intCast(self.char_height) },
+            .{ .x = 0, .y = 0, .width = @intCast(self.char_width), .height = @intCast(self.char_height) },
+        );
+    }
+};
+
+pub fn prepare(self: *const Font, renderer: SDL.Renderer) !Rendered {
     var charset = [_]SDL.Texture{undefined} ** 256;
 
     for (0..256) |i| {
@@ -138,24 +152,10 @@ pub fn prepare(self: *Font, renderer: SDL.Renderer) !void {
 
     try renderer.setTarget(null);
 
-    self.charset_prepared = true;
-    self.charset = charset;
-}
-
-pub fn render(self: *const Font, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
-    std.debug.assert(self.charset_prepared);
-
-    const bg = CgaColors[(pair >> (8 + 4)) & 0x7];
-    const fg = CgaColors[(pair >> 8) & 0xf];
-    const character: u8 = @intCast(pair & 0xff);
-
-    try renderer.setColorRGBA(@intCast(bg >> 16), @intCast((bg >> 8) & 0xff), @intCast(bg & 0xff), 255);
-    try renderer.fillRect(.{ .x = @intCast(x * self.char_width), .y = @intCast(y * self.char_height), .width = @intCast(self.char_width), .height = @intCast(self.char_height) });
-
-    try self.charset[character].setColorModRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xff), @intCast(fg & 0xff), 255);
-    try renderer.copy(
-        self.charset[character],
-        .{ .x = @intCast(x * self.char_width), .y = @intCast(y * self.char_height), .width = @intCast(self.char_width), .height = @intCast(self.char_height) },
-        .{ .x = 0, .y = 0, .width = @intCast(self.char_width), .height = @intCast(self.char_height) },
-    );
+    return .{
+        .allocator = self.allocator,
+        .char_width = self.char_width,
+        .char_height = self.char_height,
+        .charset = charset,
+    };
 }

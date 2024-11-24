@@ -132,7 +132,7 @@ const TYPEMATIC_REPEAT_MS = 1000 / 25;
 const CLICKMATIC_DELAY_MS = 500;
 const CLICKMATIC_REPEAT_MS = 1000 / 8;
 
-pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: *Font, scale: f32) !*Imtui {
+pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: Font, scale: f32) !*Imtui {
     const imtui = try allocator.create(Imtui);
     imtui.* = .{
         .allocator = allocator,
@@ -150,6 +150,8 @@ pub fn deinit(self: *Imtui) void {
         c.value_ptr.deinit();
     }
     self.controls.deinit(self.allocator);
+
+    self.text_mode.deinit();
 
     self.allocator.destroy(self);
 }
