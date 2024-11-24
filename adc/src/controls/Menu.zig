@@ -65,10 +65,12 @@ pub fn item(self: *Menu, label: []const u8) !*Imtui.Controls.MenuItem {
         const i = try Imtui.Controls.MenuItem.create(self.imtui, label, self.menu_items_at);
         try self.menu_items.append(self.imtui.allocator, i);
         break :i i;
-    } else i: {
-        // XXX: can't handle item/separator swap
-        var i = self.menu_items.items[self.menu_items_at].?;
+    } else if (self.menu_items.items[self.menu_items_at]) |i| i: {
         i.describe(label, self.menu_items_at);
+        break :i i;
+    } else i: {
+        const i = try Imtui.Controls.MenuItem.create(self.imtui, label, self.menu_items_at);
+        self.menu_items.items[self.menu_items_at] = i;
         break :i i;
     };
     self.menu_items_at += 1;
@@ -76,11 +78,12 @@ pub fn item(self: *Menu, label: []const u8) !*Imtui.Controls.MenuItem {
 }
 
 pub fn separator(self: *Menu) !void {
-    // XXX: can't handle item/separator swap
     if (self.menu_items_at == self.menu_items.items.len)
         try self.menu_items.append(self.imtui.allocator, null)
-    else
-        std.debug.assert(self.menu_items.items[self.menu_items_at] == null);
+    else if (self.menu_items.items[self.menu_items_at]) |i| {
+        i.deinit();
+        self.menu_items.items[self.menu_items_at] = null;
+    }
     self.menu_items_at += 1;
 }
 
