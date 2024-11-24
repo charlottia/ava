@@ -97,17 +97,16 @@ pub fn main() !void {
     var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
     defer font.deinit();
 
-    const dm = try SDL.DisplayMode.getDesktopInfo(0);
-    std.debug.print("display 0: {d}x{d}\n", .{ dm.w, dm.h });
-
-    var ddpi: f32 = -1;
+    // var ddpi: f32 = -1;
     var hdpi: f32 = -1;
     var vdpi: f32 = -1;
 
-    if (SDL.c.SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) < 0)
+    // TODO: expose this in SDL.zig. (And adjust the C stub to allow nulls!)
+    if (SDL.c.SDL_GetDisplayDPI(0, null, &hdpi, &vdpi) < 0)
         std.debug.panic("couldn't get display dpi", .{});
 
-    std.debug.print("display 0: ddpi {d} hdpi {d} vdpi {d}\n", .{ ddpi, hdpi, vdpi });
+    const dm = try SDL.DisplayMode.getDesktopInfo(0);
+    std.log.debug("display 0: {d}x{d} px, dpi {d}x{d} ppi", .{ dm.w, dm.h, hdpi, vdpi });
 
     var eff_scale = scale orelse 1.0;
 
@@ -129,28 +128,26 @@ pub fn main() !void {
 
     if ((try renderer.getOutputSize()).width_pixels == window.getSize().width * 2) {
         // We got given a hidpi window. (e.g. macOS)
-        std.debug.print("native hidpi\n", .{});
+        std.log.debug("native hidpi", .{});
         try renderer.setScale(eff_scale * 2, eff_scale * 2);
     } else if ((hdpi >= 100 or vdpi >= 100) and scale == null) {
-        // We didn't, but we'd probably like one? (e.g. Wayland??)
-        std.debug.print("manual hidpi\n", .{});
-        // renderer.destroy();
-        SDL.c.SDL_SetWindowSize(window.ptr, @intCast(request_width * 2), @intCast(request_height * 2));
-        // var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
+        // We didn't get a hidpi window, but we'd probably like one? (e.g. Wayland??)
+        std.log.debug("manual hidpi", .{});
         eff_scale = 2;
+        // TODO: expose this in SDL.zig.
+        SDL.c.SDL_SetWindowSize(window.ptr, @intCast(request_width * 2), @intCast(request_height * 2));
         try renderer.setScale(eff_scale, eff_scale);
     } else {
-        std.debug.print("no hidpi\n", .{});
+        std.log.debug("no hidpi", .{});
         try renderer.setScale(eff_scale, eff_scale);
     }
 
     _ = try SDL.showCursor(false);
 
-    std.debug.print("request wxh:           {d}x{d}\n", .{ request_width, request_height });
-    std.debug.print("window wxh:            {d}x{d}\n", .{ window.getSize().width, window.getSize().height });
-    std.debug.print("renderer output wxh:   {d}x{d}\n", .{ (try renderer.getOutputSize()).width_pixels, (try renderer.getOutputSize()).height_pixels });
-    std.debug.print("renderer logical wxh:  {d}x{d}\n", .{ (try renderer.getLogicalSize()).width, (try renderer.getLogicalSize()).height });
-    std.debug.print("renderer viewport wxh: {d}x{d}\n", .{ renderer.getViewport().width, renderer.getViewport().height });
+    std.log.debug("request wxh:           {d}x{d}", .{ request_width, request_height });
+    std.log.debug("window wxh:            {d}x{d}", .{ window.getSize().width, window.getSize().height });
+    std.log.debug("renderer output wxh:   {d}x{d}", .{ (try renderer.getOutputSize()).width_pixels, (try renderer.getOutputSize()).height_pixels });
+    std.log.debug("renderer viewport wxh: {d}x{d}", .{ renderer.getViewport().width, renderer.getViewport().height });
 
     var imtui = try Imtui.init(allocator, renderer, font, eff_scale);
     defer imtui.deinit();
