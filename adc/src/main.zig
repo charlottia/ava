@@ -11,7 +11,7 @@ const EventThread = @import("./EventThread.zig");
 const Font = @import("./Font.zig");
 const Imtui = @import("./Imtui.zig");
 
-extern fn SDL_GetDisplayDPI(displayIndex: c_int, ddpi: [*c]f32, hdpi: [*c]f32, vdpi: [*c]f32) c_int;
+extern fn SetProcessDPIAware() bool;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -93,6 +93,9 @@ pub fn main() !void {
 
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
+
+    if ((comptime @import("builtin").target.os.tag == .windows) and !SetProcessDPIAware())
+        std.log.debug("failed to set process DPI aware", .{});
 
     var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
     defer font.deinit();
