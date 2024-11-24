@@ -11,6 +11,8 @@ const EventThread = @import("./EventThread.zig");
 const Font = @import("./Font.zig");
 const Imtui = @import("./Imtui.zig");
 
+extern fn SDL_GetDisplayDPI(displayIndex: c_int, ddpi: [*c]f32, hdpi: [*c]f32, vdpi: [*c]f32) c_int;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -95,6 +97,18 @@ pub fn main() !void {
     var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
     defer font.deinit();
 
+    const dm = try SDL.DisplayMode.getDesktopInfo(0);
+    std.debug.print("display 0: {d}x{d}\n", .{ dm.w, dm.h });
+
+    var ddpi: f32 = -1;
+    var hdpi: f32 = -1;
+    var vdpi: f32 = -1;
+
+    if (SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) < 0)
+        std.debug.panic("couldn't get display dpi", .{});
+
+    std.debug.print("display 0: ddpi {d} hdpi {d} vdpi {d}\n", .{ ddpi, hdpi, vdpi });
+
     const request_width: usize = @intFromFloat(@as(f32, @floatFromInt(80 * font.char_width)) * scale);
     const request_height: usize = @intFromFloat(@as(f32, @floatFromInt(25 * font.char_height)) * scale);
 
@@ -111,12 +125,17 @@ pub fn main() !void {
     var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
     defer renderer.destroy();
 
-    if ((try renderer.getOutputSize()).width_pixels == request_width * 2)
+    if ((try renderer.getOutputSize()).width_pixels == window.getSize().width * 2)
         try renderer.setScale(scale * 2, scale * 2)
     else
         try renderer.setScale(scale, scale);
 
     _ = try SDL.showCursor(false);
+    std.debug.print("request wxh:           {d}x{d}\n", .{ request_width, request_height });
+    std.debug.print("window wxh:            {d}x{d}\n", .{ window.getSize().width, window.getSize().height });
+    std.debug.print("renderer output wxh:   {d}x{d}\n", .{ (try renderer.getOutputSize()).width_pixels, (try renderer.getOutputSize()).height_pixels });
+    std.debug.print("renderer logical wxh:  {d}x{d}\n", .{ (try renderer.getLogicalSize()).width, (try renderer.getLogicalSize()).height });
+    std.debug.print("renderer viewport wxh: {d}x{d}\n", .{ renderer.getViewport().width, renderer.getViewport().height });
 
     var imtui = try Imtui.init(allocator, renderer, font, scale);
     defer imtui.deinit();

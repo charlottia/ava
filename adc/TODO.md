@@ -1,3 +1,16 @@
+Some last low-hanging fruit to forage for.
+
+* [ ] dot-point menu toggles
+* [ ] "easy" menus
+* [ ] display customisation
+  * [ ] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
+  * [ ] scroll bars on/off
+  * [ ] variable tab stop (not retroactive; not sure how QB handles actual \t)
+
+---
+
+2024-11-24: end of basic editor
+
 * [x] click to set cursor
 * [x] selection (shift)
 * [x] selection (drag)
