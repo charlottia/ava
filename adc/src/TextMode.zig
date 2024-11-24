@@ -74,7 +74,9 @@ pub fn TextMode(H: usize, W: usize) type {
                 } else c += 1;
             }
 
-            self.flip_timer -= @intCast(delta_tick);
+            // Don't crash if we get a huge delta_tick, such as on sleep, or
+            // when using a debugger.
+            self.flip_timer -|= @truncate(@as(i64, @intCast(delta_tick)));
             if (self.flip_timer <= 0) {
                 self.flip_timer += FLIP_MS;
                 self.cursor_on = !self.cursor_on;

@@ -6,6 +6,10 @@ Some last low-hanging fruit to forage for.
   * [ ] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
   * [ ] scroll bars on/off
   * [ ] variable tab stop (not retroactive; not sure how QB handles actual \t)
+* [-] rethink some of the many heap-allocated objects that probably don't need
+      to be (like Font)
+* [-] fix teardown on Windows (we try to destroy textures whose renderer has
+      already been torn down; D3D doesn't tolerate this)
 
 ---
 
