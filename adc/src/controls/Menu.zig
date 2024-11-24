@@ -37,8 +37,9 @@ pub fn describe(self: *Menu, r: usize, c: usize, label: []const u8, index: usize
     self.width = width;
 
     self.menu_c1 = c - 1;
-    if (self.menu_c1 + self.width + 3 > 77) // XXX screen 80
-        self.menu_c1 -= self.menu_c1 + self.width + 3 - 77;
+    const sw = @TypeOf(self.imtui.text_mode).W;
+    if (self.menu_c1 + self.width + 3 > sw - 3)
+        self.menu_c1 -= self.menu_c1 + self.width + 3 - (sw - 3);
     self.menu_c2 = self.menu_c1 + self.width + 3;
 
     self.menu_items_at = 0;

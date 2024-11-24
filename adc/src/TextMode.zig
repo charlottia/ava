@@ -3,7 +3,7 @@ const SDL = @import("sdl2");
 
 const Font = @import("./Font.zig");
 
-pub fn TextMode(H: usize, W: usize) type {
+pub fn TextMode(h: usize, w: usize) type {
     return struct {
         const Self = @This();
 
@@ -29,6 +29,9 @@ pub fn TextMode(H: usize, W: usize) type {
 
         // https://retrocomputing.stackexchange.com/a/27805/20624
         const FLIP_MS = 266;
+
+        pub const H = h;
+        pub const W = w;
 
         screen: [W * H]u16 = [_]u16{0x0700} ** (W * H),
         renderer: SDL.Renderer,
