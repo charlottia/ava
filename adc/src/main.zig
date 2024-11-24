@@ -109,8 +109,10 @@ pub fn main() !void {
 
     std.debug.print("display 0: ddpi {d} hdpi {d} vdpi {d}\n", .{ ddpi, hdpi, vdpi });
 
-    const request_width: usize = @intFromFloat(@as(f32, @floatFromInt(80 * font.char_width)) * scale);
-    const request_height: usize = @intFromFloat(@as(f32, @floatFromInt(25 * font.char_height)) * scale);
+    var eff_scale = scale orelse 1.0;
+
+    const request_width: usize = @intFromFloat(@as(f32, @floatFromInt(80 * font.char_width)) * eff_scale);
+    const request_height: usize = @intFromFloat(@as(f32, @floatFromInt(25 * font.char_height)) * eff_scale);
 
     var window = try SDL.createWindow(
         "Ava BASIC ADC",
@@ -128,16 +130,18 @@ pub fn main() !void {
     if ((try renderer.getOutputSize()).width_pixels == window.getSize().width * 2) {
         // We got given a hidpi window. (e.g. macOS)
         std.debug.print("native hidpi\n", .{});
-        try renderer.setScale(scale * 2, scale * 2);
-    } else if (hdpi >= 100 or vdpi >= 100) {
+        try renderer.setScale(eff_scale * 2, eff_scale * 2);
+    } else if ((hdpi >= 100 or vdpi >= 100) and scale == null) {
         // We didn't, but we'd probably like one? (e.g. Wayland??)
         std.debug.print("manual hidpi\n", .{});
-        renderer.destroy();
+        // renderer.destroy();
         SDL.c.SDL_SetWindowSize(window.ptr, @intCast(request_width * 2), @intCast(request_height * 2));
-        try renderer.setScale(scale * 2, scale * 2);
+        // var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
+        eff_scale = 2;
+        try renderer.setScale(eff_scale, eff_scale);
     } else {
         std.debug.print("no hidpi\n", .{});
-        try renderer.setScale(scale, scale);
+        try renderer.setScale(eff_scale, eff_scale);
     }
 
     _ = try SDL.showCursor(false);
@@ -148,7 +152,7 @@ pub fn main() !void {
     std.debug.print("renderer logical wxh:  {d}x{d}\n", .{ (try renderer.getLogicalSize()).width, (try renderer.getLogicalSize()).height });
     std.debug.print("renderer viewport wxh: {d}x{d}\n", .{ renderer.getViewport().width, renderer.getViewport().height });
 
-    var imtui = try Imtui.init(allocator, renderer, font, scale);
+    var imtui = try Imtui.init(allocator, renderer, font, eff_scale);
     defer imtui.deinit();
 
     // QB has files loaded in background, so we too should notice that not every

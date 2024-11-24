@@ -11,7 +11,7 @@ allocator: std.mem.Allocator,
 
 port: ?Port,
 filename: ?[]const u8,
-scale: f32,
+scale: ?f32,
 
 pub fn parse(allocator: std.mem.Allocator) !Args {
     var argv = try std.process.argsWithAllocator(allocator);
@@ -21,7 +21,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
 
     var port: ?Port = null;
     var filename: ?[]const u8 = null;
-    var scale: f32 = 1;
+    var scale: ?f32 = null;
 
     var state: enum { root, serial, socket, scale } = .root;
     while (argv.next()) |arg| {
