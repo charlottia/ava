@@ -1,0 +1,7 @@
+{
+  "x86_64-windows-gnu": {
+    "include": "../../../Downloads/SDL2-devel/x86_64-w64-mingw32/include",
+    "libs": "../../../Downloads/SDL2-devel/x86_64-w64-mingw32/lib",
+    "bin": "../../../Downloads/SDL2-devel/x86_64-w64-mingw32/bin"
+  }
+}
