@@ -129,7 +129,7 @@ pub fn end(self: *Editor) void {
     for (self.c1 + 1..self.c2 - 1) |x|
         self.imtui.text_mode.draw(self.r1, x, 0x17, .Horizontal);
 
-    const start = self.c1 + (self.c2 - src.title.len) / 2;
+    const start = self.c1 + (self.c2 - 1 - src.title.len) / 2;
     const colour: u8 = if (active) 0x71 else 0x17;
     self.imtui.text_mode.paint(self.r1, start - 1, self.r1 + 1, start + src.title.len + 1, colour, 0);
     self.imtui.text_mode.write(self.r1, start, src.title);
