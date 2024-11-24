@@ -104,7 +104,7 @@ pub fn main() !void {
     var hdpi: f32 = -1;
     var vdpi: f32 = -1;
 
-    if (SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) < 0)
+    if (SDL.c.SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) < 0)
         std.debug.panic("couldn't get display dpi", .{});
 
     std.debug.print("display 0: ddpi {d} hdpi {d} vdpi {d}\n", .{ ddpi, hdpi, vdpi });
@@ -125,12 +125,23 @@ pub fn main() !void {
     var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
     defer renderer.destroy();
 
-    if ((try renderer.getOutputSize()).width_pixels == window.getSize().width * 2)
-        try renderer.setScale(scale * 2, scale * 2)
-    else
+    if ((try renderer.getOutputSize()).width_pixels == window.getSize().width * 2) {
+        // We got given a hidpi window. (e.g. macOS)
+        std.debug.print("native hidpi\n", .{});
+        try renderer.setScale(scale * 2, scale * 2);
+    } else if (hdpi >= 100 or vdpi >= 100) {
+        // We didn't, but we'd probably like one? (e.g. Wayland??)
+        std.debug.print("manual hidpi\n", .{});
+        renderer.destroy();
+        SDL.c.SDL_SetWindowSize(window.ptr, @intCast(request_width * 2), @intCast(request_height * 2));
+        try renderer.setScale(scale * 2, scale * 2);
+    } else {
+        std.debug.print("no hidpi\n", .{});
         try renderer.setScale(scale, scale);
+    }
 
     _ = try SDL.showCursor(false);
+
     std.debug.print("request wxh:           {d}x{d}\n", .{ request_width, request_height });
     std.debug.print("window wxh:            {d}x{d}\n", .{ window.getSize().width, window.getSize().height });
     std.debug.print("renderer output wxh:   {d}x{d}\n", .{ (try renderer.getOutputSize()).width_pixels, (try renderer.getOutputSize()).height_pixels });
