@@ -186,20 +186,18 @@ pub fn end(self: *Editor) void {
             self.imtui.text_mode.write(y + self.r1 + 1, self.c1 + 1, line.items[self.scroll_col..upper]);
     }
 
-    if (active and !self._immediate) {
-        if (self.r2 - self.r1 > 4) {
-            self.imtui.text_mode.draw(self.r1 + 1, self.c2 - 1, 0x70, .ArrowUp);
-            self.imtui.text_mode.paint(self.r1 + 2, self.c2 - 1, self.r2 - 2, self.c2, 0x70, .DotsLight);
-            self.imtui.text_mode.draw(self.r1 + 2 + self.verticalScrollThumb(), self.c2 - 1, 0x00, .Blank);
-            self.imtui.text_mode.draw(self.r2 - 2, self.c2 - 1, 0x70, .ArrowDown);
-        }
+    if (active and self.showVScrollWhenActive()) {
+        self.imtui.text_mode.draw(self.r1 + 1, self.c2 - 1, 0x70, .ArrowUp);
+        self.imtui.text_mode.paint(self.r1 + 2, self.c2 - 1, self.r2 - 2, self.c2, 0x70, .DotsLight);
+        self.imtui.text_mode.draw(self.r1 + 2 + self.verticalScrollThumb(), self.c2 - 1, 0x00, .Blank);
+        self.imtui.text_mode.draw(self.r2 - 2, self.c2 - 1, 0x70, .ArrowDown);
+    }
 
-        if (self.r2 - self.r1 > 2) {
-            self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 1, 0x70, .ArrowLeft);
-            self.imtui.text_mode.paint(self.r2 - 1, self.c1 + 2, self.r2, self.c2 - 2, 0x70, .DotsLight);
-            self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 2 + self.horizontalScrollThumb(), 0x00, .Blank);
-            self.imtui.text_mode.draw(self.r2 - 1, self.c2 - 2, 0x70, .ArrowRight);
-        }
+    if (active and self.showHScrollWhenActive()) {
+        self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 1, 0x70, .ArrowLeft);
+        self.imtui.text_mode.paint(self.r2 - 1, self.c1 + 2, self.r2, self.c2 - 2, 0x70, .DotsLight);
+        self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 2 + self.horizontalScrollThumb(), 0x00, .Blank);
+        self.imtui.text_mode.draw(self.r2 - 1, self.c2 - 2, 0x70, .ArrowRight);
     }
 
     if (active and self.imtui.focus == .editor) {
@@ -207,6 +205,14 @@ pub fn end(self: *Editor) void {
         self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
         self.imtui.text_mode.cursor_row = self.cursor_row + 1 - self.scroll_row + self.r1;
     }
+}
+
+pub fn showHScrollWhenActive(self: *const Editor) bool {
+    return !self._immediate and self.r2 - self.r1 > 2;
+}
+
+pub fn showVScrollWhenActive(self: *const Editor) bool {
+    return !self._immediate and self.r2 - self.r1 > 4;
 }
 
 pub fn mouseIsOver(self: *const Editor) bool {
@@ -313,7 +319,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
     }
 
     if (c > self.c1 and c < self.c2 - 1) {
-        const hscroll = !self._immediate and r == self.r2 - 1;
+        const hscroll = self.showHScrollWhenActive() and r == self.r2 - 1;
         if (hscroll and self.imtui.focus_editor == self.id) {
             if (c == self.c1 + 1 and (!ct_match or self.clickmatic_target == .hscr_left)) {
                 self.selection_start = null;
@@ -419,15 +425,21 @@ pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton) !void {
     }
 
     if (self.dragging == .text) {
-        // TODO: repro when dragging off the window on some side
-        if (self.imtui.mouse_col > self.c1 and self.imtui.mouse_col < self.c2 - 1 and
+        const hscroll = self.showHScrollWhenActive();
+
+        if (self.imtui.mouse_col <= self.c1 or self.imtui.mouse_col >= self.c2 - 1) {
+            std.debug.print("horizontal drag at ({d},{d})\n", .{ self.imtui.mouse_row, self.imtui.mouse_col });
+        } else if (self.imtui.mouse_row <= self.r1 or self.imtui.mouse_row >= self.r2 - @intFromBool(hscroll)) {
+            std.debug.print("vertical drag at ({d},{d})\n", .{ self.imtui.mouse_row, self.imtui.mouse_col });
+        } else if (self.imtui.mouse_col > self.c1 and self.imtui.mouse_col < self.c2 - 1 and
             self.imtui.mouse_row != self.r1)
         {
-            // for now, just within
-            const hscroll = !self._immediate and self.imtui.mouse_row == self.r2 - 1;
-            const eff_r = if (hscroll) self.imtui.mouse_row - 1 else self.imtui.mouse_row;
+            std.debug.print("text drag at ({d},{d})\n", .{ self.imtui.mouse_row, self.imtui.mouse_col });
             self.cursor_col = self.scroll_col + self.imtui.mouse_col - self.c1 - 1;
-            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len -| 1);
+            self.cursor_row = @min(
+                self.scroll_row + self.imtui.mouse_row -| self.r1 -| 1,
+                self._source.?.lines.items.len -| 1, // deny virtual line if possible
+            );
         }
     }
 }

@@ -2,6 +2,14 @@
 * [x] selection (shift)
 * [*] selection (drag)
   * [-] dragging to edge to select wider 🐈 🐈‍⬛
+    * dragging in an editor, if the cursor is outside the editable area
+      horizontally (c==0/79), it scrolls once per tick in that direction, if
+      possible.
+    * if it's *not* outside horizontally, but is outside vertically, it scrolls
+      once per tick in that direction, if possible. (hscroll is considered
+      "outside".)
+    * [ ] moving the cursor within that same section also causes a scroll-by-1
+          (on top of clickmatic).
 * [x] scroll bars (clicking on arrows adjusts scroll by exactly 1; clicking in a
       space moves one entire page in that direction, capping at the end)
   * [x] clicking *on* the thumb seems to just reset cursor_x to scroll_x
@@ -35,7 +43,9 @@
       doc
   * [x] as soon as there is a line, click&drag (e.g. midscreen) will drag the
         sole line; if no content there's no drag effect
-
+* [x] cap mouse cursor to display (e.g. in drag operations)
+* [x] split screen, resize a non-immediate editor to display one line of text,
+      click/drag in/around it, crash
 
 ---
 

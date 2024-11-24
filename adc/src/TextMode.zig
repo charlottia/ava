@@ -50,8 +50,8 @@ pub fn TextMode(H: usize, W: usize) type {
         }
 
         pub fn positionMouseAt(self: *Self, mouse_x: usize, mouse_y: usize) void {
-            self.mouse_row = mouse_y / self.font.char_height;
-            self.mouse_col = mouse_x / self.font.char_width;
+            self.mouse_row = @max(0, @min(H - 1, mouse_y / self.font.char_height));
+            self.mouse_col = @max(0, @min(W - 1, mouse_x / self.font.char_width));
         }
 
         pub fn present(self: *Self, delta_tick: u64) !void {
