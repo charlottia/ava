@@ -1,15 +1,19 @@
 Some last low-hanging fruit to forage for.
 
-* [ ] dot-point menu toggles
+* [-] dot-point menu toggles
 * [ ] "easy" menus
 * [ ] display customisation
   * [ ] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
   * [ ] scroll bars on/off
   * [ ] variable tab stop (not retroactive; not sure how QB handles actual \t)
-* [-] rethink some of the many heap-allocated objects that probably don't need
+* [ ] Menubar end-user interface redo (create subitems with IDs, not this janky
+      reconciliation)
+* [x] rethink some of the many heap-allocated objects that probably don't need
       to be (like Font)
-* [-] fix teardown on Windows (we try to destroy textures whose renderer has
+* [x] fix teardown on Windows (we try to destroy textures whose renderer has
       already been torn down; D3D doesn't tolerate this)
+* [x] hidpi windows (piretike: 150% scaling, per default) doesn't give us a
+      hidpi window. mods?
 
 ---
 

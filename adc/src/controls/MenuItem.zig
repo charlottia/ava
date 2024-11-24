@@ -10,6 +10,7 @@ label: []const u8 = undefined,
 index: usize = undefined,
 enabled: bool = undefined,
 _shortcut: ?Imtui.Shortcut = undefined,
+_bullet: bool = undefined,
 help_text: ?[]const u8 = undefined,
 
 _chosen: bool = false,
@@ -29,6 +30,7 @@ pub fn describe(self: *MenuItem, label: []const u8, index: usize) void {
     self.index = index;
     self.enabled = true;
     self._shortcut = null;
+    self._bullet = false;
     self.help_text = null;
 }
 
@@ -49,6 +51,10 @@ pub fn shortcut(self: *MenuItem, keycode: SDL.Keycode, modifier: ?Imtui.Shortcut
 pub fn help(self: *MenuItem, text: []const u8) *MenuItem {
     self.help_text = text;
     return self;
+}
+
+pub fn bullet(self: *MenuItem) void {
+    self._bullet = true;
 }
 
 pub fn chosen(self: *MenuItem) bool {

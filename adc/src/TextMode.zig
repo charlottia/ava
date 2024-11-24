@@ -24,6 +24,7 @@ pub fn TextMode(H: usize, W: usize) type {
             ArrowRight = 0x1a,
             ArrowLeft = 0x1b,
             DotsLight = 0xb0,
+            Bullet = 0x07,
         };
 
         // https://retrocomputing.stackexchange.com/a/27805/20624

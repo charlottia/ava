@@ -118,6 +118,9 @@ pub fn end(self: *Menu) !void {
                 0x70;
             self.imtui.text_mode.paint(row, self.menu_c1 + 1, row + 1, self.menu_c2, colour, .Blank);
 
+            if (it._bullet)
+                self.imtui.text_mode.draw(row, self.menu_c1 + 1, colour, .Bullet);
+
             self.imtui.text_mode.writeAccelerated(row, self.menu_c1 + 2, it.label, it.enabled);
 
             if (it._shortcut) |shortcut| {

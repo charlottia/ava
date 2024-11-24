@@ -442,8 +442,10 @@ const Adc = struct {
         _ = (try options_menu.item("Set &Paths...")).help("Sets default search paths");
         _ = (try options_menu.item("Right &Mouse...")).help("Changes action of right mouse click");
         // TODO: bullet point 'check boxes' to left of these items
-        _ = (try options_menu.item("&Syntax Checking")).help("Turns editor's syntax checking on or off."); // This '.' is [sic].
-        _ = (try options_menu.item("&Full Menus")).help("Toggles between Easy and Full Menu usage");
+        var syntax_checking = (try options_menu.item("&Syntax Checking")).help("Turns editor's syntax checking on or off."); // This '.' is inconsistent, and [sic].
+        syntax_checking.bullet();
+        var full_menus = (try options_menu.item("&Full Menus")).help("Toggles between Easy and Full Menu usage");
+        full_menus.bullet();
         try options_menu.end();
 
         var help_menu = try menubar.menu("&Help", 25);
