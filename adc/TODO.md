@@ -16,7 +16,8 @@
     * [x] it also sets scroll_x to the earliest position for that thumb.
   * [x] the cursor's position should otherwise remain constant
   * [x] all the above for vertical too --- it's weird.
-* [ ] mouse wheel scrolling  🐈 🐈‍⬛
+* [x] mouse wheel scrolling
+  * I think it should be sufficient to translate wheel to cursor up/down keypresses.
 * [x] fullscreen
 * [x] F6 cycles windows; when one is fullscreen, cycles them through in turn.
 * [x] split either splits main in 2, or unsplits. (always un-fullscreens.)
@@ -36,7 +37,7 @@
   * confirmed this is indeed the precise behaviour from QB. wonder if we
     actually knew that, somewhere deep down; feels like it!
 * [x] click in Immediate editor somewhere not at col 1, press enter, crash
-* [ ] focussing a different Editor drops the Editor's selection
+* [ ] focussing a different Editor drops the Editor's selection  🐈 🐈‍⬛
   * doesn't happen when just using menus, otherwise how do you Edit->Copy?
   * blur event just for Editor-Editor switches?
 * [x] QB doesn't allow click in virtual line UNLESS it's the only line in the

@@ -196,6 +196,12 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
             self.mouse_down = null;
             self.clickmatic_tick = null;
         },
+        .mouse_wheel => |ev| {
+            if (ev.delta_y < 0)
+                try self.handleKeyPress(.down, .{ .storage = 0 })
+            else if (ev.delta_y > 0)
+                try self.handleKeyPress(.up, .{ .storage = 0 });
+        },
         .window => |ev| {
             if (ev.type == .close)
                 self.running = false;
