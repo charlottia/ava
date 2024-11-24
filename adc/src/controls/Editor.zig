@@ -354,7 +354,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
         } else if (!ct_match) {
             const eff_r = if (hscroll) r - 1 else r;
             self.cursor_col = self.scroll_col + c - self.c1 - 1;
-            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len);
+            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len -| 1);
             self.imtui.focus_editor = self.id;
             self.dragging = .text;
             if (!self.shift_down)
@@ -427,7 +427,7 @@ pub fn handleMouseDrag(self: *Editor, b: SDL.MouseButton) !void {
             const hscroll = !self._immediate and self.imtui.mouse_row == self.r2 - 1;
             const eff_r = if (hscroll) self.imtui.mouse_row - 1 else self.imtui.mouse_row;
             self.cursor_col = self.scroll_col + self.imtui.mouse_col - self.c1 - 1;
-            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len);
+            self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len -| 1);
         }
     }
 }

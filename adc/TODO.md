@@ -31,6 +31,10 @@
 * [ ] focussing a different Editor drops the Editor's selection
   * doesn't happen when just using menus, otherwise how do you Edit->Copy?
   * blur event just for Editor-Editor switches?
+* [x] QB doesn't allow click in virtual line UNLESS it's the only line in the
+      doc
+  * [x] as soon as there is a line, click&drag (e.g. midscreen) will drag the
+        sole line; if no content there's no drag effect
 
 
 ---
