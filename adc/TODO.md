@@ -1,6 +1,6 @@
 * [x] click to set cursor
 * [x] selection (shift)
-* [*] selection (drag)
+* [x] selection (drag)
   * [x] dragging to edge to select wider
     * dragging in an editor, if the cursor is outside the editable area
       horizontally (c==0/79), it scrolls once per tick in that direction, if
@@ -37,7 +37,7 @@
   * confirmed this is indeed the precise behaviour from QB. wonder if we
     actually knew that, somewhere deep down; feels like it!
 * [x] click in Immediate editor somewhere not at col 1, press enter, crash
-* [ ] focussing a different Editor drops the Editor's selection  🐈 🐈‍⬛
+* [x] focussing a different Editor drops the Editor's selection
   * doesn't happen when just using menus, otherwise how do you Edit->Copy?
   * blur event just for Editor-Editor switches?
 * [x] QB doesn't allow click in virtual line UNLESS it's the only line in the

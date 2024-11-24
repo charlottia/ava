@@ -355,10 +355,28 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
             else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
                 self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
         } else if (!ct_match) {
+            // Implication: either we're focussing this window for the first
+            // time, or it's already focussed (and we didn't click in the
+            // hscroll).
+            if (self.imtui.focus_editor != self.id) {
+                self.imtui.focus_editor = self.id;
+                // Remove any other editors' selections.
+                var cit = self.imtui.controls.valueIterator();
+                while (cit.next()) |control| {
+                    switch (control.*) {
+                        .editor => |e| if (e != self) {
+                            e.selection_start = null;
+                        },
+                        else => {},
+                    }
+                }
+            }
+
+            // Consider a click where hscroll _would_ be to be a click
+            // immediately above it.
             const eff_r = if (hscroll) r - 1 else r;
             self.cursor_col = self.scroll_col + c - self.c1 - 1;
             self.cursor_row = @min(self.scroll_row + eff_r - self.r1 - 1, self._source.?.lines.items.len -| 1);
-            self.imtui.focus_editor = self.id;
             self.dragging = .text;
             if (!self.shift_down)
                 self.selection_start = .{
