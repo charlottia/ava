@@ -9,7 +9,7 @@ char_width: usize,
 char_height: usize,
 chars: []const []const u16,
 
-pub const CgaColors = [16]u24{
+pub const CgaColours = [16]u24{
     0x000000,
     0x0000AA,
     0x00AA00,
@@ -110,8 +110,8 @@ pub const Rendered = struct {
     }
 
     pub fn render(self: *const Rendered, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
-        const bg = CgaColors[(pair >> (8 + 4)) & 0x7];
-        const fg = CgaColors[(pair >> 8) & 0xf];
+        const bg = CgaColours[(pair >> (8 + 4)) & 0x7];
+        const fg = CgaColours[(pair >> 8) & 0xf];
         const character: u8 = @intCast(pair & 0xff);
 
         try renderer.setColorRGBA(@intCast(bg >> 16), @intCast((bg >> 8) & 0xff), @intCast(bg & 0xff), 255);

@@ -1,13 +1,15 @@
 Some last low-hanging fruit to forage for.
 
-* [-] dot-point menu toggles
-* [ ] "easy" menus
+* [x] dot-point menu toggles
+* [-] "easy" menus
 * [ ] display customisation
   * [ ] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
   * [ ] scroll bars on/off
   * [ ] variable tab stop (not retroactive; not sure how QB handles actual \t)
-* [ ] Menubar end-user interface redo (create subitems with IDs, not this janky
+* [-] Menubar end-user interface redo (create subitems with IDs, not this janky
       reconciliation)
+  * We're going to have to do this anyway --- the easy/full menus switch is
+    hitting one of our edges.
 * [x] rethink some of the many heap-allocated objects that probably don't need
       to be (like Font)
 * [x] fix teardown on Windows (we try to destroy textures whose renderer has
