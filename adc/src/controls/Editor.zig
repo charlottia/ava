@@ -19,6 +19,7 @@ _colours: struct {
     breakpoint: u8,
 } = undefined,
 _scrollbars: bool = undefined,
+_tab_stops: u8 = undefined,
 _last_source: ?*Source = undefined,
 _source: ?*Source = null,
 _hidden: bool = undefined,
@@ -67,6 +68,7 @@ pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void 
     self.c2 = c2;
     self._colours = .{ .normal = 0x17, .current = 0x1f, .breakpoint = 0x47 };
     self._scrollbars = false;
+    self._tab_stops = 8;
     self._last_source = self._source;
     self._source = null;
     self._hidden = false;
@@ -91,6 +93,10 @@ pub fn colours(self: *Editor, normal: u8, current: u8, breakpoint: u8) void {
 
 pub fn scrollbars(self: *Editor, shown: bool) void {
     self._scrollbars = shown;
+}
+
+pub fn tab_stops(self: *Editor, n: u8) void {
+    self._tab_stops = n;
 }
 
 pub fn source(self: *Editor, s: *Source) void {
@@ -289,7 +295,7 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
             while (line.items.len < MAX_LINE - 1) {
                 try line.insert(self.cursor_col, ' ');
                 self.cursor_col += 1;
-                if (self.cursor_col % 8 == 0)
+                if (self.cursor_col % self._tab_stops == 0)
                     break;
             }
         },

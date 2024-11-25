@@ -6,8 +6,9 @@ Some last low-hanging fruit to forage for.
 * [-] display customisation 
   * [x] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
     * [x] bad hover using 0x2f as normal text
-  * [ ] scroll bars on/off
-  * [ ] variable tab stop (not retroactive; not sure how QB handles actual \t)
+  * [x] scroll bars on/off
+  * [x] variable tab stop (not retroactive; not sure how QB handles actual \t)
+  * [ ] "Display" dialogue box (and accompanying Imtui infrastructure!)
 * [ ] Menubar end-user interface redo (create subitems with IDs, not this janky
       reconciliation)
 * [x] rethink some of the many heap-allocated objects that probably don't need
