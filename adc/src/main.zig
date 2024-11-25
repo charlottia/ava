@@ -16,6 +16,9 @@ extern fn SetProcessDPIAware() bool;
 
 const Prefs = Preferences(struct {
     full_menus: bool = false,
+    colours_normal: u8 = 0x17,
+    colours_current: u8 = 0x1f,
+    colours_breakpoint: u8 = 0x47,
 });
 
 pub fn main() !void {
@@ -315,12 +318,22 @@ const Adc = struct {
         std.debug.assert(imm_editor_bottom == 24);
 
         var editor = try self.imtui.editor(0, editor_top, 0, editor_bottom, 80);
+        editor.colours(
+            self.prefs.settings.colours_normal,
+            self.prefs.settings.colours_current,
+            self.prefs.settings.colours_breakpoint,
+        );
         editor.source(self.primary_source);
         if (self.fullscreen and self.imtui.focus_editor != 0)
             editor.hidden();
         editor.end();
 
         var secondary_editor = try self.imtui.editor(1, secondary_editor_top, 0, secondary_editor_bottom, 80);
+        secondary_editor.colours(
+            self.prefs.settings.colours_normal,
+            self.prefs.settings.colours_current,
+            self.prefs.settings.colours_breakpoint,
+        );
         secondary_editor.source(self.secondary_source);
         if (self.view == .two or (self.fullscreen and self.imtui.focus_editor != 1))
             secondary_editor.hidden()
@@ -337,6 +350,11 @@ const Adc = struct {
         secondary_editor.end();
 
         var imm_editor = try self.imtui.editor(2, imm_editor_top, 0, imm_editor_bottom, 80);
+        imm_editor.colours(
+            self.prefs.settings.colours_normal,
+            self.prefs.settings.colours_current,
+            self.prefs.settings.colours_breakpoint,
+        );
         if (self.fullscreen and self.imtui.focus_editor != 2)
             imm_editor.hidden()
         else if (!self.fullscreen)

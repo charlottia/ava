@@ -99,6 +99,7 @@ pub fn Preferences(comptime Schema: type) type {
                 const v = @field(self.settings, f.name);
                 switch (f.type) {
                     bool => try out.writeAll(if (v) "true" else "false"),
+                    u8 => try std.fmt.format(out.writer(), "0x{x:0>2}", .{v}),
                     else => @compileError("unhandled type: " ++ @typeName(f.type)),
                 }
                 try out.writeAll("\n");
@@ -106,21 +107,26 @@ pub fn Preferences(comptime Schema: type) type {
         }
 
         pub fn setFromIni(self: *Self, key: []const u8, value: []const u8) !void {
-            inline for (std.meta.fields(Schema)) |f| {
-                if (std.mem.eql(u8, f.name, key))
+            inline for (std.meta.fields(Schema)) |f|
+                if (std.mem.eql(u8, f.name, key)) {
                     switch (f.type) {
-                        bool => {
-                            if (std.ascii.eqlIgnoreCase(value, "true"))
-                                @field(self.settings, f.name) = true
-                            else if (std.ascii.eqlIgnoreCase(value, "false"))
-                                @field(self.settings, f.name) = false
-                            else
-                                std.log.warn("unknown boolean value for key '{s}' in adc.ini: '{s}'", .{ key, value });
-                            return;
+                        bool => if (std.ascii.eqlIgnoreCase(value, "true")) {
+                            @field(self.settings, f.name) = true;
+                        } else if (std.ascii.eqlIgnoreCase(value, "false")) {
+                            @field(self.settings, f.name) = false;
+                        } else {
+                            std.log.warn("unknown boolean value for key '{s}' in adc.ini: '{s}'", .{ key, value });
+                        },
+                        u8 => if (std.fmt.parseUnsigned(u8, value, 0)) |v| {
+                            @field(self.settings, f.name) = v;
+                        } else |_| {
+                            std.log.warn("unknown integer value for key '{s}' in adc.ini: '{s}'", .{ key, value });
                         },
                         else => @compileError("unhandled type: " ++ @typeName(f.type)),
-                    };
-            }
+                    }
+                    return;
+                };
+            std.log.warn("ini key not found in schema: '{s}'", .{key});
         }
 
         pub fn deinit(self: *Self) void {

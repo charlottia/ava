@@ -70,7 +70,7 @@ pub fn TextMode(h: usize, w: usize) type {
             var c: usize = 0;
             for (self.screen) |pair| {
                 const p = if (self.mouse_row == r and self.mouse_col == c)
-                    ((7 - (pair >> 12)) << 12) |
+                    ((7 - ((pair >> 12) & 0x7)) << 12) |
                         ((7 - ((pair >> 8) & 0x7)) << 8) |
                         (pair & 0xFF)
                 else

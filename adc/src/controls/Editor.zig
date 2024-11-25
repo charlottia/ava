@@ -13,6 +13,11 @@ r1: usize = undefined,
 c1: usize = undefined,
 r2: usize = undefined,
 c2: usize = undefined,
+_colours: struct {
+    normal: u8,
+    current: u8,
+    breakpoint: u8,
+} = undefined,
 _last_source: ?*Source = undefined,
 _source: ?*Source = null,
 _hidden: bool = undefined,
@@ -59,6 +64,7 @@ pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void 
     self.c1 = c1;
     self.r2 = r2;
     self.c2 = c2;
+    self._colours = .{ .normal = 0x17, .current = 0x1f, .breakpoint = 0x47 };
     self._last_source = self._source;
     self._source = null;
     self._hidden = false;
@@ -71,6 +77,14 @@ pub fn deinit(self: *Editor) void {
     }
     if (self._source) |s| s.release();
     self.imtui.allocator.destroy(self);
+}
+
+pub fn colours(self: *Editor, normal: u8, current: u8, breakpoint: u8) void {
+    self._colours = .{
+        .normal = normal,
+        .current = current,
+        .breakpoint = breakpoint,
+    };
 }
 
 pub fn source(self: *Editor, s: *Source) void {
@@ -125,27 +139,30 @@ pub fn end(self: *Editor) void {
 
     // XXX: r1==1 checks here are iffy.
 
-    self.imtui.text_mode.draw(self.r1, self.c1, 0x17, if (self.r1 == 1) .TopLeft else .VerticalRight);
+    const colnorm = self._colours.normal;
+    const colnorminv = ((colnorm & 0x0f) << 4) | ((colnorm & 0xf0) >> 4);
+
+    self.imtui.text_mode.draw(self.r1, self.c1, colnorm, if (self.r1 == 1) .TopLeft else .VerticalRight);
     for (self.c1 + 1..self.c2 - 1) |x|
-        self.imtui.text_mode.draw(self.r1, x, 0x17, .Horizontal);
+        self.imtui.text_mode.draw(self.r1, x, colnorm, .Horizontal);
 
     const start = self.c1 + (self.c2 - 1 - src.title.len) / 2;
-    const colour: u8 = if (active) 0x71 else 0x17;
+    const colour: u8 = if (active) colnorminv else colnorm;
     self.imtui.text_mode.paint(self.r1, start - 1, self.r1 + 1, start + src.title.len + 1, colour, 0);
     self.imtui.text_mode.write(self.r1, start, src.title);
-    self.imtui.text_mode.draw(self.r1, self.c2 - 1, 0x17, if (self.r1 == 1) .TopRight else .VerticalLeft);
+    self.imtui.text_mode.draw(self.r1, self.c2 - 1, colnorm, if (self.r1 == 1) .TopRight else .VerticalLeft);
 
     if (!self._immediate) {
         // TODO: fullscreen control separate, rendered on top?
-        self.imtui.text_mode.draw(self.r1, self.c2 - 5, 0x17, .VerticalLeft);
+        self.imtui.text_mode.draw(self.r1, self.c2 - 5, colnorm, .VerticalLeft);
         // XXX: heuristic.
-        self.imtui.text_mode.draw(self.r1, self.c2 - 4, 0x71, if (self.r2 - self.r1 == 23) .ArrowVertical else .ArrowUp);
-        self.imtui.text_mode.draw(self.r1, self.c2 - 3, 0x17, .VerticalRight);
+        self.imtui.text_mode.draw(self.r1, self.c2 - 4, colnorminv, if (self.r2 - self.r1 == 23) .ArrowVertical else .ArrowUp);
+        self.imtui.text_mode.draw(self.r1, self.c2 - 3, colnorm, .VerticalRight);
     }
 
-    self.imtui.text_mode.paint(self.r1 + 1, self.c1, self.r2, self.c1 + 1, 0x17, .Vertical);
-    self.imtui.text_mode.paint(self.r1 + 1, self.c2 - 1, self.r2, self.c2, 0x17, .Vertical);
-    self.imtui.text_mode.paint(self.r1 + 1, self.c1 + 1, self.r2, self.c2 - 1, 0x17, .Blank);
+    self.imtui.text_mode.paint(self.r1 + 1, self.c1, self.r2, self.c1 + 1, colnorm, .Vertical);
+    self.imtui.text_mode.paint(self.r1 + 1, self.c2 - 1, self.r2, self.c2, colnorm, .Vertical);
+    self.imtui.text_mode.paint(self.r1 + 1, self.c1 + 1, self.r2, self.c2 - 1, colnorm, .Blank);
 
     for (0..@min(self.r2 - self.r1 - 1, src.lines.items.len - self.scroll_row)) |y| {
         if (self.selection_start) |shf| if (shf.cursor_row == self.cursor_row) {
@@ -158,7 +175,7 @@ pub fn end(self: *Editor) void {
                         self.c1 + 1 + self.cursor_col - self.scroll_col,
                         y + self.r1 + 2,
                         @min(self.c2 - 1, self.c1 + 1 + shf.cursor_col - self.scroll_col),
-                        0x71,
+                        colnorminv,
                         .Blank,
                     )
                 else
@@ -169,7 +186,7 @@ pub fn end(self: *Editor) void {
                         @max(self.c1 + 1, (self.c1 + 1 + shf.cursor_col) -| self.scroll_col),
                         y + self.r1 + 2,
                         self.c1 + 1 + self.cursor_col - self.scroll_col,
-                        0x71,
+                        colnorminv,
                         .Blank,
                     );
             }
@@ -177,7 +194,7 @@ pub fn end(self: *Editor) void {
             if (self.scroll_row + y >= @min(self.cursor_row, shf.cursor_row) and
                 self.scroll_row + y <= @max(self.cursor_row, shf.cursor_row))
             {
-                self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1, y + self.r1 + 2, self.c2 - 1, 0x71, .Blank);
+                self.imtui.text_mode.paint(y + self.r1 + 1, self.c1 + 1, y + self.r1 + 2, self.c2 - 1, colnorminv, .Blank);
             }
         };
         const line = &src.lines.items[self.scroll_row + y];

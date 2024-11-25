@@ -110,7 +110,7 @@ pub const Rendered = struct {
     }
 
     pub fn render(self: *const Rendered, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
-        const bg = CgaColours[(pair >> (8 + 4)) & 0x7];
+        const bg = CgaColours[(pair >> (8 + 4)) & 0xf];
         const fg = CgaColours[(pair >> 8) & 0xf];
         const character: u8 = @intCast(pair & 0xff);
 

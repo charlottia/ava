@@ -3,8 +3,9 @@ Some last low-hanging fruit to forage for.
 * [x] dot-point menu toggles
 * [x] "easy" menus
   * [x] save settings
-* [ ] display customisation
-  * [ ] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
+* [-] display customisation 
+  * [x] colours: Normal Text (17), Current Statement (1F), Breakpoint Lines (47)
+    * [x] bad hover using 0x2f as normal text
   * [ ] scroll bars on/off
   * [ ] variable tab stop (not retroactive; not sure how QB handles actual \t)
 * [ ] Menubar end-user interface redo (create subitems with IDs, not this janky
