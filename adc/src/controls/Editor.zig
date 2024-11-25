@@ -18,6 +18,7 @@ _colours: struct {
     current: u8,
     breakpoint: u8,
 } = undefined,
+_scrollbars: bool = undefined,
 _last_source: ?*Source = undefined,
 _source: ?*Source = null,
 _hidden: bool = undefined,
@@ -65,6 +66,7 @@ pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void 
     self.r2 = r2;
     self.c2 = c2;
     self._colours = .{ .normal = 0x17, .current = 0x1f, .breakpoint = 0x47 };
+    self._scrollbars = false;
     self._last_source = self._source;
     self._source = null;
     self._hidden = false;
@@ -85,6 +87,10 @@ pub fn colours(self: *Editor, normal: u8, current: u8, breakpoint: u8) void {
         .current = current,
         .breakpoint = breakpoint,
     };
+}
+
+pub fn scrollbars(self: *Editor, shown: bool) void {
+    self._scrollbars = shown;
 }
 
 pub fn source(self: *Editor, s: *Source) void {
@@ -116,11 +122,7 @@ pub fn end(self: *Editor) void {
     if (self._hidden or self.r1 == self.r2)
         return;
 
-    // XXX magic. this line used to be:
-    // const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
-    // Pretty sure the immediate wants to have a certain relationship between
-    // the top or bottom of the window and the current line. Something.
-    const adjust: usize = if (self.r2 - self.r1 - 1 <= 2) 1 else 2;
+    const adjust: usize = 1 + @as(usize, @intFromBool(self.showHScrollWhenActive()));
     if (self.cursor_row < self.scroll_row) {
         self.scroll_row = self.cursor_row;
     } else if (self.r2 - self.r1 > 1 and self.cursor_row > self.scroll_row + self.r2 - self.r1 - 1 - adjust) {
@@ -225,11 +227,11 @@ pub fn end(self: *Editor) void {
 }
 
 pub fn showHScrollWhenActive(self: *const Editor) bool {
-    return !self._immediate and self.r2 - self.r1 > 2;
+    return self._scrollbars and self.r2 - self.r1 > 2;
 }
 
 pub fn showVScrollWhenActive(self: *const Editor) bool {
-    return !self._immediate and self.r2 - self.r1 > 4;
+    return self._scrollbars and self.r2 - self.r1 > 4;
 }
 
 pub fn mouseIsOver(self: *const Editor) bool {

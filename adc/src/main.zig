@@ -19,6 +19,7 @@ const Prefs = Preferences(struct {
     colours_normal: u8 = 0x17,
     colours_current: u8 = 0x1f,
     colours_breakpoint: u8 = 0x47,
+    scrollbars: bool = true,
 });
 
 pub fn main() !void {
@@ -323,6 +324,7 @@ const Adc = struct {
             self.prefs.settings.colours_current,
             self.prefs.settings.colours_breakpoint,
         );
+        editor.scrollbars(self.prefs.settings.scrollbars);
         editor.source(self.primary_source);
         if (self.fullscreen and self.imtui.focus_editor != 0)
             editor.hidden();
@@ -334,6 +336,7 @@ const Adc = struct {
             self.prefs.settings.colours_current,
             self.prefs.settings.colours_breakpoint,
         );
+        secondary_editor.scrollbars(self.prefs.settings.scrollbars);
         secondary_editor.source(self.secondary_source);
         if (self.view == .two or (self.fullscreen and self.imtui.focus_editor != 1))
             secondary_editor.hidden()
