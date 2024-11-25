@@ -10,9 +10,13 @@ const Args = @import("./Args.zig");
 const EventThread = @import("./EventThread.zig");
 const Font = @import("./Font.zig");
 const Imtui = @import("./Imtui.zig");
-const Preferences = @import("./Preferences.zig");
+const Preferences = @import("./Preferences.zig").Preferences;
 
 extern fn SetProcessDPIAware() bool;
+
+const Prefs = Preferences(struct {
+    full_menus: bool = false,
+});
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -92,9 +96,7 @@ pub fn main() !void {
 
     //     // ---
 
-    var prefs = try Preferences.init(allocator, .{
-        .full_menus = false,
-    });
+    var prefs = try Prefs.init(allocator);
     try prefs.save();
     defer prefs.deinit();
 
@@ -218,7 +220,7 @@ pub fn main() !void {
 
 const Adc = struct {
     imtui: *Imtui,
-    preferences: Preferences,
+    prefs: Prefs,
 
     sources: std.ArrayList(*Imtui.Controls.Editor.Source),
 
@@ -236,7 +238,7 @@ const Adc = struct {
     fullscreen: bool = false,
     full_menus: bool,
 
-    fn init(imtui: *Imtui, preferences: Preferences, primary_source: *Imtui.Controls.Editor.Source) !Adc {
+    fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
 
         var sources = std.ArrayList(*Imtui.Controls.Editor.Source).init(imtui.allocator);
@@ -248,12 +250,12 @@ const Adc = struct {
 
         return .{
             .imtui = imtui,
-            .preferences = preferences,
+            .prefs = prefs,
             .sources = sources,
             .primary_source = primary_source,
             .secondary_source = primary_source,
             .immediate_source = immediate_source,
-            .full_menus = preferences.get(bool, .full_menus),
+            .full_menus = prefs.settings.full_menus,
         };
     }
 
@@ -486,8 +488,8 @@ const Adc = struct {
             full_menus.bullet();
         if (full_menus.chosen()) {
             self.full_menus = !self.full_menus;
-            self.preferences.set(.{ .full_menus = self.full_menus });
-            try self.preferences.save();
+            self.prefs.settings.full_menus = self.full_menus;
+            try self.prefs.save();
         }
         try options_menu.end();
 
