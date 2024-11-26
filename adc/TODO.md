@@ -8,9 +8,8 @@ Some last low-hanging fruit to forage for.
     * [x] bad hover using 0x2f as normal text
   * [x] scroll bars on/off
   * [x] variable tab stop (not retroactive; not sure how QB handles actual \t)
-  * [ ] "Display" dialogue box (and accompanying Imtui infrastructure!)
-* [ ] Menubar end-user interface redo (create subitems with IDs, not this janky
-      reconciliation)
+  * [-] "Display" dialogue box (and accompanying Imtui infrastructure!)
+* [ ] Menubar reconciliation redo (use ids)
 * [x] rethink some of the many heap-allocated objects that probably don't need
       to be (like Font)
 * [x] fix teardown on Windows (we try to destroy textures whose renderer has

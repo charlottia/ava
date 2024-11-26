@@ -243,6 +243,8 @@ const Adc = struct {
     fullscreen: bool = false,
     full_menus: bool,
 
+    display_dialog_visible: bool = false,
+
     fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
 
@@ -272,6 +274,15 @@ const Adc = struct {
     }
 
     fn render(self: *Adc) !void {
+        try self.renderEditors();
+        const menubar = try self.renderMenus();
+        try self.renderHelpLine(menubar);
+
+        if (self.display_dialog_visible)
+            try self.renderDisplayDialog();
+    }
+
+    fn renderEditors(self: *Adc) !void {
         // We have 23 lines to work with in total.
         // An editor must be at least 1 line long.
         // Initial state is 2 editors, of heights 20 and 3.
@@ -386,7 +397,9 @@ const Adc = struct {
 
         if (editor.toggledFullscreen() or secondary_editor.toggledFullscreen() or imm_editor.toggledFullscreen())
             self.fullscreen = !self.fullscreen;
+    }
 
+    fn renderMenus(self: *Adc) !*Imtui.Controls.Menubar {
         var menubar = try self.imtui.menubar(0, 0, 80);
 
         var file_menu = try menubar.menu("&File", 16);
@@ -501,7 +514,10 @@ const Adc = struct {
         }
 
         var options_menu = try menubar.menu("&Options", 15);
-        _ = (try options_menu.item("&Display...")).help("Changes display attributes");
+        var display = (try options_menu.item("&Display...")).help("Changes display attributes");
+        if (display.chosen())
+            self.display_dialog_visible = true;
+
         _ = (try options_menu.item("Set &Paths...")).help("Sets default search paths");
         if (self.full_menus) {
             _ = (try options_menu.item("Right &Mouse...")).help("Changes action of right mouse click");
@@ -525,6 +541,10 @@ const Adc = struct {
         _ = (try help_menu.item("&Help on Help")).shortcut(.f1, .shift).help("Displays help on help");
         try help_menu.end();
 
+        return menubar;
+    }
+
+    fn renderHelpLine(self: *Adc, menubar: *Imtui.Controls.Menubar) !void {
         const help_line_colour: u8 = if (self.full_menus) 0x30 else 0x3f;
         self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
         var show_ruler = true;
@@ -536,16 +556,17 @@ const Adc = struct {
                 self.imtui.text_mode.write(24, 11, help_text);
                 show_ruler = (11 + help_text.len) <= 62;
             },
-            .menubar => self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item"),
+            .menubar => {
+                self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
+            },
             else => {
                 var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
                 if (help_button.chosen()) {
                     // TODO do same as "&Help on Help"
                 }
                 var window_button = try self.imtui.button(24, 17, help_line_colour, "<F6=Window>");
-                if (window_button.chosen()) {
+                if (window_button.chosen())
                     self.windowFunction();
-                }
 
                 _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
                 if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
@@ -563,9 +584,8 @@ const Adc = struct {
         }
 
         var f6 = try self.imtui.shortcut(.f6, null);
-        if (f6.chosen()) {
+        if (f6.chosen())
             self.windowFunction();
-        }
 
         if (show_ruler) {
             self.imtui.text_mode.draw(24, 62, 0x30, .Vertical);
@@ -575,6 +595,11 @@ const Adc = struct {
             _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ e.cursor_row + 1, e.cursor_col + 1 });
             self.imtui.text_mode.write(24, 70, &buf);
         }
+    }
+
+    fn renderDisplayDialog(self: *Adc) !void {
+        var dialog = try self.imtui.dialog("Ralph the dog and Chrreow the cat go nyonk bark meow!!!", 21, 59);
+        dialog = dialog;
     }
 
     fn windowFunction(self: *Adc) void {
