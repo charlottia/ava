@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
 const serial = @import("serial");
 const SDL = @import("sdl2");
 
@@ -108,7 +109,7 @@ pub fn main() !void {
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
 
-    if ((comptime @import("builtin").target.os.tag == .windows) and !SetProcessDPIAware())
+    if ((comptime builtin.target.os.tag == .windows) and !SetProcessDPIAware())
         std.log.debug("failed to set process DPI aware", .{});
 
     var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
@@ -592,14 +593,22 @@ const Adc = struct {
             self.imtui.text_mode.paint(24, 63, 25, 80, 0x30, .Blank);
             const e = try self.imtui.focusedEditor();
             var buf: [9]u8 = undefined;
-            _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ e.cursor_row + 1, e.cursor_col + 1 });
+            if (builtin.mode == .Debug and self.imtui.keydown_mod.get(.left_shift))
+                _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ self.imtui.mouse_row, self.imtui.mouse_col })
+            else
+                _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ e.cursor_row + 1, e.cursor_col + 1 });
             self.imtui.text_mode.write(24, 70, &buf);
         }
     }
 
     fn renderDisplayDialog(self: *Adc) !void {
-        var dialog = try self.imtui.dialog("Ralph the dog and Chrreow the cat go nyonk bark meow!!!", 21, 59);
-        dialog = dialog;
+        // It appears the "options" menu may well actually appear to remain
+        // opened (i.e. the text " Options " is inverted at the top). TODO
+        // confirm and implement.
+        var dialog = try self.imtui.dialog("Display", 22, 60);
+        // do i need a fucking graphical editor for this now aaggGGHHHH i might
+        // XXX Colours?
+        dialog.groupbox("Colors", 1, 1, 10, 57, 0x70);
     }
 
     fn windowFunction(self: *Adc) void {

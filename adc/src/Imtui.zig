@@ -20,7 +20,7 @@ last_tick: u64,
 delta_tick: u64 = 0,
 
 keydown_sym: SDL.Keycode = .unknown,
-keydown_mod: SDL.KeyModifierSet = undefined,
+keydown_mod: SDL.KeyModifierSet = .{ .storage = 0 },
 typematic_on: bool = false,
 typematic_tick: ?u64 = null,
 
