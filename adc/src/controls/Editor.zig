@@ -227,8 +227,8 @@ pub fn end(self: *Editor) void {
 
     if (active and self.imtui.focus == .editor) {
         self.imtui.text_mode.cursor_inhibit = self.imtui.text_mode.cursor_inhibit or (self.r2 - self.r1 == 1);
-        self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
         self.imtui.text_mode.cursor_row = self.cursor_row + 1 - self.scroll_row + self.r1;
+        self.imtui.text_mode.cursor_col = self.cursor_col + 1 - self.scroll_col;
     }
 }
 

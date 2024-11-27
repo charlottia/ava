@@ -28,6 +28,14 @@ pub fn create(imtui: *Imtui, r: usize, c: usize, label: []const u8, index: usize
     return m;
 }
 
+pub fn deinit(self: *Menu) void {
+    for (self.menu_items.items) |mit|
+        if (mit) |it|
+            it.deinit();
+    self.menu_items.deinit(self.imtui.allocator);
+    self.imtui.allocator.destroy(self);
+}
+
 pub fn describe(self: *Menu, r: usize, c: usize, label: []const u8, index: usize, width: usize) void {
     self.r = r;
     self.c1 = c;
@@ -48,17 +56,10 @@ pub fn describe(self: *Menu, r: usize, c: usize, label: []const u8, index: usize
         (self.imtui.focus == .menu and self.imtui.focus.menu.index == index))
         self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
 
-    const show_acc = self.imtui.focus != .menu and (self.imtui.alt_held or
-        (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
+    const show_acc = self.imtui.focus != .menu and
+        self.imtui.focus != .dialog and
+        (self.imtui.alt_held or (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
     self.imtui.text_mode.writeAccelerated(r, c + 1, label, show_acc);
-}
-
-pub fn deinit(self: *Menu) void {
-    for (self.menu_items.items) |mit|
-        if (mit) |it|
-            it.deinit();
-    self.menu_items.deinit(self.imtui.allocator);
-    self.imtui.allocator.destroy(self);
 }
 
 pub fn item(self: *Menu, label: []const u8) !*Imtui.Controls.MenuItem {
@@ -105,14 +106,11 @@ pub fn end(self: *Menu) !void {
     if (self.imtui.openMenu() != self)
         return;
 
-    self.imtui.text_mode.draw(self.r + 1, self.menu_c1, 0x70, .TopLeft);
-    self.imtui.text_mode.paint(self.r + 1, self.menu_c1 + 1, self.r + 2, self.menu_c2, 0x70, .Horizontal);
-    self.imtui.text_mode.draw(self.r + 1, self.menu_c2, 0x70, .TopRight);
+    self.imtui.text_mode.box(self.r + 1, self.menu_c1, self.r + 3 + self.menu_items.items.len, self.menu_c2 + 1, 0x70);
 
     var row = self.r + 2;
     for (self.menu_items.items, 0..) |mit, ix| {
         if (mit) |it| {
-            self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .Vertical);
             const selected = self.imtui.focus == .menu and self.imtui.focus.menu.item == ix;
             const colour: u8 = if (selected)
                 0x07
@@ -132,8 +130,6 @@ pub fn end(self: *Menu) !void {
                 const text = Imtui.Controls.formatShortcut(&buf, shortcut);
                 self.imtui.text_mode.write(row, self.menu_c2 - 1 - text.len, text);
             }
-
-            self.imtui.text_mode.draw(row, self.menu_c1 + self.width + 3, 0x70, .Vertical);
         } else {
             self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .VerticalRight);
             self.imtui.text_mode.paint(row, self.menu_c1 + 1, row + 1, self.menu_c2, 0x70, .Horizontal);
@@ -143,9 +139,6 @@ pub fn end(self: *Menu) !void {
         self.imtui.text_mode.shadow(row, self.menu_c2 + 2);
         row += 1;
     }
-    self.imtui.text_mode.draw(row, self.menu_c1, 0x70, .BottomLeft);
-    self.imtui.text_mode.paint(row, self.menu_c1 + 1, row + 1, self.menu_c2, 0x70, .Horizontal);
-    self.imtui.text_mode.draw(row, self.menu_c2, 0x70, .BottomRight);
     self.imtui.text_mode.shadow(row, self.menu_c2 + 1);
     self.imtui.text_mode.shadow(row, self.menu_c2 + 2);
     row += 1;

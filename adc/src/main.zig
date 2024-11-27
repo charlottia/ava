@@ -604,11 +604,46 @@ const Adc = struct {
     fn renderDisplayDialog(self: *Adc) !void {
         // It appears the "options" menu may well actually appear to remain
         // opened (i.e. the text " Options " is inverted at the top). TODO
-        // confirm and implement.
+        // confirm and implement. TODO confirmed, do it
+
         var dialog = try self.imtui.dialog("Display", 22, 60);
         // do i need a fucking graphical editor for this now aaggGGHHHH i might
         // XXX Colours?
-        dialog.groupbox("Colors", 1, 1, 10, 57, 0x70);
+
+        var colors = dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
+        // Our focus model is a bit borked at the moment. Right now Imtui
+        // recognises three kinds of focus: editor, menubar, menu. It's very
+        // geared towards exactly what we've supported so far. Now, we want to
+        // give the dialog focus, but how about intra-dialog focus?  It's *p r o
+        // b a b l y* enough to just specify "dialog" focus, and let whichever
+        // is on top take the events (like editors do) and dispatch internally.
+        //   This is complicated by the fact that we render a generic Dialog;
+        // it's going to need to do some bookkeeping.
+
+        _ = try dialog.radio(0, 0, 3, 2, "&1.");
+        self.imtui.text_mode.paint(3, 9, 4, 29, self.prefs.settings.colours_normal, .Blank);
+        self.imtui.text_mode.write(3, 10, "Normal Text");
+        _ = try dialog.radio(0, 1, 5, 2, "&2.");
+        self.imtui.text_mode.paint(5, 9, 6, 29, self.prefs.settings.colours_current, .Blank);
+        self.imtui.text_mode.write(5, 10, "Current Statement");
+        _ = try dialog.radio(0, 2, 7, 2, "&3.");
+        self.imtui.text_mode.paint(7, 9, 8, 29, self.prefs.settings.colours_breakpoint, .Blank);
+        self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
+
+        self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", true);
+        _ = try dialog.select(2, 30, 12, 41, 0x70);
+        self.imtui.text_mode.writeAccelerated(1, 43, "&Background", false);
+        _ = try dialog.select(2, 42, 12, 53, 0x70);
+
+        colors.end();
+
+        var display_options = dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
+        display_options.end();
+
+        self.imtui.text_mode.draw(19, 0, 0x70, .VerticalRight);
+        self.imtui.text_mode.paint(19, 1, 19 + 1, 60 - 1, 0x70, .Horizontal);
+        self.imtui.text_mode.draw(19, 60 - 1, 0x70, .VerticalLeft);
+        dialog.end();
     }
 
     fn windowFunction(self: *Adc) void {

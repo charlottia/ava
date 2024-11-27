@@ -63,6 +63,7 @@ focus: union(enum) {
     editor,
     menubar: struct { index: usize, open: bool },
     menu: Controls.MenuItemReference,
+    dialog,
 } = .editor,
 focus_editor: usize = 0,
 
@@ -361,6 +362,8 @@ pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier)
 }
 
 pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !*Controls.Dialog {
+    self.focus = .dialog;
+
     var buf: [100]u8 = undefined; // dialog.blahblahblahblahblah
     const key = try std.fmt.bufPrint(&buf, "dialog.{s}", .{title});
     if (self.controlById(.dialog, key)) |d| {
@@ -471,12 +474,12 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                     };
             },
         },
-        .editor => switch (keycode) {
-            // TODO: anything for "relaxed focus" which isn't Editor-dispatchable
-            else => {
-                const e = try self.focusedEditor();
-                try e.handleKeyPress(keycode, modifiers);
-            },
+        .editor => {
+            const e = try self.focusedEditor();
+            try e.handleKeyPress(keycode, modifiers);
+        },
+        .dialog => {
+            // TODO
         },
     }
 
@@ -505,6 +508,8 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
 
         if (self.focus == .menu) {
             self.focus = .{ .menubar = .{ .index = self.focus.menu.index, .open = false } };
+        } else if (self.focus == .dialog) {
+            // TODO
         } else if (self.focus != .menubar) {
             self.focus = .{ .menubar = .{ .index = 0, .open = false } };
         } else {

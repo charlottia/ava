@@ -27,6 +27,13 @@ pub fn create(imtui: *Imtui, r: usize, c1: usize, c2: usize) !*Menubar {
     return mb;
 }
 
+pub fn deinit(self: *Menubar) void {
+    for (self.menus.items) |m|
+        m.deinit();
+    self.menus.deinit(self.imtui.allocator);
+    self.imtui.allocator.destroy(self);
+}
+
 pub fn describe(self: *Menubar, r: usize, c1: usize, c2: usize) void {
     self.r = r;
     self.c1 = c1;
@@ -36,16 +43,9 @@ pub fn describe(self: *Menubar, r: usize, c1: usize, c2: usize) void {
     self.imtui.text_mode.paint(r, c1, r + 1, c2, 0x70, .Blank);
 }
 
-pub fn deinit(self: *Menubar) void {
-    for (self.menus.items) |m|
-        m.deinit();
-    self.menus.deinit(self.imtui.allocator);
-    self.imtui.allocator.destroy(self);
-}
-
 pub fn menu(self: *Menubar, label: []const u8, width: usize) !*Imtui.Controls.Menu {
     if (std.mem.eql(u8, label, "&Help")) // XXX
-        self.offset = 73;
+        self.offset = @TypeOf(self.imtui.text_mode).W - 7;
 
     const m = if (self.menus_at == self.menus.items.len) m: {
         const m = try Imtui.Controls.Menu.create(self.imtui, self.r, self.c1 + self.offset, label, self.menus.items.len, width);
