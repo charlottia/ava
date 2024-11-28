@@ -638,13 +638,13 @@ const Adc = struct {
         //   This is complicated by the fact that we render a generic Dialog;
         // it's going to need to do some bookkeeping.
 
-        _ = try dialog.radio(0, 0, 3, 2, "&1.");
+        var r1 = try dialog.radio(0, 0, 3, 2, "&1.");
         self.imtui.text_mode.paint(3, 9, 4, 29, self.prefs.settings.colours_normal, .Blank);
         self.imtui.text_mode.write(3, 10, "Normal Text");
-        _ = try dialog.radio(0, 1, 5, 2, "&2.");
+        var r2 = try dialog.radio(0, 1, 5, 2, "&2.");
         self.imtui.text_mode.paint(5, 9, 6, 29, self.prefs.settings.colours_current, .Blank);
         self.imtui.text_mode.write(5, 10, "Current Statement");
-        _ = try dialog.radio(0, 2, 7, 2, "&3.");
+        var r3 = try dialog.radio(0, 2, 7, 2, "&3.");
         self.imtui.text_mode.paint(7, 9, 8, 29, self.prefs.settings.colours_breakpoint, .Blank);
         self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 
@@ -657,6 +657,21 @@ const Adc = struct {
         var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.prefs.settings.colours_normal & 0xf0) >> 4);
         bg.items(COLOUR_NAMES);
         bg.end();
+
+        if (r1.selected()) {
+            fg.value(self.prefs.settings.colours_normal & 0x0f);
+            bg.value(self.prefs.settings.colours_normal >> 4);
+        }
+
+        if (r2.selected()) {
+            fg.value(self.prefs.settings.colours_current & 0x0f);
+            bg.value(self.prefs.settings.colours_current >> 4);
+        }
+
+        if (r3.selected()) {
+            fg.value(self.prefs.settings.colours_breakpoint & 0x0f);
+            bg.value(self.prefs.settings.colours_breakpoint >> 4);
+        }
 
         colors.end();
 
