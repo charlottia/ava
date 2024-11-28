@@ -601,15 +601,33 @@ const Adc = struct {
         }
     }
 
+    const COLOUR_NAMES: []const []const u8 = &.{
+        "Black",
+        "Blue",
+        "Green",
+        "Cyan",
+        "Red",
+        "Magenta",
+        "Brown",
+        "White",
+        "Gray",
+        "BrBlue",
+        "BrGreen",
+        "BrCyan",
+        "BrRed",
+        "Pink",
+        "Yellow",
+        "BrWhite",
+    };
+
     fn renderDisplayDialog(self: *Adc) !void {
         // It appears the "options" menu may well actually appear to remain
         // opened (i.e. the text " Options " is inverted at the top). TODO
         // confirm and implement. TODO confirmed, do it
 
         var dialog = try self.imtui.dialog("Display", 22, 60);
-        // do i need a fucking graphical editor for this now aaggGGHHHH i might
-        // XXX Colours?
 
+        // XXX Colours?
         var colors = dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
         // Our focus model is a bit borked at the moment. Right now Imtui
         // recognises three kinds of focus: editor, menubar, menu. It's very
@@ -630,19 +648,32 @@ const Adc = struct {
         self.imtui.text_mode.paint(7, 9, 8, 29, self.prefs.settings.colours_breakpoint, .Blank);
         self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 
-        self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", true);
-        _ = try dialog.select(2, 30, 12, 41, 0x70);
+        self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", false);
+        var fg = try dialog.select(2, 30, 12, 41, 0x70, self.prefs.settings.colours_normal & 0x0f);
+        fg.items(COLOUR_NAMES);
+        fg.end();
+
         self.imtui.text_mode.writeAccelerated(1, 43, "&Background", false);
-        _ = try dialog.select(2, 42, 12, 53, 0x70);
+        var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.prefs.settings.colours_normal & 0xf0) >> 4);
+        bg.items(COLOUR_NAMES);
+        bg.end();
 
         colors.end();
 
         var display_options = dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
+        _ = try dialog.checkbox(1, 4, "&Scroll Bars", true);
+        self.imtui.text_mode.write(1, 37, "Tab Stops:");
+        _ = try dialog.input(1, 48, 52, "8");
         display_options.end();
 
         self.imtui.text_mode.draw(19, 0, 0x70, .VerticalRight);
         self.imtui.text_mode.paint(19, 1, 19 + 1, 60 - 1, 0x70, .Horizontal);
         self.imtui.text_mode.draw(19, 60 - 1, 0x70, .VerticalLeft);
+
+        _ = try dialog.button(20, 10, "OK");
+        _ = try dialog.button(20, 24, "Cancel");
+        _ = try dialog.button(20, 42, "&Help");
+
         dialog.end();
     }
 

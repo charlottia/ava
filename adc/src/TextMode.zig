@@ -178,5 +178,23 @@ pub fn TextMode(h: usize, w: usize) type {
             self.paint(r2 - 1, c1 + 1, r2, c2, colour, .Horizontal);
             self.draw(r2 - 1, c2 - 1, colour, .BottomRight);
         }
+
+        pub fn vscrollbar(self: *Self, c: usize, r1: usize, r2: usize, ix: usize, highest: usize) usize {
+            self.draw(r1, c, 0x70, .ArrowUp);
+            self.paint(r1 + 1, c, r2 - 1, c + 1, 0x70, .DotsLight);
+            const off = if (highest > 0) ix * (r2 - r1 - 3) / highest else 0;
+            self.draw(r1 + 1 + off, c, 0x00, .Blank);
+            self.draw(r2 - 1, c, 0x70, .ArrowDown);
+            return off;
+        }
+
+        pub fn hscrollbar(self: *Self, r: usize, c1: usize, c2: usize, ix: usize, highest: usize) usize {
+            self.draw(r, c1, 0x70, .ArrowUp);
+            self.paint(r, c1 + 1, r + 1, c2 - 1, 0x70, .DotsLight);
+            const off = if (highest > 0) ix * (c2 - c1 - 3) / highest else 0;
+            self.draw(r, c1 + 1 + off, 0x00, .Blank);
+            self.draw(r, c2 - 1, 0x70, .ArrowDown);
+            return off;
+        }
     };
 }

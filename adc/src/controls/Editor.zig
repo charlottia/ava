@@ -34,6 +34,8 @@ selection_start: ?struct {
 } = null,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
+vscroll_thumb: usize = 0,
+hscroll_thumb: usize = 0,
 toggled_fullscreen: bool = false,
 dragging: ?enum { header, text } = null,
 dragged_header_to: ?usize = null,
@@ -212,17 +214,11 @@ pub fn end(self: *Editor) void {
     }
 
     if (active and self.showVScrollWhenActive()) {
-        self.imtui.text_mode.draw(self.r1 + 1, self.c2 - 1, 0x70, .ArrowUp);
-        self.imtui.text_mode.paint(self.r1 + 2, self.c2 - 1, self.r2 - 2, self.c2, 0x70, .DotsLight);
-        self.imtui.text_mode.draw(self.r1 + 2 + self.verticalScrollThumb(), self.c2 - 1, 0x00, .Blank);
-        self.imtui.text_mode.draw(self.r2 - 2, self.c2 - 1, 0x70, .ArrowDown);
+        self.vscroll_thumb = self.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self.cursor_row, self._source.?.lines.items.len);
     }
 
     if (active and self.showHScrollWhenActive()) {
-        self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 1, 0x70, .ArrowLeft);
-        self.imtui.text_mode.paint(self.r2 - 1, self.c1 + 2, self.r2, self.c2 - 2, 0x70, .DotsLight);
-        self.imtui.text_mode.draw(self.r2 - 1, self.c1 + 2 + self.horizontalScrollThumb(), 0x00, .Blank);
-        self.imtui.text_mode.draw(self.r2 - 1, self.c2 - 2, 0x70, .ArrowRight);
+        self.hscroll_thumb = self.imtui.text_mode.hscrollbar(self.r2 - 1, self.c1 + 1, self.c2 - 1, self.scroll_col, (MAX_LINE - (self.c2 - self.c1 - 3)));
     }
 
     if (active and self.imtui.focus == .editor) {
@@ -354,7 +350,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
                 self.clickmatic_target = .hscr_left;
                 self.hscrLeft();
             } else if (c > self.c1 + 1 and c < self.c2 - 2) {
-                const hst = self.horizontalScrollThumb();
+                const hst = self.hscroll_thumb;
                 if (c - 2 < hst and (!ct_match or self.clickmatic_target == .hscr_toward_left)) {
                     self.selection_start = null;
                     self.clickmatic_target = .hscr_toward_left;
@@ -418,7 +414,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
             self.clickmatic_target = .vscr_up;
             self.vscrUp();
         } else if (r > self.r1 + 1 and r < self.r2 - 2) {
-            const vst = self.verticalScrollThumb();
+            const vst = self.vscroll_thumb;
             if (r - self.r1 - 2 < vst and (!ct_match or self.clickmatic_target == .vscr_toward_up)) {
                 self.selection_start = null;
                 self.clickmatic_target = .vscr_toward_up;
@@ -490,17 +486,6 @@ pub fn handleMouseUp(self: *Editor, button: SDL.MouseButton, clicks: u8) !void {
             self.toggled_fullscreen = true;
         return;
     }
-}
-
-fn verticalScrollThumb(self: *const Editor) usize {
-    return if (self._source.?.lines.items.len == 0)
-        0
-    else
-        self.cursor_row * (self.r2 - self.r1 - 5) / self._source.?.lines.items.len;
-}
-
-fn horizontalScrollThumb(self: *const Editor) usize {
-    return self.scroll_col * (self.c2 - self.c1 - 5) / (MAX_LINE - (self.c2 - self.c1 - 3));
 }
 
 pub fn toggledFullscreen(self: *Editor) bool {
