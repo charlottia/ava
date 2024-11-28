@@ -14,6 +14,7 @@ c1: usize,
 
 controls: std.ArrayListUnmanaged(DialogControl) = .{},
 controls_at: usize = undefined,
+focus_ix: usize = 0,
 
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !*Dialog {
     var d = try imtui.allocator.create(Dialog);
@@ -40,7 +41,9 @@ pub fn describe(self: *Dialog, height: usize, width: usize) void {
     self.c1 = (@TypeOf(self.imtui.text_mode).W - width) / 2;
     self.controls_at = 0;
 
-    _ = self.groupbox(self.title, self.r1, self.c1, self.r1 + height, self.c1 + width, 0x70);
+    self.imtui.text_mode.offset_row += self.r1;
+    self.imtui.text_mode.offset_col += self.c1;
+    _ = self.groupbox(self.title, 0, 0, height, width, 0x70);
     for (1..height + 1) |r| {
         self.imtui.text_mode.shadow(r, width);
         self.imtui.text_mode.shadow(r, width + 1);
@@ -54,9 +57,30 @@ pub fn end(self: *Dialog) void {
     self.imtui.text_mode.offset_col -= self.c1;
 
     self.imtui.text_mode.cursor_inhibit = false;
-    self.imtui.text_mode.cursor_row = self.r1 + 1;
-    self.imtui.text_mode.cursor_col = self.c1 + 1;
 }
+
+pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    switch (keycode) {
+        .tab => {
+            const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
+            const inc = if (reverse) self.controls.items.len - 1 else 1;
+            if (self.controls.items[self.focus_ix] == .radio) {
+                const rg = self.controls.items[self.focus_ix].radio.group_id;
+                while (self.controls.items[self.focus_ix] == .radio and
+                    self.controls.items[self.focus_ix].radio.group_id == rg)
+                    self.focus_ix = (self.focus_ix + inc) % self.controls.items.len;
+            } else {
+                self.focus_ix = (self.focus_ix + inc) % self.controls.items.len;
+                if (reverse and self.controls.items[self.focus_ix] == .radio)
+                    while (!self.controls.items[self.focus_ix].radio.selected) {
+                        self.focus_ix -= 1;
+                    };
+            }
+        },
+        else => {},
+    }
+}
+
 pub const Groupbox = struct {
     imtui: *Imtui,
 
@@ -135,6 +159,11 @@ const DialogRadio = struct {
         if (self.selected)
             self.dialog.imtui.text_mode.draw(r, c + 1, 0x70, .Bullet);
         self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, false);
+
+        if (self.dialog.focus_ix == self.dialog.controls_at) {
+            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
+        }
     }
 };
 
@@ -188,6 +217,11 @@ const DialogSelect = struct {
         self._items = &.{};
 
         self.dialog.imtui.text_mode.box(r1, c1, r2, c2, colour);
+
+        if (self.dialog.focus_ix == self.dialog.controls_at) {
+            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r1 + 1 + self._selected_ix - self._scroll_row;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + 2;
+        }
     }
 
     pub fn items(self: *DialogSelect, it: []const []const u8) void {
@@ -250,6 +284,11 @@ const DialogCheckbox = struct {
 
         self.dialog.imtui.text_mode.write(r, c, if (self.selected) "[X] " else "[ ] ");
         self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, false);
+
+        if (self.dialog.focus_ix == self.dialog.controls_at) {
+            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
+        }
     }
 };
 
@@ -301,6 +340,11 @@ const DialogInput = struct {
 
         // TODO: scroll_col/clipping
         self.dialog.imtui.text_mode.write(r, c1, self.value.items);
+
+        if (self.dialog.focus_ix == self.dialog.controls_at) {
+            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1;
+        }
     }
 };
 
@@ -347,6 +391,11 @@ const DialogButton = struct {
         self.dialog.imtui.text_mode.write(r, c, "<");
         self.dialog.imtui.text_mode.writeAccelerated(r, c + 2, self.label, false);
         self.dialog.imtui.text_mode.write(r, c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1, ">");
+
+        if (self.dialog.focus_ix == self.dialog.controls_at) {
+            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 2;
+        }
     }
 };
 

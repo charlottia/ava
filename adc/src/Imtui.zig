@@ -66,6 +66,7 @@ focus: union(enum) {
     dialog,
 } = .editor,
 focus_editor: usize = 0,
+focus_dialog: *Controls.Dialog = undefined,
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
@@ -367,11 +368,13 @@ pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !*Co
     var buf: [100]u8 = undefined; // dialog.blahblahblahblahblah
     const key = try std.fmt.bufPrint(&buf, "dialog.{s}", .{title});
     if (self.controlById(.dialog, key)) |d| {
+        self.focus_dialog = d;
         d.describe(height, width);
         return d;
     }
 
     const d = try Controls.Dialog.create(self, title, height, width);
+    self.focus_dialog = d;
     try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .dialog = d });
     return d;
 }
@@ -385,6 +388,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     if ((self.focus == .menubar or self.focus == .menu) and self.mouse_down != null)
         return;
 
+    // TODO: fix for Dialog
     if (self.alt_held and keycodeAlphanum(keycode)) {
         for (self.getMenubar().?.menus.items, 0..) |m, mix|
             if (acceleratorMatch(m.label, keycode)) {
@@ -479,7 +483,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
             try e.handleKeyPress(keycode, modifiers);
         },
         .dialog => {
-            // TODO
+            try self.focus_dialog.handleKeyPress(keycode, modifiers);
         },
     }
 
