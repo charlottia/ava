@@ -83,7 +83,14 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         .down, .right => {
             self.controls.items[self.focus_ix].down();
         },
-        else => {},
+        else => switch (self.controls.items[self.focus_ix]) {
+            // select box, input box need text input delivered to them
+            // otherwise it might be an accelerator
+            inline .select => |s| try s.handleKeyPress(keycode, modifiers),
+            else => {
+                // TODO
+            },
+        },
     }
 }
 
@@ -314,7 +321,34 @@ const DialogSelect = struct {
         if (self._scroll_row > ix)
             self._scroll_row = ix
         else if (ix >= self._scroll_row + self.r2 - self.r1 - 2)
-            self._scroll_row = ix + self.r1 - self.r2 + 3;
+            self._scroll_row = ix + self.r1 + 3 - self.r2;
+    }
+
+    fn up(self: *DialogSelect) void {
+        self.value(self._selected_ix -| 1);
+    }
+
+    fn down(self: *DialogSelect) void {
+        self.value(@min(self._items.len - 1, self._selected_ix + 1));
+    }
+
+    fn handleKeyPress(self: *DialogSelect, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        _ = modifiers;
+
+        if (@intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
+            @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
+        {
+            // advance to next item starting with pressed key (if any)
+            var next = (self._selected_ix + 1) % self._items.len;
+            while (next != self._selected_ix) : (next = (next + 1) % self._items.len) {
+                // SDLK_a..SDLK_z correspond to 'a'..'z' in ASCII.
+                if (std.ascii.toLower(self._items[next][0]) == @intFromEnum(keycode)) {
+                    self.value(next);
+                    return;
+                }
+            }
+            return;
+        }
     }
 };
 

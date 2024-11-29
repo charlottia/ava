@@ -245,6 +245,9 @@ const Adc = struct {
     full_menus: bool,
 
     display_dialog_visible: bool = false,
+    display_dialog_colours_normal: u8 = undefined,
+    display_dialog_colours_current: u8 = undefined,
+    display_dialog_colours_breakpoint: u8 = undefined,
 
     fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
@@ -517,7 +520,7 @@ const Adc = struct {
         var options_menu = try menubar.menu("&Options", 15);
         var display = (try options_menu.item("&Display...")).help("Changes display attributes");
         if (display.chosen())
-            self.display_dialog_visible = true;
+            self.openDisplayDialog();
 
         _ = (try options_menu.item("Set &Paths...")).help("Sets default search paths");
         if (self.full_menus) {
@@ -601,6 +604,13 @@ const Adc = struct {
         }
     }
 
+    fn openDisplayDialog(self: *Adc) void {
+        self.display_dialog_visible = true;
+        self.display_dialog_colours_normal = self.prefs.settings.colours_normal;
+        self.display_dialog_colours_current = self.prefs.settings.colours_current;
+        self.display_dialog_colours_breakpoint = self.prefs.settings.colours_breakpoint;
+    }
+
     const COLOUR_NAMES: []const []const u8 = &.{
         "Black",
         "Blue",
@@ -629,48 +639,49 @@ const Adc = struct {
 
         // XXX Colours?
         var colors = dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
-        // Our focus model is a bit borked at the moment. Right now Imtui
-        // recognises three kinds of focus: editor, menubar, menu. It's very
-        // geared towards exactly what we've supported so far. Now, we want to
-        // give the dialog focus, but how about intra-dialog focus?  It's *p r o
-        // b a b l y* enough to just specify "dialog" focus, and let whichever
-        // is on top take the events (like editors do) and dispatch internally.
-        //   This is complicated by the fact that we render a generic Dialog;
-        // it's going to need to do some bookkeeping.
 
         var r1 = try dialog.radio(0, 0, 3, 2, "&1.");
-        self.imtui.text_mode.paint(3, 9, 4, 29, self.prefs.settings.colours_normal, .Blank);
+        self.imtui.text_mode.paint(3, 9, 4, 29, self.display_dialog_colours_normal, .Blank);
         self.imtui.text_mode.write(3, 10, "Normal Text");
         var r2 = try dialog.radio(0, 1, 5, 2, "&2.");
-        self.imtui.text_mode.paint(5, 9, 6, 29, self.prefs.settings.colours_current, .Blank);
+        self.imtui.text_mode.paint(5, 9, 6, 29, self.display_dialog_colours_current, .Blank);
         self.imtui.text_mode.write(5, 10, "Current Statement");
         var r3 = try dialog.radio(0, 2, 7, 2, "&3.");
-        self.imtui.text_mode.paint(7, 9, 8, 29, self.prefs.settings.colours_breakpoint, .Blank);
+        self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
         self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 
         self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", false);
-        var fg = try dialog.select(2, 30, 12, 41, 0x70, self.prefs.settings.colours_normal & 0x0f);
+        var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
         fg.items(COLOUR_NAMES);
         fg.end();
 
         self.imtui.text_mode.writeAccelerated(1, 43, "&Background", false);
-        var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.prefs.settings.colours_normal & 0xf0) >> 4);
+        var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
         bg.items(COLOUR_NAMES);
         bg.end();
 
         if (r1.selected()) {
-            fg.value(self.prefs.settings.colours_normal & 0x0f);
-            bg.value(self.prefs.settings.colours_normal >> 4);
+            fg.value(self.display_dialog_colours_normal & 0x0f);
+            bg.value(self.display_dialog_colours_normal >> 4);
+        } else if (r1._selected) {
+            self.display_dialog_colours_normal = @as(u8, @intCast(fg._selected_ix)) |
+                (@as(u8, @intCast(bg._selected_ix)) << 4);
         }
 
         if (r2.selected()) {
-            fg.value(self.prefs.settings.colours_current & 0x0f);
-            bg.value(self.prefs.settings.colours_current >> 4);
+            fg.value(self.display_dialog_colours_current & 0x0f);
+            bg.value(self.display_dialog_colours_current >> 4);
+        } else if (r2._selected) {
+            self.display_dialog_colours_current = @as(u8, @intCast(fg._selected_ix)) |
+                (@as(u8, @intCast(bg._selected_ix)) << 4);
         }
 
         if (r3.selected()) {
-            fg.value(self.prefs.settings.colours_breakpoint & 0x0f);
-            bg.value(self.prefs.settings.colours_breakpoint >> 4);
+            fg.value(self.display_dialog_colours_breakpoint & 0x0f);
+            bg.value(self.display_dialog_colours_breakpoint >> 4);
+        } else if (r3._selected) {
+            self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg._selected_ix)) |
+                (@as(u8, @intCast(bg._selected_ix)) << 4);
         }
 
         colors.end();

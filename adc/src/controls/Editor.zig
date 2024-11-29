@@ -723,29 +723,29 @@ fn lineFirst(line: []const u8) usize {
     return 0;
 }
 
-fn isPrintableKey(sym: SDL.Keycode) bool {
-    return @intFromEnum(sym) >= @intFromEnum(SDL.Keycode.space) and
-        @intFromEnum(sym) <= @intFromEnum(SDL.Keycode.z);
+fn isPrintableKey(keycode: SDL.Keycode) bool {
+    return @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.space) and
+        @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z);
 }
 
-fn getCharacter(sym: SDL.Keycode, mod: SDL.KeyModifierSet) u8 {
-    if (@intFromEnum(sym) >= @intFromEnum(SDL.Keycode.a) and
-        @intFromEnum(sym) <= @intFromEnum(SDL.Keycode.z))
+fn getCharacter(keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) u8 {
+    if (@intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
+        @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
     {
-        if (mod.get(.left_shift) or mod.get(.right_shift) or mod.get(.caps_lock)) {
-            return @as(u8, @intCast(@intFromEnum(sym))) - ('a' - 'A');
+        if (modifiers.get(.left_shift) or modifiers.get(.right_shift) or modifiers.get(.caps_lock)) {
+            return @as(u8, @intCast(@intFromEnum(keycode))) - ('a' - 'A');
         }
-        return @intCast(@intFromEnum(sym));
+        return @intCast(@intFromEnum(keycode));
     }
 
-    if (mod.get(.left_shift) or mod.get(.right_shift)) {
+    if (modifiers.get(.left_shift) or modifiers.get(.right_shift)) {
         for (ShiftTable) |e| {
-            if (e.@"0" == sym)
+            if (e.@"0" == keycode)
                 return e.@"1";
         }
     }
 
-    return @intCast(@intFromEnum(sym));
+    return @intCast(@intFromEnum(keycode));
 }
 
 const ShiftTable = [_]struct { SDL.Keycode, u8 }{
