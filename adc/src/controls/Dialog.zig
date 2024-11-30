@@ -91,6 +91,9 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         .down, .right => {
             self.controls.items[self.focus_ix].down();
         },
+        .space => {
+            self.controls.items[self.focus_ix].space();
+        },
         .@"return" => switch (self.controls.items[self.focus_ix]) {
             .button => |b| b._chosen = true,
             else => if (self._default_button) |db| {
@@ -164,6 +167,14 @@ const DialogControl = union(enum) {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "down")) {
                 c.down();
+            },
+        }
+    }
+
+    fn space(self: DialogControl) void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "space")) {
+                c.space();
             },
         }
     }
@@ -391,6 +402,8 @@ const DialogCheckbox = struct {
     label: []const u8 = undefined,
     selected: bool,
 
+    _changed: bool = false,
+
     fn create(dialog: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
         var b = try dialog.imtui.allocator.create(DialogCheckbox);
         b.* = .{
@@ -418,6 +431,26 @@ const DialogCheckbox = struct {
             self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
             self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
         }
+    }
+
+    fn up(self: *DialogCheckbox) void {
+        self._changed = !self.selected;
+        self.selected = true;
+    }
+
+    fn down(self: *DialogCheckbox) void {
+        self._changed = self.selected;
+        self.selected = false;
+    }
+
+    fn space(self: *DialogCheckbox) void {
+        self._changed = true;
+        self.selected = !self.selected;
+    }
+
+    pub fn changed(self: *DialogCheckbox) ?bool {
+        defer self._changed = false;
+        return if (self._changed) self.selected else null;
     }
 };
 

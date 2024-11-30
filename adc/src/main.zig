@@ -248,6 +248,7 @@ const Adc = struct {
     display_dialog_colours_normal: u8 = undefined,
     display_dialog_colours_current: u8 = undefined,
     display_dialog_colours_breakpoint: u8 = undefined,
+    display_dialog_scrollbars: bool = undefined,
 
     fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
@@ -613,6 +614,7 @@ const Adc = struct {
         self.display_dialog_colours_normal = self.prefs.settings.colours_normal;
         self.display_dialog_colours_current = self.prefs.settings.colours_current;
         self.display_dialog_colours_breakpoint = self.prefs.settings.colours_breakpoint;
+        self.display_dialog_scrollbars = self.prefs.settings.scrollbars;
     }
 
     const COLOUR_NAMES: []const []const u8 = &.{
@@ -635,6 +637,12 @@ const Adc = struct {
     };
 
     fn renderDisplayDialog(self: *Adc) !void {
+        // [-] scroll bar toggle
+        // [ ] input tab stops
+        // [ ] accelerators
+        // [ ] mouse control
+        // [ ] help sub-dialog
+
         // It appears the "options" menu may well actually appear to remain
         // opened (i.e. the text " Options " is inverted at the top). TODO
         // confirm and implement. TODO confirmed, do it
@@ -691,7 +699,11 @@ const Adc = struct {
         colors.end();
 
         var display_options = dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
-        _ = try dialog.checkbox(1, 4, "&Scroll Bars", true);
+
+        var scrollbars = try dialog.checkbox(1, 4, "&Scroll Bars", self.display_dialog_scrollbars);
+        if (scrollbars.changed()) |v|
+            self.display_dialog_scrollbars = v;
+
         self.imtui.text_mode.write(1, 37, "Tab Stops:");
         _ = try dialog.input(1, 48, 52, "8");
         display_options.end();
@@ -706,6 +718,7 @@ const Adc = struct {
             self.prefs.settings.colours_normal = self.display_dialog_colours_normal;
             self.prefs.settings.colours_current = self.display_dialog_colours_current;
             self.prefs.settings.colours_breakpoint = self.display_dialog_colours_breakpoint;
+            self.prefs.settings.scrollbars = self.display_dialog_scrollbars;
             try self.prefs.save();
             self.display_dialog_visible = false;
             self.imtui.focus = .editor;
