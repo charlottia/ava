@@ -380,6 +380,9 @@ pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !*Co
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    if (self.focus == .dialog)
+        return try self.focus_dialog.handleKeyPress(keycode, modifiers);
+
     if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held) {
         self.alt_held = true;
         return;
@@ -388,7 +391,6 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     if ((self.focus == .menubar or self.focus == .menu) and self.mouse_down != null)
         return;
 
-    // TODO: fix for Dialog
     if (self.alt_held and keycodeAlphanum(keycode)) {
         for (self.getMenubar().?.menus.items, 0..) |m, mix|
             if (acceleratorMatch(m.label, keycode)) {
@@ -482,9 +484,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
             const e = try self.focusedEditor();
             try e.handleKeyPress(keycode, modifiers);
         },
-        .dialog => {
-            try self.focus_dialog.handleKeyPress(keycode, modifiers);
-        },
+        .dialog => unreachable, // handled above
     }
 
     for (self.getMenubar().?.menus.items) |m|
@@ -507,13 +507,14 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
+    if (self.focus == .dialog)
+        return try self.focus_dialog.handleKeyUp(keycode);
+
     if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held) {
         self.alt_held = false;
 
         if (self.focus == .menu) {
             self.focus = .{ .menubar = .{ .index = self.focus.menu.index, .open = false } };
-        } else if (self.focus == .dialog) {
-            // TODO
         } else if (self.focus != .menubar) {
             self.focus = .{ .menubar = .{ .index = 0, .open = false } };
         } else {

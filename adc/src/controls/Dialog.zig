@@ -15,6 +15,8 @@ c1: usize = undefined,
 controls: std.ArrayListUnmanaged(DialogControl) = .{},
 controls_at: usize = undefined,
 focus_ix: usize = 0,
+alt_held: bool = false,
+show_acc: bool = false,
 _default_button: ?*DialogButton = undefined,
 _cancel_button: ?*DialogButton = undefined,
 
@@ -69,6 +71,10 @@ pub fn end(self: *Dialog) void {
 
 pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     switch (keycode) {
+        .left_alt, .right_alt => {
+            self.alt_held = true;
+            self.show_acc = true;
+        },
         .tab => {
             const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
             const inc = if (reverse) self.controls.items.len - 1 else 1;
@@ -103,15 +109,28 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         .escape => if (self._cancel_button) |cb| {
             cb._chosen = true;
         },
-        else => switch (self.controls.items[self.focus_ix]) {
+        else => if (self.alt_held)
+            self.handleAccelerator(keycode)
+        else switch (self.controls.items[self.focus_ix]) {
             // select box, input box need text input delivered to them
             // otherwise it might be an accelerator
             inline .select => |s| try s.handleKeyPress(keycode, modifiers),
-            else => {
-                // TODO
-            },
+            else => self.handleAccelerator(keycode),
         },
     }
+}
+
+fn handleAccelerator(self: *Dialog, keycode: SDL.Keycode) void {
+    for (self.controls.items) |c|
+        if (c._accel()) |a| {
+            if (std.ascii.toLower(a) == @intFromEnum(keycode))
+                c.focus();
+        };
+}
+
+pub fn handleKeyUp(self: *Dialog, keycode: SDL.Keycode) !void {
+    if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
+        self.alt_held = false;
 }
 
 pub const Groupbox = struct {
@@ -178,6 +197,18 @@ const DialogControl = union(enum) {
             },
         }
     }
+
+    fn _accel(self: DialogControl) ?u8 {
+        return switch (self) {
+            inline else => |c| c._accel,
+        };
+    }
+
+    fn focus(self: DialogControl) void {
+        switch (self) {
+            inline else => |c| c.focus(),
+        }
+    }
 };
 
 const DialogRadio = struct {
@@ -189,6 +220,7 @@ const DialogRadio = struct {
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
+    _accel: ?u8 = undefined,
     _selected: bool,
     _selected_read: bool = false,
 
@@ -214,11 +246,12 @@ const DialogRadio = struct {
         self.r = r;
         self.c = c;
         self.label = label;
+        self._accel = Imtui.Controls.acceleratorFor(label);
 
         self.dialog.imtui.text_mode.write(r, c, "( ) ");
         if (self._selected)
             self.dialog.imtui.text_mode.draw(r, c + 1, 0x70, .Bullet);
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, false);
+        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
 
         if (self.dialog.focus_ix == ix) {
             self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
@@ -242,6 +275,20 @@ const DialogRadio = struct {
         self._selected = true;
         self._selected_read = false;
         self.dialog.focus_ix = self.ix;
+    }
+
+    fn focus(self: *DialogRadio) void {
+        if (self._selected) return;
+
+        for (self.dialog.controls.items) |c|
+            switch (c) {
+                .radio => |b| if (b.group_id == self.group_id) {
+                    b._selected = false;
+                },
+                else => {},
+            };
+
+        self.select();
     }
 
     pub fn selected(self: *DialogRadio) bool {
@@ -294,8 +341,9 @@ const DialogSelect = struct {
     c2: usize = undefined,
     colour: u8 = undefined,
     _items: []const []const u8 = undefined,
+    _accel: ?u8 = undefined,
     _selected_ix: usize,
-    _scroll_row: usize = 0, // TODO
+    _scroll_row: usize = 0,
 
     fn create(dialog: *Dialog, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !*DialogSelect {
         var b = try dialog.imtui.allocator.create(DialogSelect);
@@ -320,6 +368,7 @@ const DialogSelect = struct {
         self.c2 = c2;
         self.colour = colour;
         self._items = &.{};
+        self._accel = null;
 
         self.dialog.imtui.text_mode.box(r1, c1, r2, c2, colour);
 
@@ -327,6 +376,10 @@ const DialogSelect = struct {
             self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r1 + 1 + self._selected_ix - self._scroll_row;
             self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + 2;
         }
+    }
+
+    pub fn accel(self: *DialogSelect, key: u8) void {
+        self._accel = key;
     }
 
     pub fn items(self: *DialogSelect, it: []const []const u8) void {
@@ -342,6 +395,10 @@ const DialogSelect = struct {
             self.dialog.imtui.text_mode.write(r, self.c1 + 2, it);
         }
         _ = self.dialog.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self._scroll_row, self._items.len -| 8);
+    }
+
+    pub fn focus(self: *DialogSelect) void {
+        self.dialog.focus_ix = self.ix;
     }
 
     pub fn value(self: *DialogSelect, ix: usize) void {
@@ -397,21 +454,23 @@ pub fn select(self: *Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour:
 const DialogCheckbox = struct {
     dialog: *Dialog,
     generation: usize,
+    ix: usize = undefined,
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
-    selected: bool,
+    _accel: ?u8 = undefined,
 
+    selected: bool,
     _changed: bool = false,
 
-    fn create(dialog: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
+    fn create(dialog: *Dialog, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
         var b = try dialog.imtui.allocator.create(DialogCheckbox);
         b.* = .{
             .dialog = dialog,
             .generation = dialog.imtui.generation,
             .selected = selected,
         };
-        b.describe(r, c, label);
+        b.describe(ix, r, c, label);
         return b;
     }
 
@@ -419,13 +478,15 @@ const DialogCheckbox = struct {
         self.dialog.imtui.allocator.destroy(self);
     }
 
-    fn describe(self: *DialogCheckbox, r: usize, c: usize, label: []const u8) void {
+    fn describe(self: *DialogCheckbox, ix: usize, r: usize, c: usize, label: []const u8) void {
+        self.ix = ix;
         self.r = r;
         self.c = c;
         self.label = label;
+        self._accel = Imtui.Controls.acceleratorFor(label);
 
         self.dialog.imtui.text_mode.write(r, c, if (self.selected) "[X] " else "[ ] ");
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, false);
+        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
 
         if (self.dialog.focus_ix == self.dialog.controls_at) {
             self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
@@ -448,6 +509,11 @@ const DialogCheckbox = struct {
         self.selected = !self.selected;
     }
 
+    pub fn focus(self: *DialogCheckbox) void {
+        self.space();
+        self.dialog.focus_ix = self.ix;
+    }
+
     pub fn changed(self: *DialogCheckbox) ?bool {
         defer self._changed = false;
         return if (self._changed) self.selected else null;
@@ -456,12 +522,12 @@ const DialogCheckbox = struct {
 
 pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
     const b = if (self.controls_at == self.controls.items.len) b: {
-        const b = try DialogCheckbox.create(self, r, c, label, selected);
+        const b = try DialogCheckbox.create(self, self.controls_at, r, c, label, selected);
         try self.controls.append(self.imtui.allocator, .{ .checkbox = b });
         break :b b;
     } else b: {
         const b = self.controls.items[self.controls_at].checkbox;
-        b.describe(r, c, label);
+        b.describe(self.controls_at, r, c, label);
         break :b b;
     };
     self.controls_at += 1;
@@ -471,34 +537,38 @@ pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: 
 const DialogInput = struct {
     dialog: *Dialog,
     generation: usize,
+    ix: usize = undefined,
     r: usize = undefined,
     c1: usize = undefined,
     c2: usize = undefined,
-    value: std.ArrayListUnmanaged(u8),
+    _accel: ?u8 = undefined,
+
+    value: std.ArrayList(u8),
+    initted: bool = false,
     // TODO: scroll_col
 
-    fn create(dialog: *Dialog, r: usize, c1: usize, c2: usize, initial: []const u8) !*DialogInput {
+    fn create(dialog: *Dialog, ix: usize, r: usize, c1: usize, c2: usize) !*DialogInput {
         var b = try dialog.imtui.allocator.create(DialogInput);
-        var value = std.ArrayListUnmanaged(u8){};
-        try value.appendSlice(dialog.imtui.allocator, initial);
         b.* = .{
             .dialog = dialog,
             .generation = dialog.imtui.generation,
-            .value = value,
+            .value = std.ArrayList(u8).init(dialog.imtui.allocator),
         };
-        b.describe(r, c1, c2);
+        b.describe(ix, r, c1, c2);
         return b;
     }
 
     fn deinit(self: *DialogInput) void {
-        self.value.deinit(self.dialog.imtui.allocator);
+        self.value.deinit();
         self.dialog.imtui.allocator.destroy(self);
     }
 
-    fn describe(self: *DialogInput, r: usize, c1: usize, c2: usize) void {
+    fn describe(self: *DialogInput, ix: usize, r: usize, c1: usize, c2: usize) void {
+        self.ix = ix;
         self.r = r;
         self.c1 = c1;
         self.c2 = c2;
+        self._accel = null;
 
         // TODO: scroll_col/clipping
         self.dialog.imtui.text_mode.write(r, c1, self.value.items);
@@ -508,16 +578,30 @@ const DialogInput = struct {
             self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1;
         }
     }
+
+    pub fn accel(self: *DialogInput, key: u8) void {
+        self._accel = key;
+    }
+
+    pub fn initial(self: *DialogInput) ?*std.ArrayList(u8) {
+        if (self.initted) return null;
+        self.initted = true;
+        return &self.value;
+    }
+
+    pub fn focus(self: *DialogInput) void {
+        self.dialog.focus_ix = self.ix;
+    }
 };
 
-pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize, initial: []const u8) !*DialogInput {
+pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize) !*DialogInput {
     const b = if (self.controls_at == self.controls.items.len) b: {
-        const b = try DialogInput.create(self, r, c1, c2, initial);
+        const b = try DialogInput.create(self, self.controls_at, r, c1, c2);
         try self.controls.append(self.imtui.allocator, .{ .input = b });
         break :b b;
     } else b: {
         const b = self.controls.items[self.controls_at].input;
-        b.describe(r, c1, c2);
+        b.describe(self.controls_at, r, c1, c2);
         break :b b;
     };
     self.controls_at += 1;
@@ -531,6 +615,7 @@ const DialogButton = struct {
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
+    _accel: ?u8 = undefined,
 
     _chosen: bool = false,
 
@@ -553,6 +638,7 @@ const DialogButton = struct {
         self.r = r;
         self.c = c;
         self.label = label;
+        self._accel = Imtui.Controls.acceleratorFor(label);
     }
 
     fn draw(self: *const DialogButton) void {
@@ -563,7 +649,7 @@ const DialogButton = struct {
             0x70;
 
         self.dialog.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, colour, '<');
-        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, false);
+        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc);
         const ec = self.c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1;
         self.dialog.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, colour, '>');
 
@@ -579,6 +665,11 @@ const DialogButton = struct {
 
     pub fn cancel(self: *DialogButton) void {
         self.dialog._cancel_button = self;
+    }
+
+    pub fn focus(self: *DialogButton) void {
+        self.dialog.focus_ix = self.ix;
+        self._chosen = true;
     }
 
     pub fn chosen(self: *DialogButton) bool {

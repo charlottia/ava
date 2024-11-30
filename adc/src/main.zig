@@ -249,6 +249,7 @@ const Adc = struct {
     display_dialog_colours_current: u8 = undefined,
     display_dialog_colours_breakpoint: u8 = undefined,
     display_dialog_scrollbars: bool = undefined,
+    display_dialog_tab_stops: u8 = undefined,
 
     fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
@@ -615,6 +616,7 @@ const Adc = struct {
         self.display_dialog_colours_current = self.prefs.settings.colours_current;
         self.display_dialog_colours_breakpoint = self.prefs.settings.colours_breakpoint;
         self.display_dialog_scrollbars = self.prefs.settings.scrollbars;
+        self.display_dialog_tab_stops = self.prefs.settings.tab_stops;
     }
 
     const COLOUR_NAMES: []const []const u8 = &.{
@@ -637,9 +639,9 @@ const Adc = struct {
     };
 
     fn renderDisplayDialog(self: *Adc) !void {
-        // [-] scroll bar toggle
-        // [ ] input tab stops
-        // [ ] accelerators
+        // [x] scroll bar toggle
+        // [x] accelerators
+        // [-] input tab stops
         // [ ] mouse control
         // [ ] help sub-dialog
 
@@ -662,13 +664,15 @@ const Adc = struct {
         self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
         self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 
-        self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", false);
+        self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.show_acc);
         var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
+        fg.accel('f');
         fg.items(COLOUR_NAMES);
         fg.end();
 
-        self.imtui.text_mode.writeAccelerated(1, 43, "&Background", false);
+        self.imtui.text_mode.writeAccelerated(1, 43, "&Background", dialog.show_acc);
         var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
+        bg.accel('b');
         bg.items(COLOUR_NAMES);
         bg.end();
 
@@ -704,8 +708,12 @@ const Adc = struct {
         if (scrollbars.changed()) |v|
             self.display_dialog_scrollbars = v;
 
-        self.imtui.text_mode.write(1, 37, "Tab Stops:");
-        _ = try dialog.input(1, 48, 52, "8");
+        self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.show_acc);
+        var tab_stops = try dialog.input(1, 48, 52);
+        tab_stops.accel('t');
+        if (tab_stops.initial()) |buf|
+            try buf.writer().print("{d}", .{self.display_dialog_tab_stops});
+
         display_options.end();
 
         self.imtui.text_mode.draw(19, 0, 0x70, .VerticalRight);
@@ -731,7 +739,9 @@ const Adc = struct {
             self.imtui.focus = .editor;
         }
 
-        _ = try dialog.button(20, 42, "&Help");
+        var help = try dialog.button(20, 42, "&Help");
+        if (help.chosen())
+            std.log.debug("help", .{});
 
         dialog.end();
     }

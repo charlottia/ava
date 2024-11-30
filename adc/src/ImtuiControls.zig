@@ -50,3 +50,14 @@ pub fn lenWithoutAccelerators(s: []const u8) usize {
         len += if (c == '&') 0 else 1;
     return len;
 }
+
+pub fn acceleratorFor(s: []const u8) ?u8 {
+    var next = false;
+    for (s) |c| {
+        if (next)
+            return c;
+        if (c == '&')
+            next = true;
+    }
+    return null;
+}
