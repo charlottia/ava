@@ -563,6 +563,10 @@ const Adc = struct {
             .menubar => {
                 self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
             },
+            .dialog => {
+                self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
+                show_ruler = false;
+            },
             else => {
                 var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
                 if (help_button.chosen()) {
@@ -696,8 +700,24 @@ const Adc = struct {
         self.imtui.text_mode.paint(19, 1, 19 + 1, 60 - 1, 0x70, .Horizontal);
         self.imtui.text_mode.draw(19, 60 - 1, 0x70, .VerticalLeft);
 
-        _ = try dialog.button(20, 10, "OK");
-        _ = try dialog.button(20, 24, "Cancel");
+        var ok = try dialog.button(20, 10, "OK");
+        ok.default();
+        if (ok.chosen()) {
+            self.prefs.settings.colours_normal = self.display_dialog_colours_normal;
+            self.prefs.settings.colours_current = self.display_dialog_colours_current;
+            self.prefs.settings.colours_breakpoint = self.display_dialog_colours_breakpoint;
+            try self.prefs.save();
+            self.display_dialog_visible = false;
+            self.imtui.focus = .editor;
+        }
+
+        var cancel = try dialog.button(20, 24, "Cancel");
+        cancel.cancel();
+        if (cancel.chosen()) {
+            self.display_dialog_visible = false;
+            self.imtui.focus = .editor;
+        }
+
         _ = try dialog.button(20, 42, "&Help");
 
         dialog.end();

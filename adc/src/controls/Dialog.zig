@@ -9,12 +9,14 @@ const Dialog = @This();
 imtui: *Imtui,
 generation: usize,
 title: []const u8,
-r1: usize,
-c1: usize,
+r1: usize = undefined,
+c1: usize = undefined,
 
 controls: std.ArrayListUnmanaged(DialogControl) = .{},
 controls_at: usize = undefined,
 focus_ix: usize = 0,
+_default_button: ?*DialogButton = undefined,
+_cancel_button: ?*DialogButton = undefined,
 
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !*Dialog {
     var d = try imtui.allocator.create(Dialog);
@@ -22,8 +24,6 @@ pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !*D
         .imtui = imtui,
         .generation = imtui.generation,
         .title = title,
-        .r1 = undefined,
-        .c1 = undefined,
     };
     d.describe(height, width);
     return d;
@@ -40,6 +40,8 @@ pub fn describe(self: *Dialog, height: usize, width: usize) void {
     self.r1 = (@TypeOf(self.imtui.text_mode).H - height) / 2;
     self.c1 = (@TypeOf(self.imtui.text_mode).W - width) / 2;
     self.controls_at = 0;
+    self._default_button = null;
+    self._cancel_button = null;
 
     self.imtui.text_mode.offset_row += self.r1;
     self.imtui.text_mode.offset_col += self.c1;
@@ -53,6 +55,12 @@ pub fn describe(self: *Dialog, height: usize, width: usize) void {
 }
 
 pub fn end(self: *Dialog) void {
+    for (self.controls.items) |i|
+        switch (i) {
+            .button => |b| b.draw(),
+            else => {},
+        };
+
     self.imtui.text_mode.offset_row -= self.r1;
     self.imtui.text_mode.offset_col -= self.c1;
 
@@ -82,6 +90,15 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         },
         .down, .right => {
             self.controls.items[self.focus_ix].down();
+        },
+        .@"return" => switch (self.controls.items[self.focus_ix]) {
+            .button => |b| b._chosen = true,
+            else => if (self._default_button) |db| {
+                db._chosen = true;
+            },
+        },
+        .escape => if (self._cancel_button) |cb| {
+            cb._chosen = true;
         },
         else => switch (self.controls.items[self.focus_ix]) {
             // select box, input box need text input delivered to them
@@ -482,6 +499,8 @@ const DialogButton = struct {
     c: usize = undefined,
     label: []const u8 = undefined,
 
+    _chosen: bool = false,
+
     fn create(dialog: *Dialog, ix: usize, r: usize, c: usize, label: []const u8) !*DialogButton {
         var b = try dialog.imtui.allocator.create(DialogButton);
         b.* = .{
@@ -501,15 +520,37 @@ const DialogButton = struct {
         self.r = r;
         self.c = c;
         self.label = label;
+    }
 
-        self.dialog.imtui.text_mode.write(r, c, "<");
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 2, self.label, false);
-        self.dialog.imtui.text_mode.write(r, c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1, ">");
+    fn draw(self: *const DialogButton) void {
+        const colour: u8 = if (self.dialog.focus_ix == self.ix or
+            (self.dialog._default_button == self and self.dialog.controls.items[self.dialog.focus_ix] != .button))
+            0x7f
+        else
+            0x70;
 
-        if (self.dialog.focus_ix == ix) {
-            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 2;
+        self.dialog.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, colour, '<');
+        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, false);
+        const ec = self.c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1;
+        self.dialog.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, colour, '>');
+
+        if (self.dialog.focus_ix == self.ix) {
+            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + self.r;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + self.c + 2;
         }
+    }
+
+    pub fn default(self: *DialogButton) void {
+        self.dialog._default_button = self;
+    }
+
+    pub fn cancel(self: *DialogButton) void {
+        self.dialog._cancel_button = self;
+    }
+
+    pub fn chosen(self: *DialogButton) bool {
+        defer self._chosen = false;
+        return self._chosen;
     }
 };
 
