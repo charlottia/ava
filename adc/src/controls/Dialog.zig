@@ -114,7 +114,7 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         else switch (self.controls.items[self.focus_ix]) {
             // select box, input box need text input delivered to them
             // otherwise it might be an accelerator
-            inline .select => |s| try s.handleKeyPress(keycode, modifiers),
+            inline .select, .input => |s| try s.handleKeyPress(keycode, modifiers),
             else => self.handleAccelerator(keycode),
         },
     }
@@ -591,6 +591,12 @@ const DialogInput = struct {
 
     pub fn focus(self: *DialogInput) void {
         self.dialog.focus_ix = self.ix;
+    }
+
+    pub fn handleKeyPress(self: *DialogInput, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        _ = self;
+        _ = keycode;
+        _ = modifiers;
     }
 };
 

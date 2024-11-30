@@ -641,7 +641,10 @@ const Adc = struct {
     fn renderDisplayDialog(self: *Adc) !void {
         // [x] scroll bar toggle
         // [x] accelerators
-        // [-] input tab stops
+        // [-] input tab stops   <- there are universal editing keys we need in
+        //                          common here (e.g. ^A/^F) and in Editor.
+        //                          Typematic is included, though handled for us
+        //                          by Imtui.
         // [ ] mouse control
         // [ ] help sub-dialog
 
