@@ -18,7 +18,7 @@ _colours: struct {
     current: u8,
     breakpoint: u8,
 } = undefined,
-_scrollbars: bool = undefined,
+_scroll_bars: bool = undefined,
 _tab_stops: u8 = undefined,
 _last_source: ?*Source = undefined,
 _source: ?*Source = null,
@@ -69,7 +69,7 @@ pub fn describe(self: *Editor, r1: usize, c1: usize, r2: usize, c2: usize) void 
     self.r2 = r2;
     self.c2 = c2;
     self._colours = .{ .normal = 0x17, .current = 0x1f, .breakpoint = 0x47 };
-    self._scrollbars = false;
+    self._scroll_bars = false;
     self._tab_stops = 8;
     self._last_source = self._source;
     self._source = null;
@@ -93,8 +93,8 @@ pub fn colours(self: *Editor, normal: u8, current: u8, breakpoint: u8) void {
     };
 }
 
-pub fn scrollbars(self: *Editor, shown: bool) void {
-    self._scrollbars = shown;
+pub fn scroll_bars(self: *Editor, shown: bool) void {
+    self._scroll_bars = shown;
 }
 
 pub fn tab_stops(self: *Editor, n: u8) void {
@@ -229,11 +229,11 @@ pub fn end(self: *Editor) void {
 }
 
 pub fn showHScrollWhenActive(self: *const Editor) bool {
-    return self._scrollbars and self.r2 - self.r1 > 2;
+    return self._scroll_bars and self.r2 - self.r1 > 2;
 }
 
 pub fn showVScrollWhenActive(self: *const Editor) bool {
-    return self._scrollbars and self.r2 - self.r1 > 4;
+    return self._scroll_bars and self.r2 - self.r1 > 4;
 }
 
 pub fn mouseIsOver(self: *const Editor) bool {
@@ -264,15 +264,11 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
     }
 
     switch (keycode) {
+        .up => self.cursor_row -|= 1,
         .down => if (self.cursor_row < src.lines.items.len) {
             self.cursor_row += 1;
         },
-        .up => if (self.cursor_row > 0) {
-            self.cursor_row -= 1;
-        },
-        .left => if (self.cursor_col > 0) {
-            self.cursor_col -= 1;
-        },
+        .left => self.cursor_col -|= 1,
         .right => if (self.cursor_col < MAX_LINE) {
             self.cursor_col += 1;
         },
@@ -583,7 +579,7 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
             removed.deinit();
         }
     } else if (mode == .backspace) {
-        // self.cursor_x > 0
+        // self.cursor_col > 0
         const line = try self.currentLine();
         const first = lineFirst(line.items);
         if (self.cursor_col == first) {
@@ -606,7 +602,7 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
                 _ = line.orderedRemove(self.cursor_col - 1);
             self.cursor_col -= 1;
         }
-    } else if (self.cursor_col == (try self.currentLine()).items.len) {
+    } else if (self.cursor_col >= (try self.currentLine()).items.len) {
         // mode == .delete
         if (self.cursor_row == src.lines.items.len - 1)
             return;
@@ -615,7 +611,7 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         try (try self.currentLine()).appendSlice(removed.items);
         removed.deinit();
     } else {
-        // mode == .delete, self.cursor_x < self.currentLine().items.len
+        // mode == .delete, self.cursor_col < (try self.currentLine()).items.len
         _ = (try self.currentLine()).orderedRemove(self.cursor_col);
     }
 }
@@ -723,12 +719,12 @@ fn lineFirst(line: []const u8) usize {
     return 0;
 }
 
-fn isPrintableKey(keycode: SDL.Keycode) bool {
+pub fn isPrintableKey(keycode: SDL.Keycode) bool {
     return @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.space) and
         @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z);
 }
 
-fn getCharacter(keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) u8 {
+pub fn getCharacter(keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) u8 {
     if (@intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
         @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
     {

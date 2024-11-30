@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
+const Editor = Imtui.Controls.Editor;
 
 const Dialog = @This();
 
@@ -70,10 +71,14 @@ pub fn end(self: *Dialog) void {
 }
 
 pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    // XXX this return/handled thing is *really* ugly and commits the sin of
+    // high cognitive load.
+
     switch (keycode) {
         .left_alt, .right_alt => {
             self.alt_held = true;
             self.show_acc = true;
+            return;
         },
         .tab => {
             const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
@@ -90,33 +95,55 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
                         self.focus_ix -= 1;
                     };
             }
+            return;
         },
         .up, .left => {
-            self.controls.items[self.focus_ix].up();
+            if (self.controls.items[self.focus_ix].up())
+                return;
         },
         .down, .right => {
-            self.controls.items[self.focus_ix].down();
+            if (self.controls.items[self.focus_ix].down())
+                return;
         },
         .space => {
-            self.controls.items[self.focus_ix].space();
+            if (self.controls.items[self.focus_ix].space())
+                return;
         },
-        .@"return" => switch (self.controls.items[self.focus_ix]) {
-            .button => |b| b._chosen = true,
-            else => if (self._default_button) |db| {
-                db._chosen = true;
-            },
+        .@"return" => {
+            switch (self.controls.items[self.focus_ix]) {
+                .button => |b| b._chosen = true,
+                else => if (self._default_button) |db| {
+                    db._chosen = true;
+                },
+            }
+            return;
         },
-        .escape => if (self._cancel_button) |cb| {
-            cb._chosen = true;
+        .escape => {
+            if (self._cancel_button) |cb|
+                cb._chosen = true;
+            return;
         },
-        else => if (self.alt_held)
-            self.handleAccelerator(keycode)
-        else switch (self.controls.items[self.focus_ix]) {
+        else => if (self.alt_held) {
+            self.handleAccelerator(keycode);
+            return;
+        } else switch (self.controls.items[self.focus_ix]) {
             // select box, input box need text input delivered to them
             // otherwise it might be an accelerator
-            inline .select, .input => |s| try s.handleKeyPress(keycode, modifiers),
-            else => self.handleAccelerator(keycode),
+            inline .select, .input => {
+                // fall through
+            },
+            else => {
+                self.handleAccelerator(keycode);
+                return;
+            },
         },
+    }
+
+    // The above nonsense is entirely so non-"overridden" up()/down()/space()
+    // correctly make their way to select/input.  Do better.
+    switch (self.controls.items[self.focus_ix]) {
+        inline .select, .input => |s| try s.handleKeyPress(keycode, modifiers),
+        else => {},
     }
 }
 
@@ -174,28 +201,34 @@ const DialogControl = union(enum) {
         }
     }
 
-    fn up(self: DialogControl) void {
+    fn up(self: DialogControl) bool {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "up")) {
                 c.up();
+                return true;
             },
         }
+        return false;
     }
 
-    fn down(self: DialogControl) void {
+    fn down(self: DialogControl) bool {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "down")) {
                 c.down();
+                return true;
             },
         }
+        return false;
     }
 
-    fn space(self: DialogControl) void {
+    fn space(self: DialogControl) bool {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "space")) {
                 c.space();
+                return true;
             },
         }
+        return false;
     }
 
     fn _accel(self: DialogControl) ?u8 {
@@ -278,8 +311,6 @@ const DialogRadio = struct {
     }
 
     fn focus(self: *DialogRadio) void {
-        if (self._selected) return;
-
         for (self.dialog.controls.items) |c|
             switch (c) {
                 .radio => |b| if (b.group_id == self.group_id) {
@@ -545,7 +576,10 @@ const DialogInput = struct {
 
     value: std.ArrayList(u8),
     initted: bool = false,
-    // TODO: scroll_col
+    _changed: bool = false,
+
+    cursor_col: usize = 0,
+    scroll_col: usize = 0,
 
     fn create(dialog: *Dialog, ix: usize, r: usize, c1: usize, c2: usize) !*DialogInput {
         var b = try dialog.imtui.allocator.create(DialogInput);
@@ -570,12 +604,17 @@ const DialogInput = struct {
         self.c2 = c2;
         self._accel = null;
 
-        // TODO: scroll_col/clipping
-        self.dialog.imtui.text_mode.write(r, c1, self.value.items);
+        if (self.cursor_col < self.scroll_col)
+            self.scroll_col = self.cursor_col
+        else if (self.cursor_col > self.scroll_col + (c2 - c1 - 1))
+            self.scroll_col = self.cursor_col - (c2 - c1 - 1);
+
+        const clipped = if (self.scroll_col < self.value.items.len) self.value.items[self.scroll_col..] else "";
+        self.dialog.imtui.text_mode.write(r, c1, clipped[0..@min(self.c2 - self.c1, clipped.len)]);
 
         if (self.dialog.focus_ix == self.dialog.controls_at) {
             self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1;
+            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + self.cursor_col - self.scroll_col;
         }
     }
 
@@ -593,10 +632,51 @@ const DialogInput = struct {
         self.dialog.focus_ix = self.ix;
     }
 
-    pub fn handleKeyPress(self: *DialogInput, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-        _ = self;
-        _ = keycode;
-        _ = modifiers;
+    pub fn changed(self: *DialogInput) ?[]const u8 {
+        defer self._changed = false;
+        return if (self._changed) self.value.items else null;
+    }
+
+    fn handleKeyPress(self: *DialogInput, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        // XXX is this all dialog inputs, or just Display's Tab Stops?
+        const MAX_LINE = 207;
+
+        // TODO: shift for select, ctrl-(everything), etc. -- harmonise with Editor
+        switch (keycode) {
+            .left => self.cursor_col -|= 1,
+            .right => if (self.cursor_col < MAX_LINE) {
+                self.cursor_col += 1;
+            },
+            .home => self.cursor_col = 0,
+            .end => self.cursor_col = self.value.items.len,
+            .backspace => try self.deleteAt(.backspace),
+            .delete => try self.deleteAt(.delete),
+            else => if (Editor.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
+                try self.value.insert(self.cursor_col, Editor.getCharacter(keycode, modifiers));
+                self.cursor_col += 1;
+                self._changed = true;
+            },
+        }
+    }
+
+    fn deleteAt(self: *DialogInput, mode: enum { backspace, delete }) !void {
+        if (mode == .backspace and self.cursor_col == 0) {
+            // can't backspace at 0
+        } else if (mode == .backspace) {
+            // self.cursor_col > 0
+            if (self.cursor_col - 1 < self.value.items.len) {
+                _ = self.value.orderedRemove(self.cursor_col - 1);
+                self._changed = true;
+            }
+            self.cursor_col -= 1;
+        } else if (self.cursor_col >= self.value.items.len) {
+            // mode == .delete
+            // can't delete at/past EOL
+        } else {
+            // model == .delete, self.cursor_col < self.value.items.len
+            _ = self.value.orderedRemove(self.cursor_col);
+            self._changed = true;
+        }
     }
 };
 

@@ -20,7 +20,7 @@ const Prefs = Preferences(struct {
     colours_normal: u8 = 0x17,
     colours_current: u8 = 0x1f,
     colours_breakpoint: u8 = 0x47,
-    scrollbars: bool = true,
+    scroll_bars: bool = true,
     tab_stops: u8 = 8,
 });
 
@@ -248,7 +248,7 @@ const Adc = struct {
     display_dialog_colours_normal: u8 = undefined,
     display_dialog_colours_current: u8 = undefined,
     display_dialog_colours_breakpoint: u8 = undefined,
-    display_dialog_scrollbars: bool = undefined,
+    display_dialog_scroll_bars: bool = undefined,
     display_dialog_tab_stops: u8 = undefined,
 
     fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
@@ -342,7 +342,7 @@ const Adc = struct {
             self.prefs.settings.colours_current,
             self.prefs.settings.colours_breakpoint,
         );
-        editor.scrollbars(self.prefs.settings.scrollbars);
+        editor.scroll_bars(self.prefs.settings.scroll_bars);
         editor.tab_stops(self.prefs.settings.tab_stops);
         editor.source(self.primary_source);
         if (self.fullscreen and self.imtui.focus_editor != 0)
@@ -355,7 +355,7 @@ const Adc = struct {
             self.prefs.settings.colours_current,
             self.prefs.settings.colours_breakpoint,
         );
-        secondary_editor.scrollbars(self.prefs.settings.scrollbars);
+        secondary_editor.scroll_bars(self.prefs.settings.scroll_bars);
         secondary_editor.tab_stops(self.prefs.settings.tab_stops);
         secondary_editor.source(self.secondary_source);
         if (self.view == .two or (self.fullscreen and self.imtui.focus_editor != 1))
@@ -615,7 +615,7 @@ const Adc = struct {
         self.display_dialog_colours_normal = self.prefs.settings.colours_normal;
         self.display_dialog_colours_current = self.prefs.settings.colours_current;
         self.display_dialog_colours_breakpoint = self.prefs.settings.colours_breakpoint;
-        self.display_dialog_scrollbars = self.prefs.settings.scrollbars;
+        self.display_dialog_scroll_bars = self.prefs.settings.scroll_bars;
         self.display_dialog_tab_stops = self.prefs.settings.tab_stops;
     }
 
@@ -641,7 +641,7 @@ const Adc = struct {
     fn renderDisplayDialog(self: *Adc) !void {
         // [x] scroll bar toggle
         // [x] accelerators
-        // [-] input tab stops   <- there are universal editing keys we need in
+        // [x] input tab stops   <- there are universal editing keys we need in
         //                          common here (e.g. ^A/^F) and in Editor.
         //                          Typematic is included, though handled for us
         //                          by Imtui.
@@ -707,15 +707,24 @@ const Adc = struct {
 
         var display_options = dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
 
-        var scrollbars = try dialog.checkbox(1, 4, "&Scroll Bars", self.display_dialog_scrollbars);
-        if (scrollbars.changed()) |v|
-            self.display_dialog_scrollbars = v;
+        var scroll_bars = try dialog.checkbox(1, 4, "&Scroll Bars", self.display_dialog_scroll_bars);
+        if (scroll_bars.changed()) |v|
+            self.display_dialog_scroll_bars = v;
 
         self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.show_acc);
         var tab_stops = try dialog.input(1, 48, 52);
         tab_stops.accel('t');
-        if (tab_stops.initial()) |buf|
+        if (tab_stops.initial()) |buf| {
             try buf.writer().print("{d}", .{self.display_dialog_tab_stops});
+            // TODO: the value should start selected
+            tab_stops.cursor_col = buf.items.len;
+        }
+        if (tab_stops.changed()) |v| {
+            if (std.fmt.parseInt(u8, v, 10)) |n| {
+                if (n > 0 and n < 100)
+                    self.display_dialog_tab_stops = n;
+            } else |_| {}
+        }
 
         display_options.end();
 
@@ -729,7 +738,8 @@ const Adc = struct {
             self.prefs.settings.colours_normal = self.display_dialog_colours_normal;
             self.prefs.settings.colours_current = self.display_dialog_colours_current;
             self.prefs.settings.colours_breakpoint = self.display_dialog_colours_breakpoint;
-            self.prefs.settings.scrollbars = self.display_dialog_scrollbars;
+            self.prefs.settings.scroll_bars = self.display_dialog_scroll_bars;
+            self.prefs.settings.tab_stops = self.display_dialog_tab_stops;
             try self.prefs.save();
             self.display_dialog_visible = false;
             self.imtui.focus = .editor;
