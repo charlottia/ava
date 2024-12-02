@@ -556,7 +556,6 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, ct_match: bool)
     // possible access. If something has indeed aged out, then a false match
     // here writes state that will never be read by user code, and the object
     // will be collected at the start of the next frame.
-    // XXX: does the above still apply in view of Editors?
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         switch (c.*) {

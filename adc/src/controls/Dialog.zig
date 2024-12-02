@@ -18,8 +18,8 @@ controls_at: usize = undefined,
 focus_ix: usize = 0,
 alt_held: bool = false,
 show_acc: bool = false,
-_default_button: ?*DialogButton = undefined,
-_cancel_button: ?*DialogButton = undefined,
+_default_button: ?*Imtui.Controls.DialogButton = undefined,
+_cancel_button: ?*Imtui.Controls.DialogButton = undefined,
 
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !*Dialog {
     var d = try imtui.allocator.create(Dialog);
@@ -189,11 +189,11 @@ pub fn groupbox(self: *Dialog, title: []const u8, r1: usize, c1: usize, r2: usiz
 }
 
 const DialogControl = union(enum) {
-    radio: *DialogRadio,
-    select: *DialogSelect,
-    checkbox: *DialogCheckbox,
-    input: *DialogInput,
-    button: *DialogButton,
+    radio: *Imtui.Controls.DialogRadio,
+    select: *Imtui.Controls.DialogSelect,
+    checkbox: *Imtui.Controls.DialogCheckbox,
+    input: *Imtui.Controls.DialogInput,
+    button: *Imtui.Controls.DialogButton,
 
     fn deinit(self: DialogControl) void {
         switch (self) {
@@ -244,113 +244,9 @@ const DialogControl = union(enum) {
     }
 };
 
-const DialogRadio = struct {
-    dialog: *Dialog,
-    ix: usize = undefined,
-    generation: usize,
-    group_id: usize = undefined,
-    item_id: usize = undefined,
-    r: usize = undefined,
-    c: usize = undefined,
-    label: []const u8 = undefined,
-    _accel: ?u8 = undefined,
-    _selected: bool,
-    _selected_read: bool = false,
-
-    fn create(dialog: *Dialog, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !*DialogRadio {
-        var b = try dialog.imtui.allocator.create(DialogRadio);
-        b.* = .{
-            .dialog = dialog,
-            .generation = dialog.imtui.generation,
-            ._selected = item_id == 0,
-        };
-        b.describe(ix, group_id, item_id, r, c, label);
-        return b;
-    }
-
-    fn deinit(self: *DialogRadio) void {
-        self.dialog.imtui.allocator.destroy(self);
-    }
-
-    fn describe(self: *DialogRadio, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
-        self.ix = ix;
-        self.group_id = group_id;
-        self.item_id = item_id;
-        self.r = r;
-        self.c = c;
-        self.label = label;
-        self._accel = Imtui.Controls.acceleratorFor(label);
-
-        self.dialog.imtui.text_mode.write(r, c, "( ) ");
-        if (self._selected)
-            self.dialog.imtui.text_mode.draw(r, c + 1, 0x70, .Bullet);
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
-
-        if (self.dialog.focus_ix == ix) {
-            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
-        }
-    }
-
-    fn up(self: *DialogRadio) void {
-        std.debug.assert(self._selected);
-        self._selected = false;
-        self.findKin(self.item_id -% 1).select();
-    }
-
-    fn down(self: *DialogRadio) void {
-        std.debug.assert(self._selected);
-        self._selected = false;
-        self.findKin(self.item_id + 1).select();
-    }
-
-    fn select(self: *DialogRadio) void {
-        self._selected = true;
-        self._selected_read = false;
-        self.dialog.focus_ix = self.ix;
-    }
-
-    fn focus(self: *DialogRadio) void {
-        for (self.dialog.controls.items) |c|
-            switch (c) {
-                .radio => |b| if (b.group_id == self.group_id) {
-                    b._selected = false;
-                },
-                else => {},
-            };
-
-        self.select();
-    }
-
-    pub fn selected(self: *DialogRadio) bool {
-        defer self._selected_read = true;
-        return self._selected and !self._selected_read;
-    }
-
-    fn findKin(self: *DialogRadio, id: usize) *DialogRadio {
-        var zero: ?*DialogRadio = null;
-        var high: ?*DialogRadio = null;
-        for (self.dialog.controls.items) |c|
-            switch (c) {
-                .radio => |b| if (b.group_id == self.group_id) {
-                    if (b.item_id == 0)
-                        zero = b
-                    else if (b.item_id == id)
-                        return b
-                    else if (high) |h|
-                        high = if (b.item_id > h.item_id) b else h
-                    else
-                        high = b;
-                },
-                else => {},
-            };
-        return if (id == std.math.maxInt(usize)) high.? else zero.?;
-    }
-};
-
-pub fn radio(self: *Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !*DialogRadio {
+pub fn radio(self: *Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !*Imtui.Controls.DialogRadio {
     const b = if (self.controls_at == self.controls.items.len) b: {
-        const b = try DialogRadio.create(self, self.controls_at, group_id, item_id, r, c, label);
+        const b = try Imtui.Controls.DialogRadio.create(self, self.controls_at, group_id, item_id, r, c, label);
         try self.controls.append(self.imtui.allocator, .{ .radio = b });
         break :b b;
     } else b: {
@@ -362,115 +258,9 @@ pub fn radio(self: *Dialog, group_id: usize, item_id: usize, r: usize, c: usize,
     return b;
 }
 
-const DialogSelect = struct {
-    dialog: *Dialog,
-    ix: usize = undefined,
-    generation: usize,
-    r1: usize = undefined,
-    c1: usize = undefined,
-    r2: usize = undefined,
-    c2: usize = undefined,
-    colour: u8 = undefined,
-    _items: []const []const u8 = undefined,
-    _accel: ?u8 = undefined,
-    _selected_ix: usize,
-    _scroll_row: usize = 0,
-
-    fn create(dialog: *Dialog, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !*DialogSelect {
-        var b = try dialog.imtui.allocator.create(DialogSelect);
-        b.* = .{
-            .dialog = dialog,
-            .generation = dialog.imtui.generation,
-            ._selected_ix = selected,
-        };
-        b.describe(ix, r1, c1, r2, c2, colour);
-        return b;
-    }
-
-    fn deinit(self: *DialogSelect) void {
-        self.dialog.imtui.allocator.destroy(self);
-    }
-
-    fn describe(self: *DialogSelect, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
-        self.ix = ix;
-        self.r1 = r1;
-        self.c1 = c1;
-        self.r2 = r2;
-        self.c2 = c2;
-        self.colour = colour;
-        self._items = &.{};
-        self._accel = null;
-
-        self.dialog.imtui.text_mode.box(r1, c1, r2, c2, colour);
-
-        if (self.dialog.focus_ix == ix) {
-            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r1 + 1 + self._selected_ix - self._scroll_row;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + 2;
-        }
-    }
-
-    pub fn accel(self: *DialogSelect, key: u8) void {
-        self._accel = key;
-    }
-
-    pub fn items(self: *DialogSelect, it: []const []const u8) void {
-        self._items = it;
-    }
-
-    pub fn end(self: *DialogSelect) void {
-        for (self._items[self._scroll_row..], 0..) |it, ix| {
-            const r = self.r1 + 1 + ix;
-            if (r == self.r2 - 1) break;
-            if (ix + self._scroll_row == self._selected_ix)
-                self.dialog.imtui.text_mode.paint(r, self.c1 + 1, r + 1, self.c2 - 1, ((self.colour & 0x0f) << 4) | ((self.colour & 0xf0) >> 4), .Blank);
-            self.dialog.imtui.text_mode.write(r, self.c1 + 2, it);
-        }
-        _ = self.dialog.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self._scroll_row, self._items.len -| 8);
-    }
-
-    pub fn focus(self: *DialogSelect) void {
-        self.dialog.focus_ix = self.ix;
-    }
-
-    pub fn value(self: *DialogSelect, ix: usize) void {
-        self._selected_ix = ix;
-        if (self._scroll_row > ix)
-            self._scroll_row = ix
-        else if (ix >= self._scroll_row + self.r2 - self.r1 - 2)
-            self._scroll_row = ix + self.r1 + 3 - self.r2;
-    }
-
-    fn up(self: *DialogSelect) void {
-        self.value(self._selected_ix -| 1);
-    }
-
-    fn down(self: *DialogSelect) void {
-        self.value(@min(self._items.len - 1, self._selected_ix + 1));
-    }
-
-    fn handleKeyPress(self: *DialogSelect, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-        _ = modifiers;
-
-        if (@intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
-            @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
-        {
-            // advance to next item starting with pressed key (if any)
-            var next = (self._selected_ix + 1) % self._items.len;
-            while (next != self._selected_ix) : (next = (next + 1) % self._items.len) {
-                // SDLK_a..SDLK_z correspond to 'a'..'z' in ASCII.
-                if (std.ascii.toLower(self._items[next][0]) == @intFromEnum(keycode)) {
-                    self.value(next);
-                    return;
-                }
-            }
-            return;
-        }
-    }
-};
-
-pub fn select(self: *Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !*DialogSelect {
+pub fn select(self: *Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !*Imtui.Controls.DialogSelect {
     const s = if (self.controls_at == self.controls.items.len) s: {
-        const s = try DialogSelect.create(self, self.controls_at, r1, c1, r2, c2, colour, selected);
+        const s = try Imtui.Controls.DialogSelect.create(self, self.controls_at, r1, c1, r2, c2, colour, selected);
         try self.controls.append(self.imtui.allocator, .{ .select = s });
         break :s s;
     } else s: {
@@ -482,78 +272,9 @@ pub fn select(self: *Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour:
     return s;
 }
 
-const DialogCheckbox = struct {
-    dialog: *Dialog,
-    generation: usize,
-    ix: usize = undefined,
-    r: usize = undefined,
-    c: usize = undefined,
-    label: []const u8 = undefined,
-    _accel: ?u8 = undefined,
-
-    selected: bool,
-    _changed: bool = false,
-
-    fn create(dialog: *Dialog, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
-        var b = try dialog.imtui.allocator.create(DialogCheckbox);
-        b.* = .{
-            .dialog = dialog,
-            .generation = dialog.imtui.generation,
-            .selected = selected,
-        };
-        b.describe(ix, r, c, label);
-        return b;
-    }
-
-    fn deinit(self: *DialogCheckbox) void {
-        self.dialog.imtui.allocator.destroy(self);
-    }
-
-    fn describe(self: *DialogCheckbox, ix: usize, r: usize, c: usize, label: []const u8) void {
-        self.ix = ix;
-        self.r = r;
-        self.c = c;
-        self.label = label;
-        self._accel = Imtui.Controls.acceleratorFor(label);
-
-        self.dialog.imtui.text_mode.write(r, c, if (self.selected) "[X] " else "[ ] ");
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
-
-        if (self.dialog.focus_ix == self.dialog.controls_at) {
-            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
-        }
-    }
-
-    fn up(self: *DialogCheckbox) void {
-        self._changed = !self.selected;
-        self.selected = true;
-    }
-
-    fn down(self: *DialogCheckbox) void {
-        self._changed = self.selected;
-        self.selected = false;
-    }
-
-    fn space(self: *DialogCheckbox) void {
-        self._changed = true;
-        self.selected = !self.selected;
-    }
-
-    pub fn focus(self: *DialogCheckbox) void {
-        self.space();
-        self.dialog.focus_ix = self.ix;
-    }
-
-    pub fn changed(self: *DialogCheckbox) ?bool {
-        defer self._changed = false;
-        return if (self._changed) self.selected else null;
-    }
-};
-
-pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
+pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !*Imtui.Controls.DialogCheckbox {
     const b = if (self.controls_at == self.controls.items.len) b: {
-        const b = try DialogCheckbox.create(self, self.controls_at, r, c, label, selected);
+        const b = try Imtui.Controls.DialogCheckbox.create(self, self.controls_at, r, c, label, selected);
         try self.controls.append(self.imtui.allocator, .{ .checkbox = b });
         break :b b;
     } else b: {
@@ -565,124 +286,9 @@ pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: 
     return b;
 }
 
-const DialogInput = struct {
-    dialog: *Dialog,
-    generation: usize,
-    ix: usize = undefined,
-    r: usize = undefined,
-    c1: usize = undefined,
-    c2: usize = undefined,
-    _accel: ?u8 = undefined,
-
-    value: std.ArrayList(u8),
-    initted: bool = false,
-    _changed: bool = false,
-
-    cursor_col: usize = 0,
-    scroll_col: usize = 0,
-
-    fn create(dialog: *Dialog, ix: usize, r: usize, c1: usize, c2: usize) !*DialogInput {
-        var b = try dialog.imtui.allocator.create(DialogInput);
-        b.* = .{
-            .dialog = dialog,
-            .generation = dialog.imtui.generation,
-            .value = std.ArrayList(u8).init(dialog.imtui.allocator),
-        };
-        b.describe(ix, r, c1, c2);
-        return b;
-    }
-
-    fn deinit(self: *DialogInput) void {
-        self.value.deinit();
-        self.dialog.imtui.allocator.destroy(self);
-    }
-
-    fn describe(self: *DialogInput, ix: usize, r: usize, c1: usize, c2: usize) void {
-        self.ix = ix;
-        self.r = r;
-        self.c1 = c1;
-        self.c2 = c2;
-        self._accel = null;
-
-        if (self.cursor_col < self.scroll_col)
-            self.scroll_col = self.cursor_col
-        else if (self.cursor_col > self.scroll_col + (c2 - c1 - 1))
-            self.scroll_col = self.cursor_col - (c2 - c1 - 1);
-
-        const clipped = if (self.scroll_col < self.value.items.len) self.value.items[self.scroll_col..] else "";
-        self.dialog.imtui.text_mode.write(r, c1, clipped[0..@min(self.c2 - self.c1, clipped.len)]);
-
-        if (self.dialog.focus_ix == self.dialog.controls_at) {
-            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + self.cursor_col - self.scroll_col;
-        }
-    }
-
-    pub fn accel(self: *DialogInput, key: u8) void {
-        self._accel = key;
-    }
-
-    pub fn initial(self: *DialogInput) ?*std.ArrayList(u8) {
-        if (self.initted) return null;
-        self.initted = true;
-        return &self.value;
-    }
-
-    pub fn focus(self: *DialogInput) void {
-        self.dialog.focus_ix = self.ix;
-    }
-
-    pub fn changed(self: *DialogInput) ?[]const u8 {
-        defer self._changed = false;
-        return if (self._changed) self.value.items else null;
-    }
-
-    fn handleKeyPress(self: *DialogInput, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-        // XXX is this all dialog inputs, or just Display's Tab Stops?
-        const MAX_LINE = 207;
-
-        // TODO: shift for select, ctrl-(everything), etc. -- harmonise with Editor
-        switch (keycode) {
-            .left => self.cursor_col -|= 1,
-            .right => if (self.cursor_col < MAX_LINE) {
-                self.cursor_col += 1;
-            },
-            .home => self.cursor_col = 0,
-            .end => self.cursor_col = self.value.items.len,
-            .backspace => try self.deleteAt(.backspace),
-            .delete => try self.deleteAt(.delete),
-            else => if (Editor.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
-                try self.value.insert(self.cursor_col, Editor.getCharacter(keycode, modifiers));
-                self.cursor_col += 1;
-                self._changed = true;
-            },
-        }
-    }
-
-    fn deleteAt(self: *DialogInput, mode: enum { backspace, delete }) !void {
-        if (mode == .backspace and self.cursor_col == 0) {
-            // can't backspace at 0
-        } else if (mode == .backspace) {
-            // self.cursor_col > 0
-            if (self.cursor_col - 1 < self.value.items.len) {
-                _ = self.value.orderedRemove(self.cursor_col - 1);
-                self._changed = true;
-            }
-            self.cursor_col -= 1;
-        } else if (self.cursor_col >= self.value.items.len) {
-            // mode == .delete
-            // can't delete at/past EOL
-        } else {
-            // model == .delete, self.cursor_col < self.value.items.len
-            _ = self.value.orderedRemove(self.cursor_col);
-            self._changed = true;
-        }
-    }
-};
-
-pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize) !*DialogInput {
+pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize) !*Imtui.Controls.DialogInput {
     const b = if (self.controls_at == self.controls.items.len) b: {
-        const b = try DialogInput.create(self, self.controls_at, r, c1, c2);
+        const b = try Imtui.Controls.DialogInput.create(self, self.controls_at, r, c1, c2);
         try self.controls.append(self.imtui.allocator, .{ .input = b });
         break :b b;
     } else b: {
@@ -694,79 +300,9 @@ pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize) !*DialogInput {
     return b;
 }
 
-const DialogButton = struct {
-    dialog: *Dialog,
-    ix: usize = undefined,
-    generation: usize,
-    r: usize = undefined,
-    c: usize = undefined,
-    label: []const u8 = undefined,
-    _accel: ?u8 = undefined,
-
-    _chosen: bool = false,
-
-    fn create(dialog: *Dialog, ix: usize, r: usize, c: usize, label: []const u8) !*DialogButton {
-        var b = try dialog.imtui.allocator.create(DialogButton);
-        b.* = .{
-            .dialog = dialog,
-            .generation = dialog.imtui.generation,
-        };
-        b.describe(ix, r, c, label);
-        return b;
-    }
-
-    fn deinit(self: *DialogButton) void {
-        self.dialog.imtui.allocator.destroy(self);
-    }
-
-    fn describe(self: *DialogButton, ix: usize, r: usize, c: usize, label: []const u8) void {
-        self.ix = ix;
-        self.r = r;
-        self.c = c;
-        self.label = label;
-        self._accel = Imtui.Controls.acceleratorFor(label);
-    }
-
-    fn draw(self: *const DialogButton) void {
-        const colour: u8 = if (self.dialog.focus_ix == self.ix or
-            (self.dialog._default_button == self and self.dialog.controls.items[self.dialog.focus_ix] != .button))
-            0x7f
-        else
-            0x70;
-
-        self.dialog.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, colour, '<');
-        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc);
-        const ec = self.c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1;
-        self.dialog.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, colour, '>');
-
-        if (self.dialog.focus_ix == self.ix) {
-            self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + self.r;
-            self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + self.c + 2;
-        }
-    }
-
-    pub fn default(self: *DialogButton) void {
-        self.dialog._default_button = self;
-    }
-
-    pub fn cancel(self: *DialogButton) void {
-        self.dialog._cancel_button = self;
-    }
-
-    pub fn focus(self: *DialogButton) void {
-        self.dialog.focus_ix = self.ix;
-        self._chosen = true;
-    }
-
-    pub fn chosen(self: *DialogButton) bool {
-        defer self._chosen = false;
-        return self._chosen;
-    }
-};
-
-pub fn button(self: *Dialog, r: usize, c: usize, label: []const u8) !*DialogButton {
+pub fn button(self: *Dialog, r: usize, c: usize, label: []const u8) !*Imtui.Controls.DialogButton {
     const b = if (self.controls_at == self.controls.items.len) b: {
-        const b = try DialogButton.create(self, self.controls_at, r, c, label);
+        const b = try Imtui.Controls.DialogButton.create(self, self.controls_at, r, c, label);
         try self.controls.append(self.imtui.allocator, .{ .button = b });
         break :b b;
     } else b: {

@@ -9,6 +9,11 @@ pub const Menu = @import("./controls/Menu.zig");
 pub const MenuItem = @import("./controls/MenuItem.zig");
 pub const Editor = @import("./controls/Editor.zig");
 pub const Dialog = @import("./controls/Dialog.zig");
+pub const DialogRadio = @import("./controls/DialogRadio.zig");
+pub const DialogSelect = @import("./controls/DialogSelect.zig");
+pub const DialogCheckbox = @import("./controls/DialogCheckbox.zig");
+pub const DialogInput = @import("./controls/DialogInput.zig");
+pub const DialogButton = @import("./controls/DialogButton.zig");
 
 pub const MenuItemReference = struct { index: usize, item: usize };
 
