@@ -1,4 +1,5 @@
 const std = @import("std");
+const SDL = @import("sdl2");
 
 const Dialog = @import("./Dialog.zig");
 const Imtui = @import("../Imtui.zig");
@@ -16,6 +17,7 @@ label: []const u8 = undefined,
 _accel: ?u8 = undefined,
 _selected: bool,
 _selected_read: bool = false,
+targeted: bool = false,
 
 pub fn create(dialog: *Dialog, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !*DialogRadio {
     var b = try dialog.imtui.allocator.create(DialogRadio);
@@ -33,22 +35,22 @@ pub fn deinit(self: *DialogRadio) void {
 }
 
 pub fn describe(self: *DialogRadio, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
-    self.ix = ix;
-    self.group_id = group_id;
-    self.item_id = item_id;
-    self.r = r;
-    self.c = c;
-    self.label = label;
-    self._accel = Imtui.Controls.acceleratorFor(label);
-
     self.dialog.imtui.text_mode.write(r, c, "( ) ");
     if (self._selected)
         self.dialog.imtui.text_mode.draw(r, c + 1, 0x70, .Bullet);
     self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
 
+    self.ix = ix;
+    self.group_id = group_id;
+    self.item_id = item_id;
+    self.r = self.dialog.imtui.text_mode.offset_row + r;
+    self.c = self.dialog.imtui.text_mode.offset_col + c;
+    self.label = label;
+    self._accel = Imtui.Controls.acceleratorFor(label);
+
     if (self.dialog.focus_ix == ix) {
-        self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-        self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
+        self.dialog.imtui.text_mode.cursor_row = self.r;
+        self.dialog.imtui.text_mode.cursor_col = self.c + 1;
     }
 }
 
@@ -64,13 +66,17 @@ pub fn down(self: *DialogRadio) void {
     self.findKin(self.item_id + 1).select();
 }
 
+pub fn space(self: *DialogRadio) void {
+    self.accelerate();
+}
+
 fn select(self: *DialogRadio) void {
     self._selected = true;
     self._selected_read = false;
     self.dialog.focus_ix = self.ix;
 }
 
-pub fn focus(self: *DialogRadio) void {
+pub fn accelerate(self: *DialogRadio) void {
     for (self.dialog.controls.items) |c|
         switch (c) {
             .radio => |b| if (b.group_id == self.group_id) {
@@ -105,4 +111,32 @@ fn findKin(self: *DialogRadio, id: usize) *DialogRadio {
             else => {},
         };
     return if (id == std.math.maxInt(usize)) high.? else zero.?;
+}
+
+pub fn mouseIsOver(self: *const DialogRadio) bool {
+    return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+}
+
+pub fn handleMouseDown(self: *DialogRadio, b: SDL.MouseButton, clicks: u8) !void {
+    _ = clicks;
+
+    if (b != .left) return;
+
+    self.dialog.focus_ix = self.ix;
+    self.targeted = true;
+}
+
+pub fn handleMouseDrag(self: *DialogRadio, b: SDL.MouseButton) !void {
+    if (b != .left) return;
+
+    self.targeted = self.mouseIsOver();
+}
+
+pub fn handleMouseUp(self: *DialogRadio, b: SDL.MouseButton, clicks: u8) !void {
+    _ = clicks;
+
+    if (b != .left) return;
+
+    if (self.targeted)
+        self.accelerate();
 }

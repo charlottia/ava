@@ -20,6 +20,7 @@ alt_held: bool = false,
 show_acc: bool = false,
 _default_button: ?*Imtui.Controls.DialogButton = undefined,
 _cancel_button: ?*Imtui.Controls.DialogButton = undefined,
+mouse_event_target: ?DialogControl = null,
 
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !*Dialog {
     var d = try imtui.allocator.create(Dialog);
@@ -151,13 +152,39 @@ fn handleAccelerator(self: *Dialog, keycode: SDL.Keycode) void {
     for (self.controls.items) |c|
         if (c._accel()) |a| {
             if (std.ascii.toLower(a) == @intFromEnum(keycode))
-                c.focus();
+                c.accelerate();
         };
 }
 
 pub fn handleKeyUp(self: *Dialog, keycode: SDL.Keycode) !void {
     if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
         self.alt_held = false;
+}
+
+pub fn handleMouseDown(self: *Dialog, b: SDL.MouseButton, clicks: u8, ct_match: bool) !void {
+    _ = ct_match;
+
+    for (self.controls.items) |c|
+        switch (c) {
+            inline .checkbox, .radio, .button => |cb| if (cb.mouseIsOver()) {
+                try cb.handleMouseDown(b, clicks);
+                self.mouse_event_target = c;
+                return;
+            },
+            else => {},
+        };
+}
+
+pub fn handleMouseDrag(self: *Dialog, b: SDL.MouseButton) !void {
+    if (self.mouse_event_target) |target|
+        try target.handleMouseDrag(b);
+}
+
+pub fn handleMouseUp(self: *Dialog, b: SDL.MouseButton, clicks: u8) !void {
+    if (self.mouse_event_target) |target|
+        try target.handleMouseUp(b, clicks);
+
+    self.mouse_event_target = null;
 }
 
 pub const Groupbox = struct {
@@ -237,9 +264,25 @@ const DialogControl = union(enum) {
         };
     }
 
-    fn focus(self: DialogControl) void {
+    fn accelerate(self: DialogControl) void {
         switch (self) {
-            inline else => |c| c.focus(),
+            inline else => |c| c.accelerate(),
+        }
+    }
+
+    fn handleMouseDrag(self: DialogControl, b: SDL.MouseButton) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDrag")) {
+                return c.handleMouseDrag(b);
+            },
+        }
+    }
+
+    fn handleMouseUp(self: DialogControl, b: SDL.MouseButton, clicks: u8) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseUp")) {
+                return c.handleMouseUp(b, clicks);
+            },
         }
     }
 };

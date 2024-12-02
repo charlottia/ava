@@ -645,7 +645,7 @@ const Adc = struct {
         //                          common here (e.g. ^A/^F) and in Editor.
         //                          Typematic is included, though handled for us
         //                          by Imtui.
-        // [ ] mouse control
+        // [-] mouse control
         // [ ] help sub-dialog
 
         // It appears the "options" menu may well actually appear to remain
@@ -657,13 +657,13 @@ const Adc = struct {
         // XXX Colours?
         var colors = dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
 
-        var r1 = try dialog.radio(0, 0, 3, 2, "&1.");
+        var r1 = try dialog.radio(0, 0, 3, 2, "&1. ");
         self.imtui.text_mode.paint(3, 9, 4, 29, self.display_dialog_colours_normal, .Blank);
         self.imtui.text_mode.write(3, 10, "Normal Text");
-        var r2 = try dialog.radio(0, 1, 5, 2, "&2.");
+        var r2 = try dialog.radio(0, 1, 5, 2, "&2. ");
         self.imtui.text_mode.paint(5, 9, 6, 29, self.display_dialog_colours_current, .Blank);
         self.imtui.text_mode.write(5, 10, "Current Statement");
-        var r3 = try dialog.radio(0, 2, 7, 2, "&3.");
+        var r3 = try dialog.radio(0, 2, 7, 2, "&3. ");
         self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
         self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 

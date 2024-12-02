@@ -70,7 +70,7 @@ pub fn end(self: *DialogSelect) void {
     _ = self.dialog.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self._scroll_row, self._items.len -| 8);
 }
 
-pub fn focus(self: *DialogSelect) void {
+pub fn accelerate(self: *DialogSelect) void {
     self.dialog.focus_ix = self.ix;
 }
 

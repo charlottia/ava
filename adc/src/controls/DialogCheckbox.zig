@@ -1,3 +1,5 @@
+const SDL = @import("sdl2");
+
 const Dialog = @import("./Dialog.zig");
 const Imtui = @import("../Imtui.zig");
 
@@ -13,6 +15,7 @@ _accel: ?u8 = undefined,
 
 selected: bool,
 _changed: bool = false,
+targeted: bool = false,
 
 pub fn create(dialog: *Dialog, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !*DialogCheckbox {
     var b = try dialog.imtui.allocator.create(DialogCheckbox);
@@ -30,18 +33,18 @@ pub fn deinit(self: *DialogCheckbox) void {
 }
 
 pub fn describe(self: *DialogCheckbox, ix: usize, r: usize, c: usize, label: []const u8) void {
-    self.ix = ix;
-    self.r = r;
-    self.c = c;
-    self.label = label;
-    self._accel = Imtui.Controls.acceleratorFor(label);
-
     self.dialog.imtui.text_mode.write(r, c, if (self.selected) "[X] " else "[ ] ");
     self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
 
+    self.ix = ix;
+    self.r = self.dialog.imtui.text_mode.offset_row + r;
+    self.c = self.dialog.imtui.text_mode.offset_col + c;
+    self.label = label;
+    self._accel = Imtui.Controls.acceleratorFor(label);
+
     if (self.dialog.focus_ix == self.dialog.controls_at) {
-        self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-        self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c + 1;
+        self.dialog.imtui.text_mode.cursor_row = self.r;
+        self.dialog.imtui.text_mode.cursor_col = self.c + 1;
     }
 }
 
@@ -60,7 +63,7 @@ pub fn space(self: *DialogCheckbox) void {
     self.selected = !self.selected;
 }
 
-pub fn focus(self: *DialogCheckbox) void {
+pub fn accelerate(self: *DialogCheckbox) void {
     self.space();
     self.dialog.focus_ix = self.ix;
 }
@@ -68,4 +71,32 @@ pub fn focus(self: *DialogCheckbox) void {
 pub fn changed(self: *DialogCheckbox) ?bool {
     defer self._changed = false;
     return if (self._changed) self.selected else null;
+}
+
+pub fn mouseIsOver(self: *const DialogCheckbox) bool {
+    return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+}
+
+pub fn handleMouseDown(self: *DialogCheckbox, b: SDL.MouseButton, clicks: u8) !void {
+    _ = clicks;
+
+    if (b != .left) return;
+
+    self.dialog.focus_ix = self.ix;
+    self.targeted = true;
+}
+
+pub fn handleMouseDrag(self: *DialogCheckbox, b: SDL.MouseButton) !void {
+    if (b != .left) return;
+
+    self.targeted = self.mouseIsOver();
+}
+
+pub fn handleMouseUp(self: *DialogCheckbox, b: SDL.MouseButton, clicks: u8) !void {
+    _ = clicks;
+
+    if (b != .left) return;
+
+    if (self.targeted)
+        self.accelerate();
 }

@@ -68,7 +68,7 @@ pub fn initial(self: *DialogInput) ?*std.ArrayList(u8) {
     return &self.value;
 }
 
-pub fn focus(self: *DialogInput) void {
+pub fn accelerate(self: *DialogInput) void {
     self.dialog.focus_ix = self.ix;
 }
 

@@ -539,6 +539,11 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
 }
 
 fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, ct_match: bool) !?Control {
+    if (self.focus == .dialog) {
+        try self.focus_dialog.handleMouseDown(b, clicks, ct_match);
+        return .{ .dialog = self.focus_dialog };
+    }
+
     if (b == .left and (self.getMenubar().?.mouseIsOver() or
         (self.openMenu() != null and self.openMenu().?.mouseIsOverItem())))
     {
@@ -559,11 +564,11 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, ct_match: bool)
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         switch (c.*) {
-            .button => |bu| if (bu.*.mouseIsOver()) {
+            .button => |bu| if (bu.mouseIsOver()) {
                 try bu.handleMouseDown(b, clicks);
                 return .{ .button = bu };
             },
-            .editor => |e| if (e.*.mouseIsOver()) {
+            .editor => |e| if (e.mouseIsOver()) {
                 try e.handleMouseDown(b, clicks, ct_match);
                 return .{ .editor = e };
             },
