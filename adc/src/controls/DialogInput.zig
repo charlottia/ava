@@ -118,3 +118,10 @@ fn deleteAt(self: *DialogInput, mode: enum { backspace, delete }) !void {
         self._changed = true;
     }
 }
+
+pub fn handleMouseDown(self: *DialogInput, button: SDL.MouseButton, clicks: u8, ct: bool) !void {
+    _ = self;
+    _ = button;
+    _ = clicks;
+    _ = ct;
+}

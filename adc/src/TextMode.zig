@@ -213,18 +213,18 @@ pub fn TextMode(h: usize, w: usize) type {
 
             pub const Hit = enum { left, toward_left, thumb, toward_right, right };
 
-            pub fn hit(self: *const Hscrollbar, c: usize, ct_match: bool, clickmatic_target: ?ScrollbarTarget) ?Hit {
-                if (c == self.c1 and (!ct_match or clickmatic_target == .hscr_left))
+            pub fn hit(self: *const Hscrollbar, c: usize, cm: bool, cmt: ?ScrollbarTarget) ?Hit {
+                if (c == self.c1 and (!cm or cmt == .hscr_left))
                     return .left;
 
                 if (c > self.c1 and c < self.c2 - 1) {
-                    if (c - self.c1 - 1 < self.thumb and (!ct_match or clickmatic_target == .hscr_toward_left))
+                    if (c - self.c1 - 1 < self.thumb and (!cm or cmt == .hscr_toward_left))
                         return .toward_left
-                    else if (c - self.c1 - 1 > self.thumb and (!ct_match or clickmatic_target == .hscr_toward_right))
+                    else if (c - self.c1 - 1 > self.thumb and (!cm or cmt == .hscr_toward_right))
                         return .toward_right
-                    else if (!ct_match)
+                    else if (!cm)
                         return .thumb;
-                } else if (c == self.c2 - 1 and (!ct_match or clickmatic_target == .hscr_right))
+                } else if (c == self.c2 - 1 and (!cm or cmt == .hscr_right))
                     return .right;
 
                 return null;
@@ -237,7 +237,13 @@ pub fn TextMode(h: usize, w: usize) type {
             const thumb = if (highest > 0) ix * (c2 - c1 - 3) / highest else 0;
             self.draw(r, c1 + 1 + thumb, 0x00, .Blank);
             self.draw(r, c2 - 1, 0x70, .ArrowRight);
-            return .{ .r = r, .c1 = c1, .c2 = c2, .thumb = thumb, .highest = highest };
+            return .{
+                .r = r + self.offset_row,
+                .c1 = c1 + self.offset_col,
+                .c2 = c2 + self.offset_col,
+                .thumb = thumb,
+                .highest = highest,
+            };
         }
 
         pub const Vscrollbar = struct {
@@ -249,18 +255,18 @@ pub fn TextMode(h: usize, w: usize) type {
 
             pub const Hit = enum { up, toward_up, thumb, toward_down, down };
 
-            pub fn hit(self: *const Vscrollbar, r: usize, ct_match: bool, clickmatic_target: ?ScrollbarTarget) ?Hit {
-                if (r == self.r1 and (!ct_match or clickmatic_target == .vscr_up))
+            pub fn hit(self: *const Vscrollbar, r: usize, cm: bool, cmt: ?ScrollbarTarget) ?Hit {
+                if (r == self.r1 and (!cm or cmt == .vscr_up))
                     return .up;
 
                 if (r > self.r1 and r < self.r2 - 1) {
-                    if (r - self.r1 - 1 < self.thumb and (!ct_match or clickmatic_target == .vscr_toward_up))
+                    if (r - self.r1 - 1 < self.thumb and (!cm or cmt == .vscr_toward_up))
                         return .toward_up
-                    else if (r - self.r1 - 1 > self.thumb and (!ct_match or clickmatic_target == .vscr_toward_down))
+                    else if (r - self.r1 - 1 > self.thumb and (!cm or cmt == .vscr_toward_down))
                         return .toward_down
-                    else if (!ct_match)
+                    else if (!cm)
                         return .thumb;
-                } else if (r == self.r2 - 1 and (!ct_match or clickmatic_target == .vscr_down))
+                } else if (r == self.r2 - 1 and (!cm or cmt == .vscr_down))
                     return .down;
 
                 return null;
@@ -273,7 +279,13 @@ pub fn TextMode(h: usize, w: usize) type {
             const thumb = if (highest > 0) ix * (r2 - r1 - 3) / highest else 0;
             self.draw(r1 + 1 + thumb, c, 0x00, .Blank);
             self.draw(r2 - 1, c, 0x70, .ArrowDown);
-            return .{ .c = c, .r1 = r1, .r2 = r2, .thumb = thumb, .highest = highest };
+            return .{
+                .c = c + self.offset_col,
+                .r1 = r1 + self.offset_row,
+                .r2 = r2 + self.offset_row,
+                .thumb = thumb,
+                .highest = highest,
+            };
         }
     };
 }

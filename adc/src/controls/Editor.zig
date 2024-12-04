@@ -39,7 +39,7 @@ vscrollbar: Imtui.TextMode.Vscrollbar = .{},
 toggled_fullscreen: bool = false,
 dragging: ?enum { header, text } = null,
 dragged_header_to: ?usize = null,
-clickmatic_target: ?Imtui.TextMode.ScrollbarTarget = null,
+cmt: ?Imtui.TextMode.ScrollbarTarget = null,
 
 pub const MAX_LINE = 255;
 
@@ -300,20 +300,20 @@ pub fn handleKeyUp(self: *Editor, keycode: SDL.Keycode) !void {
         self.shift_down = false;
 }
 
-pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_match: bool) !void {
+pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, cm: bool) !void {
     _ = clicks;
 
     const r = self.imtui.mouse_row;
     const c = self.imtui.mouse_col;
 
-    if (!ct_match) {
+    if (!cm) {
         self.dragging = null;
         if (!self.shift_down)
             self.selection_start = null;
-        self.clickmatic_target = null;
+        self.cmt = null;
     }
 
-    if (ct_match and self.imtui.focus_editor == self.id and self.dragging == .text) {
+    if (cm and self.imtui.focus_editor == self.id and self.dragging == .text) {
         // Transform clickmatic events to drag events when dragging text so you
         // can drag to an edge and continue selecting.
         try self.handleMouseDrag(button);
@@ -321,7 +321,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
     }
 
     if (r == self.r1) {
-        if (!ct_match) {
+        if (!cm) {
             // Fullscreen triggers on MouseUp, not here.
             self.imtui.focus_editor = self.id;
             self.dragging = .header;
@@ -331,19 +331,19 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
 
     if (c > self.c1 and c < self.c2 - 1) {
         const hscroll = self.showHScrollWhenActive() and (r == self.hscrollbar.r or
-            (ct_match and self.clickmatic_target != null and self.clickmatic_target.?.isHscr()));
+            (cm and self.cmt != null and self.cmt.?.isHscr()));
         if (self.imtui.focus_editor == self.id and hscroll) {
-            if (self.hscrollbar.hit(c, ct_match, self.clickmatic_target)) |hit|
+            if (self.hscrollbar.hit(c, cm, self.cmt)) |hit|
                 switch (hit) {
                     .left => {
-                        self.clickmatic_target = .hscr_left;
+                        self.cmt = .hscr_left;
                         self.selection_start = null;
                         self.hscrLeft();
                     },
                     .toward_left => {
                         // Lacks fidelity: a full "page turn" (where possible)
                         // doesn't move the cursor on the screen.
-                        self.clickmatic_target = .hscr_toward_left;
+                        self.cmt = .hscr_toward_left;
                         self.selection_start = null;
                         self.cursor_col = self.scroll_col;
                         self.scroll_col = if (self.scroll_col >= (self.hscrollbar.c2 - self.hscrollbar.c1))
@@ -358,13 +358,13 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
                     },
                     .toward_right => {
                         // As for .toward_left.
-                        self.clickmatic_target = .hscr_toward_right;
+                        self.cmt = .hscr_toward_right;
                         self.selection_start = null;
                         self.cursor_col = self.scroll_col;
                         self.scroll_col = if (self.scroll_col <= self.hscrollbar.highest - (self.hscrollbar.c2 - self.hscrollbar.c1)) self.scroll_col + (self.hscrollbar.c2 - self.hscrollbar.c1) else self.hscrollbar.highest;
                     },
                     .right => {
-                        self.clickmatic_target = .hscr_right;
+                        self.cmt = .hscr_right;
                         self.selection_start = null;
                         self.hscrRight();
                     },
@@ -374,7 +374,7 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
             else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
                 self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
             return;
-        } else if (!ct_match) {
+        } else if (!cm) {
             // Implication: either we're focussing this window for the first
             // time, or it's already focussed (and we didn't click in the
             // hscroll).
@@ -409,17 +409,17 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
 
     if (r > self.r1 and r < self.r2 - 1) {
         const vscroll = self.showVScrollWhenActive() and (c == self.vscrollbar.c or
-            (ct_match and self.clickmatic_target != null and self.clickmatic_target.?.isVscr()));
+            (cm and self.cmt != null and self.cmt.?.isVscr()));
         if (self.imtui.focus_editor == self.id and vscroll) {
-            if (self.vscrollbar.hit(r, ct_match, self.clickmatic_target)) |hit|
+            if (self.vscrollbar.hit(r, cm, self.cmt)) |hit|
                 switch (hit) {
                     .up => {
-                        self.clickmatic_target = .vscr_up;
+                        self.cmt = .vscr_up;
                         self.selection_start = null;
                         self.vscrUp();
                     },
                     .toward_up => {
-                        self.clickmatic_target = .vscr_toward_up;
+                        self.cmt = .vscr_toward_up;
                         self.selection_start = null;
                         self.pageUp();
                     },
@@ -435,12 +435,12 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
                         self.scroll_row = @intFromFloat(start);
                     },
                     .toward_down => {
-                        self.clickmatic_target = .vscr_toward_down;
+                        self.cmt = .vscr_toward_down;
                         self.selection_start = null;
                         self.pageDown();
                     },
                     .down => {
-                        self.clickmatic_target = .vscr_down;
+                        self.cmt = .vscr_down;
                         self.selection_start = null;
                         self.vscrDown();
                     },

@@ -161,16 +161,16 @@ pub fn handleKeyUp(self: *Dialog, keycode: SDL.Keycode) !void {
         self.alt_held = false;
 }
 
-pub fn handleMouseDown(self: *Dialog, b: SDL.MouseButton, clicks: u8, ct_match: bool) !void {
-    if (ct_match) {
-        try self.mouse_event_target.?.handleMouseDrag(b);
+pub fn handleMouseDown(self: *Dialog, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
+    if (cm) {
+        try self.mouse_event_target.?.handleMouseDown(b, clicks, cm);
         return;
     }
 
     for (self.controls.items) |c|
         switch (c) {
-            inline .checkbox, .radio, .button, .select => |cb| if (cb.mouseIsOver()) {
-                try cb.handleMouseDown(b, clicks);
+            inline .checkbox, .radio, .button, .select => |i| if (i.mouseIsOver()) {
+                try i.handleMouseDown(b, clicks, false);
                 self.mouse_event_target = c;
                 return;
             },
@@ -270,6 +270,12 @@ const DialogControl = union(enum) {
     fn accelerate(self: DialogControl) void {
         switch (self) {
             inline else => |c| c.accelerate(),
+        }
+    }
+
+    fn handleMouseDown(self: DialogControl, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
+        switch (self) {
+            inline else => |c| return c.handleMouseDown(b, clicks, cm),
         }
     }
 

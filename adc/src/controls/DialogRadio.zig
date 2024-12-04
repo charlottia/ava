@@ -117,10 +117,10 @@ pub fn mouseIsOver(self: *const DialogRadio) bool {
     return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
 }
 
-pub fn handleMouseDown(self: *DialogRadio, b: SDL.MouseButton, clicks: u8) !void {
+pub fn handleMouseDown(self: *DialogRadio, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
     _ = clicks;
 
-    if (b != .left) return;
+    if (b != .left or cm) return;
 
     self.dialog.focus_ix = self.ix;
     self.targeted = true;
@@ -137,6 +137,8 @@ pub fn handleMouseUp(self: *DialogRadio, b: SDL.MouseButton, clicks: u8) !void {
 
     if (b != .left) return;
 
-    if (self.targeted)
+    if (self.targeted) {
+        self.targeted = false;
         self.accelerate();
+    }
 }

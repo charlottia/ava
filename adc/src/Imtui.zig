@@ -539,9 +539,9 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
     return old_mouse_row != self.mouse_row or old_mouse_col != self.mouse_col;
 }
 
-fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, ct_match: bool) !?Control {
+fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Control {
     if (self.focus == .dialog) {
-        try self.focus_dialog.handleMouseDown(b, clicks, ct_match);
+        try self.focus_dialog.handleMouseDown(b, clicks, cm);
         return .{ .dialog = self.focus_dialog };
     }
 
@@ -570,7 +570,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, ct_match: bool)
                 return .{ .button = bu };
             },
             .editor => |e| if (e.mouseIsOver()) {
-                try e.handleMouseDown(b, clicks, ct_match);
+                try e.handleMouseDown(b, clicks, cm);
                 return .{ .editor = e };
             },
             else => {},

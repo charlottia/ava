@@ -648,9 +648,13 @@ const Adc = struct {
         // [-] mouse control
         //     [ ] should be able to drag "between" the {checkbox,radio,button}
         //         class of items
-        //     [-] select
+        //     [x] select
         //     [ ] input
         // [ ] help sub-dialog
+        // [ ] whole-of-Imtui refactor to capture more commonality; ideally we
+        //     wouldn't have Imtui having to dispatch to Editor, which sometimes
+        //     does its scrollbar stuff; and then Imtui dispatching to Dialog,
+        //     which dispatches to its controls, with all this repeated code.
 
         // It appears the "options" menu may well actually appear to remain
         // opened (i.e. the text " Options " is inverted at the top). TODO

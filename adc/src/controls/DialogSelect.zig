@@ -1,6 +1,7 @@
 const std = @import("std");
 const SDL = @import("sdl2");
 
+const Imtui = @import("../Imtui.zig");
 const Dialog = @import("./Dialog.zig");
 
 const DialogSelect = @This();
@@ -17,6 +18,8 @@ _items: []const []const u8 = undefined,
 _accel: ?u8 = undefined,
 _selected_ix: usize,
 _scroll_row: usize = 0,
+vscrollbar: Imtui.TextMode.Vscrollbar = .{},
+cmt: ?Imtui.TextMode.ScrollbarTarget = null,
 
 pub fn create(dialog: *Dialog, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !*DialogSelect {
     var b = try dialog.imtui.allocator.create(DialogSelect);
@@ -81,12 +84,12 @@ pub fn end(self: *DialogSelect) void {
         );
     }
 
-    _ = self.dialog.imtui.text_mode.vscrollbar(
+    self.vscrollbar = self.dialog.imtui.text_mode.vscrollbar(
         self.c2 - 1 - self.dialog.imtui.text_mode.offset_col,
         self.r1 + 1 - self.dialog.imtui.text_mode.offset_row,
         self.r2 - 1 - self.dialog.imtui.text_mode.offset_row,
         self._scroll_row,
-        self._items.len -| 8,
+        self._items.len -| (self.r2 - self.r1 - 2),
     );
 }
 
@@ -134,18 +137,51 @@ pub fn mouseIsOver(self: *const DialogSelect) bool {
         self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
 }
 
-pub fn handleMouseDown(self: *DialogSelect, b: SDL.MouseButton, clicks: u8) !void {
+pub fn handleMouseDown(self: *DialogSelect, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
     _ = clicks;
 
     if (b != .left) return;
 
-    // Handle click and drag exactly the same way.
-    // XXX: the scrollbar doesn't agree. But we haven't implemented it yet. :)
+    if (!cm)
+        self.cmt = null;
+
+    if (self.dialog.imtui.mouse_col == self.c2 - 1 or (cm and self.cmt != null and self.cmt.?.isVscr())) {
+        if (self.vscrollbar.hit(self.dialog.imtui.mouse_row, cm, self.cmt)) |hit| {
+            switch (hit) {
+                .up => {
+                    self.cmt = .vscr_up;
+                    self._scroll_row -|= 1;
+                },
+                .toward_up => {
+                    self.cmt = .vscr_toward_up;
+                    self._scroll_row -|= self.r2 - self.r1 - 2;
+                },
+                .thumb => {
+                    self._scroll_row = (self.vscrollbar.thumb * self.vscrollbar.highest + (self.vscrollbar.r2 - self.vscrollbar.r1 - 4)) / (self.vscrollbar.r2 - self.vscrollbar.r1 - 3);
+                },
+                .toward_down => {
+                    self.cmt = .vscr_toward_down;
+                    self._scroll_row = @min(self._scroll_row + (self.r2 - self.r1 - 2), self._items.len - (self.r2 - self.r1 - 2));
+                },
+                .down => {
+                    self.cmt = .vscr_down;
+                    self._scroll_row = @min(self._scroll_row + 1, self._items.len - (self.r2 - self.r1 - 2));
+                },
+            }
+            if (self._selected_ix < self._scroll_row)
+                self._selected_ix = self._scroll_row
+            else if (self._selected_ix > self._scroll_row + (self.r2 - self.r1 - 3))
+                self._selected_ix = self._scroll_row + (self.r2 - self.r1 - 3);
+            return;
+        }
+    }
+
     return self.handleMouseDrag(b);
 }
 
 pub fn handleMouseDrag(self: *DialogSelect, b: SDL.MouseButton) !void {
     if (b != .left) return;
+    if (self.cmt != null) return;
 
     // - If click is on top row, or left column before the bottom row, we just
     //   shift the selection up by one, as if pressing up() when focussed.
