@@ -34,21 +34,12 @@ selection_start: ?struct {
 } = null,
 scroll_row: usize = 0,
 scroll_col: usize = 0,
-vscroll_thumb: usize = 0,
-hscroll_thumb: usize = 0,
+hscrollbar: Imtui.TextMode.Hscrollbar = .{},
+vscrollbar: Imtui.TextMode.Vscrollbar = .{},
 toggled_fullscreen: bool = false,
 dragging: ?enum { header, text } = null,
 dragged_header_to: ?usize = null,
-clickmatic_target: ?enum {
-    hscr_left,
-    hscr_right,
-    hscr_toward_left,
-    hscr_toward_right,
-    vscr_up,
-    vscr_down,
-    vscr_toward_up,
-    vscr_toward_down,
-} = null,
+clickmatic_target: ?Imtui.TextMode.ScrollbarTarget = null,
 
 pub const MAX_LINE = 255;
 
@@ -213,12 +204,12 @@ pub fn end(self: *Editor) void {
             self.imtui.text_mode.write(y + self.r1 + 1, self.c1 + 1, line.items[self.scroll_col..upper]);
     }
 
-    if (active and self.showVScrollWhenActive()) {
-        self.vscroll_thumb = self.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self.cursor_row, self._source.?.lines.items.len);
+    if (active and self.showHScrollWhenActive()) {
+        self.hscrollbar = self.imtui.text_mode.hscrollbar(self.r2 - 1, self.c1 + 1, self.c2 - 1, self.scroll_col, MAX_LINE - (self.c2 - self.c1 - 3));
     }
 
-    if (active and self.showHScrollWhenActive()) {
-        self.hscroll_thumb = self.imtui.text_mode.hscrollbar(self.r2 - 1, self.c1 + 1, self.c2 - 1, self.scroll_col, (MAX_LINE - (self.c2 - self.c1 - 3)));
+    if (active and self.showVScrollWhenActive()) {
+        self.vscrollbar = self.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self.cursor_row, self._source.?.lines.items.len);
     }
 
     if (active and self.imtui.focus == .editor) {
@@ -339,38 +330,50 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
     }
 
     if (c > self.c1 and c < self.c2 - 1) {
-        const hscroll = self.showHScrollWhenActive() and r == self.r2 - 1;
+        const hscroll = self.showHScrollWhenActive() and (r == self.hscrollbar.r or
+            (ct_match and self.clickmatic_target != null and self.clickmatic_target.?.isHscr()));
         if (self.imtui.focus_editor == self.id and hscroll) {
-            if (c == self.c1 + 1 and (!ct_match or self.clickmatic_target == .hscr_left)) {
-                self.selection_start = null;
-                self.clickmatic_target = .hscr_left;
-                self.hscrLeft();
-            } else if (c > self.c1 + 1 and c < self.c2 - 2) {
-                const hst = self.hscroll_thumb;
-                if (c - 2 < hst and (!ct_match or self.clickmatic_target == .hscr_toward_left)) {
-                    self.selection_start = null;
-                    self.clickmatic_target = .hscr_toward_left;
-                    self.cursor_col = self.scroll_col;
-                    self.scroll_col = if (self.scroll_col >= (self.c2 - self.c1 - 2)) self.scroll_col - (self.c2 - self.c1 - 2) else 0;
-                } else if (c - 2 > hst and (!ct_match or self.clickmatic_target == .hscr_toward_right)) {
-                    self.selection_start = null;
-                    self.clickmatic_target = .hscr_toward_right;
-                    self.cursor_col = self.scroll_col;
-                    self.scroll_col = if (self.scroll_col <= MAX_LINE - (self.c2 - self.c1 - 3) - (self.c2 - self.c1 - 2)) self.scroll_col + (self.c2 - self.c1 - 2) else MAX_LINE - (self.c2 - self.c1 - 3);
-                } else if (!ct_match) {
-                    self.selection_start = null;
-                    self.cursor_col = self.scroll_col;
-                    self.scroll_col = (hst * (MAX_LINE - (self.c2 - self.c1 - 3)) + (self.c2 - self.c1 - 6)) / (self.c2 - self.c1 - 5);
-                }
-            } else if (c == self.c2 - 2 and (!ct_match or self.clickmatic_target == .hscr_right)) {
-                self.selection_start = null;
-                self.clickmatic_target = .hscr_right;
-                self.hscrRight();
-            }
+            if (self.hscrollbar.hit(c, ct_match, self.clickmatic_target)) |hit|
+                switch (hit) {
+                    .left => {
+                        self.clickmatic_target = .hscr_left;
+                        self.selection_start = null;
+                        self.hscrLeft();
+                    },
+                    .toward_left => {
+                        // Lacks fidelity: a full "page turn" (where possible)
+                        // doesn't move the cursor on the screen.
+                        self.clickmatic_target = .hscr_toward_left;
+                        self.selection_start = null;
+                        self.cursor_col = self.scroll_col;
+                        self.scroll_col = if (self.scroll_col >= (self.hscrollbar.c2 - self.hscrollbar.c1))
+                            self.scroll_col - (self.hscrollbar.c2 - self.hscrollbar.c1)
+                        else
+                            0;
+                    },
+                    .thumb => {
+                        self.selection_start = null;
+                        self.cursor_col = self.scroll_col;
+                        self.scroll_col = (self.hscrollbar.thumb * self.hscrollbar.highest + (self.hscrollbar.c2 - self.hscrollbar.c1 - 4)) / (self.hscrollbar.c2 - self.hscrollbar.c1 - 3);
+                    },
+                    .toward_right => {
+                        // As for .toward_left.
+                        self.clickmatic_target = .hscr_toward_right;
+                        self.selection_start = null;
+                        self.cursor_col = self.scroll_col;
+                        self.scroll_col = if (self.scroll_col <= self.hscrollbar.highest - (self.hscrollbar.c2 - self.hscrollbar.c1)) self.scroll_col + (self.hscrollbar.c2 - self.hscrollbar.c1) else self.hscrollbar.highest;
+                    },
+                    .right => {
+                        self.clickmatic_target = .hscr_right;
+                        self.selection_start = null;
+                        self.hscrRight();
+                    },
+                };
             if (self.cursor_col < self.scroll_col)
                 self.cursor_col = self.scroll_col
             else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
                 self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
+            return;
         } else if (!ct_match) {
             // Implication: either we're focussing this window for the first
             // time, or it's already focussed (and we didn't click in the
@@ -400,42 +403,50 @@ pub fn handleMouseDown(self: *Editor, button: SDL.MouseButton, clicks: u8, ct_ma
                     .cursor_row = self.cursor_row,
                     .cursor_col = self.cursor_col,
                 };
+            return;
         }
-        return;
     }
 
-    if (self.imtui.focus_editor == self.id and self.showVScrollWhenActive() and c == self.c2 - 1 and r > self.r1 and r < self.r2 - 1) {
-        if (r == self.r1 + 1 and (!ct_match or self.clickmatic_target == .vscr_up)) {
-            self.selection_start = null;
-            self.clickmatic_target = .vscr_up;
-            self.vscrUp();
-        } else if (r > self.r1 + 1 and r < self.r2 - 2) {
-            const vst = self.vscroll_thumb;
-            if (r - self.r1 - 2 < vst and (!ct_match or self.clickmatic_target == .vscr_toward_up)) {
-                self.selection_start = null;
-                self.clickmatic_target = .vscr_toward_up;
-                self.pageUp();
-            } else if (r - self.r1 - 2 > vst and (!ct_match or self.clickmatic_target == .vscr_toward_down)) {
-                self.selection_start = null;
-                self.clickmatic_target = .vscr_toward_down;
-                self.pageDown();
-            } else if (!ct_match) {
-                self.selection_start = null;
-                // ~~I can't quite get this to the exact same algorithm as
-                // QBASIC!!! Agh!! What gives!!! Daifuku!!~~
-                // nvm that got it
-                const start: f32 = @ceil(@as(f32, @floatFromInt(self._source.?.lines.items.len)) *
-                    @as(f32, @floatFromInt(vst)) /
-                    @as(f32, @floatFromInt(self.r2 - self.r1 - 4 - 1)));
-                self.cursor_row = @intFromFloat(start);
-                self.scroll_row = @intFromFloat(start);
-            }
-        } else if (r == self.r2 - 2 and (!ct_match or self.clickmatic_target == .vscr_down)) {
-            self.selection_start = null;
-            self.clickmatic_target = .vscr_down;
-            self.vscrDown();
+    if (r > self.r1 and r < self.r2 - 1) {
+        const vscroll = self.showVScrollWhenActive() and (c == self.vscrollbar.c or
+            (ct_match and self.clickmatic_target != null and self.clickmatic_target.?.isVscr()));
+        if (self.imtui.focus_editor == self.id and vscroll) {
+            if (self.vscrollbar.hit(r, ct_match, self.clickmatic_target)) |hit|
+                switch (hit) {
+                    .up => {
+                        self.clickmatic_target = .vscr_up;
+                        self.selection_start = null;
+                        self.vscrUp();
+                    },
+                    .toward_up => {
+                        self.clickmatic_target = .vscr_toward_up;
+                        self.selection_start = null;
+                        self.pageUp();
+                    },
+                    .thumb => {
+                        self.selection_start = null;
+                        // ~~I can't quite get this to the exact same algorithm as
+                        // QBASIC!!! Agh!! What gives!!! Daifuku!!~~
+                        // nvm that got it
+                        const start: f32 = @ceil(@as(f32, @floatFromInt(self.vscrollbar.highest)) *
+                            @as(f32, @floatFromInt(self.vscrollbar.thumb)) /
+                            @as(f32, @floatFromInt(self.vscrollbar.r2 - self.vscrollbar.r1 - 2 - 1)));
+                        self.cursor_row = @intFromFloat(start);
+                        self.scroll_row = @intFromFloat(start);
+                    },
+                    .toward_down => {
+                        self.clickmatic_target = .vscr_toward_down;
+                        self.selection_start = null;
+                        self.pageDown();
+                    },
+                    .down => {
+                        self.clickmatic_target = .vscr_down;
+                        self.selection_start = null;
+                        self.vscrDown();
+                    },
+                };
+            return;
         }
-        return;
     }
 }
 

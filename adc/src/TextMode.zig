@@ -179,22 +179,101 @@ pub fn TextMode(h: usize, w: usize) type {
             self.draw(r2 - 1, c2 - 1, colour, .BottomRight);
         }
 
-        pub fn vscrollbar(self: *Self, c: usize, r1: usize, r2: usize, ix: usize, highest: usize) usize {
-            self.draw(r1, c, 0x70, .ArrowUp);
-            self.paint(r1 + 1, c, r2 - 1, c + 1, 0x70, .DotsLight);
-            const off = if (highest > 0) ix * (r2 - r1 - 3) / highest else 0;
-            self.draw(r1 + 1 + off, c, 0x00, .Blank);
-            self.draw(r2 - 1, c, 0x70, .ArrowDown);
-            return off;
+        pub const ScrollbarTarget = enum {
+            hscr_left,
+            hscr_right,
+            hscr_toward_left,
+            hscr_toward_right,
+            vscr_up,
+            vscr_down,
+            vscr_toward_up,
+            vscr_toward_down,
+
+            pub fn isHscr(self: ScrollbarTarget) bool {
+                return switch (self) {
+                    .hscr_left, .hscr_right, .hscr_toward_left, .hscr_toward_right => true,
+                    else => false,
+                };
+            }
+
+            pub fn isVscr(self: ScrollbarTarget) bool {
+                return switch (self) {
+                    .vscr_up, .vscr_down, .vscr_toward_up, .vscr_toward_down => true,
+                    else => false,
+                };
+            }
+        };
+
+        pub const Hscrollbar = struct {
+            r: usize = 0,
+            c1: usize = 0,
+            c2: usize = 0,
+            thumb: usize = 0,
+            highest: usize = 0,
+
+            pub const Hit = enum { left, toward_left, thumb, toward_right, right };
+
+            pub fn hit(self: *const Hscrollbar, c: usize, ct_match: bool, clickmatic_target: ?ScrollbarTarget) ?Hit {
+                if (c == self.c1 and (!ct_match or clickmatic_target == .hscr_left))
+                    return .left;
+
+                if (c > self.c1 and c < self.c2 - 1) {
+                    if (c - self.c1 - 1 < self.thumb and (!ct_match or clickmatic_target == .hscr_toward_left))
+                        return .toward_left
+                    else if (c - self.c1 - 1 > self.thumb and (!ct_match or clickmatic_target == .hscr_toward_right))
+                        return .toward_right
+                    else if (!ct_match)
+                        return .thumb;
+                } else if (c == self.c2 - 1 and (!ct_match or clickmatic_target == .hscr_right))
+                    return .right;
+
+                return null;
+            }
+        };
+
+        pub fn hscrollbar(self: *Self, r: usize, c1: usize, c2: usize, ix: usize, highest: usize) Hscrollbar {
+            self.draw(r, c1, 0x70, .ArrowLeft);
+            self.paint(r, c1 + 1, r + 1, c2 - 1, 0x70, .DotsLight);
+            const thumb = if (highest > 0) ix * (c2 - c1 - 3) / highest else 0;
+            self.draw(r, c1 + 1 + thumb, 0x00, .Blank);
+            self.draw(r, c2 - 1, 0x70, .ArrowRight);
+            return .{ .r = r, .c1 = c1, .c2 = c2, .thumb = thumb, .highest = highest };
         }
 
-        pub fn hscrollbar(self: *Self, r: usize, c1: usize, c2: usize, ix: usize, highest: usize) usize {
-            self.draw(r, c1, 0x70, .ArrowUp);
-            self.paint(r, c1 + 1, r + 1, c2 - 1, 0x70, .DotsLight);
-            const off = if (highest > 0) ix * (c2 - c1 - 3) / highest else 0;
-            self.draw(r, c1 + 1 + off, 0x00, .Blank);
-            self.draw(r, c2 - 1, 0x70, .ArrowDown);
-            return off;
+        pub const Vscrollbar = struct {
+            c: usize = 0,
+            r1: usize = 0,
+            r2: usize = 0,
+            thumb: usize = 0,
+            highest: usize = 0,
+
+            pub const Hit = enum { up, toward_up, thumb, toward_down, down };
+
+            pub fn hit(self: *const Vscrollbar, r: usize, ct_match: bool, clickmatic_target: ?ScrollbarTarget) ?Hit {
+                if (r == self.r1 and (!ct_match or clickmatic_target == .vscr_up))
+                    return .up;
+
+                if (r > self.r1 and r < self.r2 - 1) {
+                    if (r - self.r1 - 1 < self.thumb and (!ct_match or clickmatic_target == .vscr_toward_up))
+                        return .toward_up
+                    else if (r - self.r1 - 1 > self.thumb and (!ct_match or clickmatic_target == .vscr_toward_down))
+                        return .toward_down
+                    else if (!ct_match)
+                        return .thumb;
+                } else if (r == self.r2 - 1 and (!ct_match or clickmatic_target == .vscr_down))
+                    return .down;
+
+                return null;
+            }
+        };
+
+        pub fn vscrollbar(self: *Self, c: usize, r1: usize, r2: usize, ix: usize, highest: usize) Vscrollbar {
+            self.draw(r1, c, 0x70, .ArrowUp);
+            self.paint(r1 + 1, c, r2 - 1, c + 1, 0x70, .DotsLight);
+            const thumb = if (highest > 0) ix * (r2 - r1 - 3) / highest else 0;
+            self.draw(r1 + 1 + thumb, c, 0x00, .Blank);
+            self.draw(r2 - 1, c, 0x70, .ArrowDown);
+            return .{ .c = c, .r1 = r1, .r2 = r2, .thumb = thumb, .highest = highest };
         }
     };
 }

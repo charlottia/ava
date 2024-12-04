@@ -162,16 +162,19 @@ pub fn handleKeyUp(self: *Dialog, keycode: SDL.Keycode) !void {
 }
 
 pub fn handleMouseDown(self: *Dialog, b: SDL.MouseButton, clicks: u8, ct_match: bool) !void {
-    _ = ct_match;
+    if (ct_match) {
+        try self.mouse_event_target.?.handleMouseDrag(b);
+        return;
+    }
 
     for (self.controls.items) |c|
         switch (c) {
-            inline .checkbox, .radio, .button => |cb| if (cb.mouseIsOver()) {
+            inline .checkbox, .radio, .button, .select => |cb| if (cb.mouseIsOver()) {
                 try cb.handleMouseDown(b, clicks);
                 self.mouse_event_target = c;
                 return;
             },
-            else => {},
+            .input => {},
         };
 }
 

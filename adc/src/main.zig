@@ -646,6 +646,10 @@ const Adc = struct {
         //                          Typematic is included, though handled for us
         //                          by Imtui.
         // [-] mouse control
+        //     [ ] should be able to drag "between" the {checkbox,radio,button}
+        //         class of items
+        //     [-] select
+        //     [ ] input
         // [ ] help sub-dialog
 
         // It appears the "options" menu may well actually appear to remain

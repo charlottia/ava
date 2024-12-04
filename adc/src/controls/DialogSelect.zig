@@ -35,10 +35,10 @@ pub fn deinit(self: *DialogSelect) void {
 
 pub fn describe(self: *DialogSelect, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
     self.ix = ix;
-    self.r1 = r1;
-    self.c1 = c1;
-    self.r2 = r2;
-    self.c2 = c2;
+    self.r1 = self.dialog.imtui.text_mode.offset_row + r1;
+    self.c1 = self.dialog.imtui.text_mode.offset_col + c1;
+    self.r2 = self.dialog.imtui.text_mode.offset_row + r2;
+    self.c2 = self.dialog.imtui.text_mode.offset_col + c2;
     self.colour = colour;
     self._items = &.{};
     self._accel = null;
@@ -46,8 +46,8 @@ pub fn describe(self: *DialogSelect, ix: usize, r1: usize, c1: usize, r2: usize,
     self.dialog.imtui.text_mode.box(r1, c1, r2, c2, colour);
 
     if (self.dialog.focus_ix == ix) {
-        self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r1 + 1 + self._selected_ix - self._scroll_row;
-        self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + 2;
+        self.dialog.imtui.text_mode.cursor_row = self.r1 + 1 + self._selected_ix - self._scroll_row;
+        self.dialog.imtui.text_mode.cursor_col = self.c1 + 2;
     }
 }
 
@@ -60,14 +60,34 @@ pub fn items(self: *DialogSelect, it: []const []const u8) void {
 }
 
 pub fn end(self: *DialogSelect) void {
+    // XXX: the offset stuff got real ugly here.
+
     for (self._items[self._scroll_row..], 0..) |it, ix| {
         const r = self.r1 + 1 + ix;
         if (r == self.r2 - 1) break;
         if (ix + self._scroll_row == self._selected_ix)
-            self.dialog.imtui.text_mode.paint(r, self.c1 + 1, r + 1, self.c2 - 1, ((self.colour & 0x0f) << 4) | ((self.colour & 0xf0) >> 4), .Blank);
-        self.dialog.imtui.text_mode.write(r, self.c1 + 2, it);
+            self.dialog.imtui.text_mode.paint(
+                r - self.dialog.imtui.text_mode.offset_row,
+                self.c1 + 1 - self.dialog.imtui.text_mode.offset_col,
+                r + 1 - self.dialog.imtui.text_mode.offset_row,
+                self.c2 - 1 - self.dialog.imtui.text_mode.offset_col,
+                ((self.colour & 0x0f) << 4) | ((self.colour & 0xf0) >> 4),
+                .Blank,
+            );
+        self.dialog.imtui.text_mode.write(
+            r - self.dialog.imtui.text_mode.offset_row,
+            self.c1 + 2 - self.dialog.imtui.text_mode.offset_col,
+            it,
+        );
     }
-    _ = self.dialog.imtui.text_mode.vscrollbar(self.c2 - 1, self.r1 + 1, self.r2 - 1, self._scroll_row, self._items.len -| 8);
+
+    _ = self.dialog.imtui.text_mode.vscrollbar(
+        self.c2 - 1 - self.dialog.imtui.text_mode.offset_col,
+        self.r1 + 1 - self.dialog.imtui.text_mode.offset_row,
+        self.r2 - 1 - self.dialog.imtui.text_mode.offset_row,
+        self._scroll_row,
+        self._items.len -| 8,
+    );
 }
 
 pub fn accelerate(self: *DialogSelect) void {
@@ -107,4 +127,46 @@ pub fn handleKeyPress(self: *DialogSelect, keycode: SDL.Keycode, modifiers: SDL.
         }
         return;
     }
+}
+
+pub fn mouseIsOver(self: *const DialogSelect) bool {
+    return self.dialog.imtui.mouse_row >= self.r1 and self.dialog.imtui.mouse_row < self.r2 and
+        self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
+}
+
+pub fn handleMouseDown(self: *DialogSelect, b: SDL.MouseButton, clicks: u8) !void {
+    _ = clicks;
+
+    if (b != .left) return;
+
+    // Handle click and drag exactly the same way.
+    // XXX: the scrollbar doesn't agree. But we haven't implemented it yet. :)
+    return self.handleMouseDrag(b);
+}
+
+pub fn handleMouseDrag(self: *DialogSelect, b: SDL.MouseButton) !void {
+    if (b != .left) return;
+
+    // - If click is on top row, or left column before the bottom row, we just
+    //   shift the selection up by one, as if pressing up() when focussed.
+    // - If click is on bottom row, or right column after the top row, we just
+    //   shift the selection down by one, as if pressing down() when focussed.
+    // - If it's elsewhere, we focus the selectbox and select the item under
+    //   cursor.
+    if (self.dialog.imtui.mouse_row <= self.r1 or
+        (self.dialog.imtui.mouse_col == self.c1 and self.dialog.imtui.mouse_row < self.r2 - 1))
+    {
+        self.up();
+        return;
+    }
+
+    if (self.dialog.imtui.mouse_row >= self.r2 - 1 or
+        (self.dialog.imtui.mouse_col == self.c2 - 1 and self.dialog.imtui.mouse_row > self.r1))
+    {
+        self.down();
+        return;
+    }
+
+    self.dialog.focus_ix = self.ix;
+    self._selected_ix = self.dialog.imtui.mouse_row - self.r1 - 1 + self._scroll_row;
 }

@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
-const TextMode = @import("./TextMode.zig").TextMode;
+pub const TextMode = @import("./TextMode.zig").TextMode(25, 80);
 const Font = @import("./Font.zig");
 
 pub const Controls = @import("./ImtuiControls.zig");
@@ -10,7 +10,7 @@ pub const Controls = @import("./ImtuiControls.zig");
 const Imtui = @This();
 
 allocator: Allocator,
-text_mode: TextMode(25, 80),
+text_mode: TextMode,
 scale: f32,
 
 running: bool = true,
@@ -139,7 +139,7 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: Font, scale: f32
     const imtui = try allocator.create(Imtui);
     imtui.* = .{
         .allocator = allocator,
-        .text_mode = try TextMode(25, 80).init(renderer, font),
+        .text_mode = try TextMode.init(renderer, font),
         .scale = scale,
         .last_tick = SDL.getTicks64(),
     };
@@ -268,6 +268,7 @@ pub fn newFrame(self: *Imtui) !void {
             switch (target) {
                 .button => |bu| try bu.handleMouseDown(self.mouse_down.?, 0),
                 .editor => |e| try e.handleMouseDown(self.mouse_down.?, 0, true),
+                .dialog => |d| try d.handleMouseDown(self.mouse_down.?, 0, true),
                 else => {},
             };
     }
