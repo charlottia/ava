@@ -285,7 +285,7 @@ pub fn handleKeyPress(self: *Editor, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         .@"return" => try self.splitLine(),
         .backspace => try self.deleteAt(.backspace),
         .delete => try self.deleteAt(.delete),
-        else => if (isPrintableKey(keycode) and (try self.currentLine()).items.len < 254) {
+        else => if (isPrintableKey(keycode) and (try self.currentLine()).items.len < (MAX_LINE - 1)) {
             var line = try self.currentLine();
             if (line.items.len < self.cursor_col)
                 try line.appendNTimes(' ', self.cursor_col - line.items.len);

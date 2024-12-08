@@ -1,3 +1,18 @@
+Two major refactors need to be done:
+
+* [ ] Imtui's existing model has been stretched and kinda frankenstein'd with
+      the Dialog and all the forwarding to very similar interfaces. Ideally
+      everything is managed by the top-level system, with parent-child
+      relationships known to the system.
+  * The Menubar reconciliation task already wants this.
+  * Remember we have this "offset" stuff right now with Dialogs which is super
+    busted.
+    * Dialog also is really confused about how to handle click/drag/clickmatic.
+* [ ] Editor's general text-editing needs to be afforded to DialogInput.
+      Selections, dragging, heaps of shortcut keys we don't yet support.
+
+---
+
 Some last low-hanging fruit to forage for.
 
 * [x] dot-point menu toggles

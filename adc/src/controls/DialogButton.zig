@@ -87,6 +87,21 @@ pub fn chosen(self: *DialogButton) bool {
     return self._chosen;
 }
 
+pub fn space(self: *DialogButton) void {
+    self.inverted = true;
+}
+
+pub fn handleKeyUp(self: *DialogButton, keycode: SDL.Keycode) !void {
+    if (keycode == .space and self.inverted and self.dialog.focus_ix == self.ix) {
+        self.inverted = false;
+        self._chosen = true;
+    }
+}
+
+pub fn blur(self: *DialogButton) !void {
+    self.inverted = false;
+}
+
 pub fn mouseIsOver(self: *const DialogButton) bool {
     return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
 }

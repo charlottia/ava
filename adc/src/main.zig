@@ -250,6 +250,7 @@ const Adc = struct {
     display_dialog_colours_breakpoint: u8 = undefined,
     display_dialog_scroll_bars: bool = undefined,
     display_dialog_tab_stops: u8 = undefined,
+    display_dialog_help_dialog_visible: bool = undefined,
 
     fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
         errdefer primary_source.release();
@@ -617,6 +618,7 @@ const Adc = struct {
         self.display_dialog_colours_breakpoint = self.prefs.settings.colours_breakpoint;
         self.display_dialog_scroll_bars = self.prefs.settings.scroll_bars;
         self.display_dialog_tab_stops = self.prefs.settings.tab_stops;
+        self.display_dialog_help_dialog_visible = false;
     }
 
     const COLOUR_NAMES: []const []const u8 = &.{
@@ -649,7 +651,7 @@ const Adc = struct {
         //     [ ] should be able to drag "between" the {checkbox,radio,button}
         //         class of items
         //     [x] select
-        //     [ ] input
+        //     [-] input
         // [ ] help sub-dialog
         // [ ] whole-of-Imtui refactor to capture more commonality; ideally we
         //     wouldn't have Imtui having to dispatch to Editor, which sometimes
@@ -761,10 +763,27 @@ const Adc = struct {
         }
 
         var help = try dialog.button(20, 42, "&Help");
-        if (help.chosen())
-            std.log.debug("help", .{});
+        if (help.chosen()) {
+            std.log.debug("help chosen", .{});
+            self.display_dialog_help_dialog_visible = true;
+        }
 
         dialog.end();
+
+        if (self.display_dialog_help_dialog_visible) {
+            var help_dialog = try self.imtui.dialog("HELP: Display Dialog", 21, 70);
+            self.imtui.text_mode.draw(18, 0, 0x70, .VerticalRight);
+            self.imtui.text_mode.paint(18, 1, 18 + 1, 70 - 1, 0x70, .Horizontal);
+            self.imtui.text_mode.draw(18, 70 - 1, 0x70, .VerticalLeft);
+            var help_dialog_ok = try help_dialog.button(19, 31, "OK");
+            help_dialog_ok.default();
+            help_dialog_ok.cancel();
+            if (help_dialog_ok.chosen()) {
+                std.log.debug("help OK chosen", .{});
+                self.display_dialog_help_dialog_visible = false;
+            }
+            help_dialog.end();
+        }
     }
 
     fn windowFunction(self: *Adc) void {

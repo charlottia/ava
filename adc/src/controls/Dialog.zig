@@ -84,6 +84,7 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         .tab => {
             const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
             const inc = if (reverse) self.controls.items.len - 1 else 1;
+            try self.controls.items[self.focus_ix].blur();
             if (self.controls.items[self.focus_ix] == .radio) {
                 const rg = self.controls.items[self.focus_ix].radio.group_id;
                 while (self.controls.items[self.focus_ix] == .radio and
@@ -130,7 +131,7 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         } else switch (self.controls.items[self.focus_ix]) {
             // select box, input box need text input delivered to them
             // otherwise it might be an accelerator
-            inline .select, .input => {
+            .select, .input => {
                 // fall through
             },
             else => {
@@ -159,22 +160,24 @@ fn handleAccelerator(self: *Dialog, keycode: SDL.Keycode) void {
 pub fn handleKeyUp(self: *Dialog, keycode: SDL.Keycode) !void {
     if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
         self.alt_held = false;
+
+    try self.controls.items[self.focus_ix].handleKeyUp(keycode);
 }
 
 pub fn handleMouseDown(self: *Dialog, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
     if (cm) {
-        try self.mouse_event_target.?.handleMouseDown(b, clicks, cm);
+        if (self.mouse_event_target) |target|
+            try target.handleMouseDown(b, clicks, true);
         return;
     }
 
     for (self.controls.items) |c|
         switch (c) {
-            inline .checkbox, .radio, .button, .select => |i| if (i.mouseIsOver()) {
+            inline else => |i| if (i.mouseIsOver()) {
                 try i.handleMouseDown(b, clicks, false);
                 self.mouse_event_target = c;
                 return;
             },
-            .input => {},
         };
 }
 
@@ -261,6 +264,14 @@ const DialogControl = union(enum) {
         return false;
     }
 
+    fn handleKeyUp(self: DialogControl, keycode: SDL.Keycode) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyUp")) {
+                return c.handleKeyUp(keycode);
+            },
+        }
+    }
+
     fn _accel(self: DialogControl) ?u8 {
         return switch (self) {
             inline else => |c| c._accel,
@@ -270,6 +281,14 @@ const DialogControl = union(enum) {
     fn accelerate(self: DialogControl) void {
         switch (self) {
             inline else => |c| c.accelerate(),
+        }
+    }
+
+    fn blur(self: DialogControl) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "blur")) {
+                return c.blur();
+            },
         }
     }
 

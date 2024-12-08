@@ -39,9 +39,9 @@ pub fn deinit(self: *DialogInput) void {
 
 pub fn describe(self: *DialogInput, ix: usize, r: usize, c1: usize, c2: usize) void {
     self.ix = ix;
-    self.r = r;
-    self.c1 = c1;
-    self.c2 = c2;
+    self.r = self.dialog.imtui.text_mode.offset_row + r;
+    self.c1 = self.dialog.imtui.text_mode.offset_col + c1;
+    self.c2 = self.dialog.imtui.text_mode.offset_col + c2;
     self._accel = null;
 
     if (self.cursor_col < self.scroll_col)
@@ -53,8 +53,8 @@ pub fn describe(self: *DialogInput, ix: usize, r: usize, c1: usize, c2: usize) v
     self.dialog.imtui.text_mode.write(r, c1, clipped[0..@min(self.c2 - self.c1, clipped.len)]);
 
     if (self.dialog.focus_ix == self.dialog.controls_at) {
-        self.dialog.imtui.text_mode.cursor_row = self.dialog.imtui.text_mode.offset_row + r;
-        self.dialog.imtui.text_mode.cursor_col = self.dialog.imtui.text_mode.offset_col + c1 + self.cursor_col - self.scroll_col;
+        self.dialog.imtui.text_mode.cursor_row = self.r;
+        self.dialog.imtui.text_mode.cursor_col = self.c1 + self.cursor_col - self.scroll_col;
     }
 }
 
@@ -79,6 +79,8 @@ pub fn changed(self: *DialogInput) ?[]const u8 {
 
 pub fn handleKeyPress(self: *DialogInput, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
     // XXX is this all dialog inputs, or just Display's Tab Stops?
+    // Note this is the default MAX_LINE for full-screen editors, less Tab
+    // Stops' exact c1 (255 - 48 = 207). Hah.
     const MAX_LINE = 207;
 
     // TODO: shift for select, ctrl-(everything), etc. -- harmonise with Editor
@@ -92,6 +94,8 @@ pub fn handleKeyPress(self: *DialogInput, keycode: SDL.Keycode, modifiers: SDL.K
         .backspace => try self.deleteAt(.backspace),
         .delete => try self.deleteAt(.delete),
         else => if (Editor.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
+            if (self.value.items.len < self.cursor_col)
+                try self.value.appendNTimes(' ', self.cursor_col - self.value.items.len);
             try self.value.insert(self.cursor_col, Editor.getCharacter(keycode, modifiers));
             self.cursor_col += 1;
             self._changed = true;
@@ -119,9 +123,24 @@ fn deleteAt(self: *DialogInput, mode: enum { backspace, delete }) !void {
     }
 }
 
-pub fn handleMouseDown(self: *DialogInput, button: SDL.MouseButton, clicks: u8, ct: bool) !void {
-    _ = self;
+pub fn mouseIsOver(self: *const DialogInput) bool {
+    return self.dialog.imtui.mouse_row == self.r and
+        self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
+}
+
+pub fn handleMouseDown(self: *DialogInput, button: SDL.MouseButton, clicks: u8, cm: bool) !void {
     _ = button;
     _ = clicks;
-    _ = ct;
+
+    if (cm)
+        // XXX ignore clickmatic for now.
+        return;
+
+    if (self.dialog.focus_ix != self.ix) {
+        self.dialog.focus_ix = self.ix;
+        // TODO: select all by default, but we currently don't support selections
+    } else {
+        // clicking on already selected; set cursor where clicked.
+        self.cursor_col = self.scroll_col + self.dialog.imtui.mouse_col - self.c1;
+    }
 }
