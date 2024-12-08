@@ -690,27 +690,27 @@ const Adc = struct {
         bg.end();
 
         if (r1.selected()) {
-            fg.value(self.display_dialog_colours_normal & 0x0f);
-            bg.value(self.display_dialog_colours_normal >> 4);
-        } else if (r1._selected) {
-            self.display_dialog_colours_normal = @as(u8, @intCast(fg._selected_ix)) |
-                (@as(u8, @intCast(bg._selected_ix)) << 4);
+            fg.impl.value(self.display_dialog_colours_normal & 0x0f);
+            bg.impl.value(self.display_dialog_colours_normal >> 4);
+        } else if (r1.impl.selected) {
+            self.display_dialog_colours_normal = @as(u8, @intCast(fg.impl.selected_ix)) |
+                (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
         }
 
         if (r2.selected()) {
-            fg.value(self.display_dialog_colours_current & 0x0f);
-            bg.value(self.display_dialog_colours_current >> 4);
-        } else if (r2._selected) {
-            self.display_dialog_colours_current = @as(u8, @intCast(fg._selected_ix)) |
-                (@as(u8, @intCast(bg._selected_ix)) << 4);
+            fg.impl.value(self.display_dialog_colours_current & 0x0f);
+            bg.impl.value(self.display_dialog_colours_current >> 4);
+        } else if (r2.impl.selected) {
+            self.display_dialog_colours_current = @as(u8, @intCast(fg.impl.selected_ix)) |
+                (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
         }
 
         if (r3.selected()) {
-            fg.value(self.display_dialog_colours_breakpoint & 0x0f);
-            bg.value(self.display_dialog_colours_breakpoint >> 4);
-        } else if (r3._selected) {
-            self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg._selected_ix)) |
-                (@as(u8, @intCast(bg._selected_ix)) << 4);
+            fg.impl.value(self.display_dialog_colours_breakpoint & 0x0f);
+            bg.impl.value(self.display_dialog_colours_breakpoint >> 4);
+        } else if (r3.impl.selected) {
+            self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg.impl.selected_ix)) |
+                (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
         }
 
         colors.end();
@@ -727,7 +727,7 @@ const Adc = struct {
         if (tab_stops.initial()) |buf| {
             try buf.writer().print("{d}", .{self.display_dialog_tab_stops});
             // TODO: the value should start selected
-            tab_stops.cursor_col = buf.items.len;
+            tab_stops.impl.cursor_col = buf.items.len; // XXX
         }
         if (tab_stops.changed()) |v| {
             if (std.fmt.parseInt(u8, v, 10)) |n| {

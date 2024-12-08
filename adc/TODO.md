@@ -8,8 +8,22 @@ Two major refactors need to be done:
   * Remember we have this "offset" stuff right now with Dialogs which is super
     busted.
     * Dialog also is really confused about how to handle click/drag/clickmatic.
+
+Thinking about WinForms and DOM when searching for API inspiration (particularly
+on recently adding "blur()" as an 'event', the general state of confusion of
+event handlers vs setters vs attributes vs ...).
+
+One big thing is that we could take this opportunity to decouple the "user
+interface" from the backend interface entirely; the object instantiated by the
+backend (which events currently 'propagate' through and to etc.) doesn't have to
+be the same type of thing the user manipulates. Right now they are and it's
+_annoying_, because we have completely separate APIs in the one namespace!
+
+This'll help a bunch, yikes. Thanks for letting me run with this!
+
 * [ ] Editor's general text-editing needs to be afforded to DialogInput.
       Selections, dragging, heaps of shortcut keys we don't yet support.
+      (Help dialog will need its own read-only Editor-like thing.)
 
 ---
 

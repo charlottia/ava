@@ -18,8 +18,8 @@ controls_at: usize = undefined,
 focus_ix: usize = 0,
 alt_held: bool = false,
 show_acc: bool = false,
-_default_button: ?*Imtui.Controls.DialogButton = undefined,
-_cancel_button: ?*Imtui.Controls.DialogButton = undefined,
+default_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
+cancel_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
 mouse_event_target: ?DialogControl = null,
 
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !*Dialog {
@@ -44,8 +44,8 @@ pub fn describe(self: *Dialog, height: usize, width: usize) void {
     self.r1 = (@TypeOf(self.imtui.text_mode).H - height) / 2;
     self.c1 = (@TypeOf(self.imtui.text_mode).W - width) / 2;
     self.controls_at = 0;
-    self._default_button = null;
-    self._cancel_button = null;
+    self.default_button = null;
+    self.cancel_button = null;
 
     self.imtui.text_mode.offset_row += self.r1;
     self.imtui.text_mode.offset_col += self.c1;
@@ -93,7 +93,7 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
             } else {
                 self.focus_ix = (self.focus_ix + inc) % self.controls.items.len;
                 if (reverse and self.controls.items[self.focus_ix] == .radio)
-                    while (!self.controls.items[self.focus_ix].radio._selected) {
+                    while (!self.controls.items[self.focus_ix].radio.selected) {
                         self.focus_ix -= 1;
                     };
             }
@@ -113,16 +113,16 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
         },
         .@"return" => {
             switch (self.controls.items[self.focus_ix]) {
-                .button => |b| b._chosen = true,
-                else => if (self._default_button) |db| {
-                    db._chosen = true;
+                .button => |b| b.chosen = true,
+                else => if (self.default_button) |db| {
+                    db.chosen = true;
                 },
             }
             return;
         },
         .escape => {
-            if (self._cancel_button) |cb|
-                cb._chosen = true;
+            if (self.cancel_button) |cb|
+                cb.chosen = true;
             return;
         },
         else => if (self.alt_held) {
@@ -151,7 +151,7 @@ pub fn handleKeyPress(self: *Dialog, keycode: SDL.Keycode, modifiers: SDL.KeyMod
 
 fn handleAccelerator(self: *Dialog, keycode: SDL.Keycode) void {
     for (self.controls.items) |c|
-        if (c._accel()) |a| {
+        if (c.accel()) |a| {
             if (std.ascii.toLower(a) == @intFromEnum(keycode))
                 c.accelerate();
         };
@@ -222,11 +222,11 @@ pub fn groupbox(self: *Dialog, title: []const u8, r1: usize, c1: usize, r2: usiz
 }
 
 const DialogControl = union(enum) {
-    radio: *Imtui.Controls.DialogRadio,
-    select: *Imtui.Controls.DialogSelect,
-    checkbox: *Imtui.Controls.DialogCheckbox,
-    input: *Imtui.Controls.DialogInput,
-    button: *Imtui.Controls.DialogButton,
+    radio: *Imtui.Controls.DialogRadio.Impl,
+    select: *Imtui.Controls.DialogSelect.Impl,
+    checkbox: *Imtui.Controls.DialogCheckbox.Impl,
+    input: *Imtui.Controls.DialogInput.Impl,
+    button: *Imtui.Controls.DialogButton.Impl,
 
     fn deinit(self: DialogControl) void {
         switch (self) {
@@ -272,9 +272,9 @@ const DialogControl = union(enum) {
         }
     }
 
-    fn _accel(self: DialogControl) ?u8 {
+    fn accel(self: DialogControl) ?u8 {
         return switch (self) {
-            inline else => |c| c._accel,
+            inline else => |c| c.accel,
         };
     }
 
@@ -315,72 +315,67 @@ const DialogControl = union(enum) {
     }
 };
 
-pub fn radio(self: *Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !*Imtui.Controls.DialogRadio {
-    const b = if (self.controls_at == self.controls.items.len) b: {
+pub fn radio(self: *Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
+    defer self.controls_at += 1;
+    if (self.controls_at == self.controls.items.len) {
         const b = try Imtui.Controls.DialogRadio.create(self, self.controls_at, group_id, item_id, r, c, label);
-        try self.controls.append(self.imtui.allocator, .{ .radio = b });
-        break :b b;
-    } else b: {
+        try self.controls.append(self.imtui.allocator, .{ .radio = b.impl });
+        return b;
+    } else {
         const b = self.controls.items[self.controls_at].radio;
         b.describe(self.controls_at, group_id, item_id, r, c, label);
-        break :b b;
-    };
-    self.controls_at += 1;
-    return b;
+        return .{ .impl = b };
+    }
 }
 
-pub fn select(self: *Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !*Imtui.Controls.DialogSelect {
-    const s = if (self.controls_at == self.controls.items.len) s: {
-        const s = try Imtui.Controls.DialogSelect.create(self, self.controls_at, r1, c1, r2, c2, colour, selected);
-        try self.controls.append(self.imtui.allocator, .{ .select = s });
-        break :s s;
-    } else s: {
-        const s = self.controls.items[self.controls_at].select;
-        s.describe(self.controls_at, r1, c1, r2, c2, colour);
-        break :s s;
-    };
-    self.controls_at += 1;
-    return s;
+pub fn select(self: *Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
+    defer self.controls_at += 1;
+    if (self.controls_at == self.controls.items.len) {
+        const b = try Imtui.Controls.DialogSelect.create(self, self.controls_at, r1, c1, r2, c2, colour, selected);
+        try self.controls.append(self.imtui.allocator, .{ .select = b.impl });
+        return b;
+    } else {
+        const b = self.controls.items[self.controls_at].select;
+        b.describe(self.controls_at, r1, c1, r2, c2, colour);
+        return .{ .impl = b };
+    }
 }
 
-pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !*Imtui.Controls.DialogCheckbox {
-    const b = if (self.controls_at == self.controls.items.len) b: {
+pub fn checkbox(self: *Dialog, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
+    defer self.controls_at += 1;
+    if (self.controls_at == self.controls.items.len) {
         const b = try Imtui.Controls.DialogCheckbox.create(self, self.controls_at, r, c, label, selected);
-        try self.controls.append(self.imtui.allocator, .{ .checkbox = b });
-        break :b b;
-    } else b: {
+        try self.controls.append(self.imtui.allocator, .{ .checkbox = b.impl });
+        return b;
+    } else {
         const b = self.controls.items[self.controls_at].checkbox;
         b.describe(self.controls_at, r, c, label);
-        break :b b;
-    };
-    self.controls_at += 1;
-    return b;
+        return .{ .impl = b };
+    }
 }
 
-pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize) !*Imtui.Controls.DialogInput {
-    const b = if (self.controls_at == self.controls.items.len) b: {
+pub fn input(self: *Dialog, r: usize, c1: usize, c2: usize) !Imtui.Controls.DialogInput {
+    defer self.controls_at += 1;
+    if (self.controls_at == self.controls.items.len) {
         const b = try Imtui.Controls.DialogInput.create(self, self.controls_at, r, c1, c2);
-        try self.controls.append(self.imtui.allocator, .{ .input = b });
-        break :b b;
-    } else b: {
+        try self.controls.append(self.imtui.allocator, .{ .input = b.impl });
+        return b;
+    } else {
         const b = self.controls.items[self.controls_at].input;
         b.describe(self.controls_at, r, c1, c2);
-        break :b b;
-    };
-    self.controls_at += 1;
-    return b;
+        return .{ .impl = b };
+    }
 }
 
-pub fn button(self: *Dialog, r: usize, c: usize, label: []const u8) !*Imtui.Controls.DialogButton {
-    const b = if (self.controls_at == self.controls.items.len) b: {
+pub fn button(self: *Dialog, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogButton {
+    defer self.controls_at += 1;
+    if (self.controls_at == self.controls.items.len) {
         const b = try Imtui.Controls.DialogButton.create(self, self.controls_at, r, c, label);
-        try self.controls.append(self.imtui.allocator, .{ .button = b });
-        break :b b;
-    } else b: {
+        try self.controls.append(self.imtui.allocator, .{ .button = b.impl });
+        return b;
+    } else {
         const b = self.controls.items[self.controls_at].button;
         b.describe(self.controls_at, r, c, label);
-        break :b b;
-    };
-    self.controls_at += 1;
-    return b;
+        return .{ .impl = b };
+    }
 }
