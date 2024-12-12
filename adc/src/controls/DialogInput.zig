@@ -7,7 +7,7 @@ const Editor = @import("./Editor.zig");
 const DialogInput = @This();
 
 pub const Impl = struct {
-    dialog: *Dialog,
+    dialog: *Dialog.Impl,
     generation: usize,
     ix: usize = undefined,
     r: usize = undefined,
@@ -123,7 +123,7 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog, ix: usize, r: usize, c1: usize, c2: usize) !DialogInput {
+pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c1: usize, c2: usize) !DialogInput {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
         .dialog = dialog,

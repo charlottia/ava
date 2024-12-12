@@ -6,7 +6,7 @@ const Imtui = @import("../Imtui.zig");
 const DialogCheckbox = @This();
 
 pub const Impl = struct {
-    dialog: *Dialog,
+    dialog: *Dialog.Impl,
     generation: usize,
     ix: usize = undefined,
     r: usize = undefined,
@@ -91,7 +91,7 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !DialogCheckbox {
+pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !DialogCheckbox {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
         .dialog = dialog,

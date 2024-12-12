@@ -66,18 +66,23 @@ focus: union(enum) {
     dialog,
 } = .editor,
 focus_editor: usize = 0,
-focus_dialog: *Controls.Dialog = undefined,
+focus_dialog: *Controls.Dialog.Impl = undefined,
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
 const Control = union(enum) {
-    button: *Controls.Button,
-    shortcut: *Controls.Shortcut,
-    menubar: *Controls.Menubar,
-    menu: *Controls.Menu,
-    menu_item: *Controls.MenuItem,
-    editor: *Controls.Editor,
-    dialog: *Controls.Dialog,
+    button: *Controls.Button.Impl,
+    shortcut: *Controls.Shortcut.Impl,
+    menubar: *Controls.Menubar.Impl,
+    menu: *Controls.Menu.Impl,
+    menu_item: *Controls.MenuItem.Impl,
+    editor: *Controls.Editor.Impl,
+    dialog: *Controls.Dialog.Impl,
+    // dialog_radio: Controls.DialogRadio.Impl,
+    // dialog_select: Controls.DialogSelect.Impl,
+    // dialog_checkbox: Controls.DialogCheckbox.Impl,
+    // dialog_input: Controls.DialogInput.Impl,
+    // dialog_button: Controls.DialogButton.Impl,
 
     fn generation(self: Control) usize {
         return switch (self) {
@@ -295,11 +300,11 @@ fn controlById(self: *Imtui, comptime tag: std.meta.Tag(Control), id: []const u8
     return null;
 }
 
-pub fn getMenubar(self: *Imtui) ?*Controls.Menubar {
+pub fn getMenubar(self: *Imtui) ?*Controls.Menubar.Impl {
     return self.controlById(.menubar, "menubar");
 }
 
-pub fn openMenu(self: *Imtui) ?*Controls.Menu {
+pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
     switch (self.focus) {
         .menubar => |mb| if (mb.open) return self.getMenubar().?.menus.items[mb.index],
         .menu => |m| return self.getMenubar().?.menus.items[m.index],
@@ -308,62 +313,62 @@ pub fn openMenu(self: *Imtui) ?*Controls.Menu {
     return null;
 }
 
-pub fn focusedEditor(self: *Imtui) !*Controls.Editor {
+pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
     // XXX: this is ridiculous and i cant take it seriously
     var buf: [10]u8 = undefined; // editor.XYZ
     const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{self.focus_editor});
     return self.controlById(.editor, key).?;
 }
 
-pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !*Controls.Menubar {
+pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !Controls.Menubar {
     if (self.controlById(.menubar, "menubar")) |mb| {
         mb.describe(r, c1, c2);
-        return mb;
+        return .{ .impl = mb };
     }
 
     const mb = try Controls.Menubar.create(self, r, c1, c2);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, "menubar"), .{ .menubar = mb });
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, "menubar"), .{ .menubar = mb.impl });
     return mb;
 }
 
-pub fn editor(self: *Imtui, editor_id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !*Controls.Editor {
+pub fn editor(self: *Imtui, editor_id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !Controls.Editor {
     var buf: [10]u8 = undefined; // editor.XYZ
     const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{editor_id});
     if (self.controlById(.editor, key)) |e| {
         e.describe(r1, c1, r2, c2);
-        return e;
+        return .{ .impl = e };
     }
 
     const e = try Controls.Editor.create(self, editor_id, r1, c1, r2, c2);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .editor = e });
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .editor = e.impl });
     return e;
 }
 
-pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !*Controls.Button {
+pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !Controls.Button {
     var buf: [60]u8 = undefined; // button.blahblahblahblahblah
     const key = try std.fmt.bufPrint(&buf, "button.{s}", .{label});
     if (self.controlById(.button, key)) |b| {
         b.describe(r, c, colour);
-        return b;
+        return .{ .impl = b };
     }
 
     const b = try Controls.Button.create(self, r, c, colour, label);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .button = b });
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .button = b.impl });
     return b;
 }
 
-pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !*Controls.Shortcut {
+pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !Controls.Shortcut {
     var buf: [60]u8 = undefined; // shortcut.left_parenthesis.shift
     const key = try std.fmt.bufPrint(&buf, "shortcut.{s}.{s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" });
     if (self.controlById(.shortcut, key)) |s|
-        return s;
+        return .{ .impl = s };
 
     const s = try Controls.Shortcut.create(self, keycode, modifier);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .shortcut = s });
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .shortcut = s.impl });
     return s;
 }
 
-pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !*Controls.Dialog {
+pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !Controls.Dialog {
     self.focus = .dialog;
 
     var buf: [100]u8 = undefined; // dialog.blahblahblahblahblah
@@ -371,12 +376,12 @@ pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !*Co
     if (self.controlById(.dialog, key)) |d| {
         self.focus_dialog = d;
         d.describe(height, width);
-        return d;
+        return .{ .impl = d };
     }
 
     const d = try Controls.Dialog.create(self, title, height, width);
-    self.focus_dialog = d;
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .dialog = d });
+    self.focus_dialog = d.impl;
+    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .dialog = d.impl });
     return d;
 }
 
@@ -468,14 +473,14 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
                 return;
             },
             .@"return" => {
-                self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?._chosen = true;
+                self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?.chosen = true;
                 self.focus = .editor;
                 return;
             },
             else => if (keycodeAlphanum(keycode)) {
                 for (self.getMenubar().?.menus.items[m.index].menu_items.items) |mi|
                     if (mi != null and acceleratorMatch(mi.?.label, keycode)) {
-                        mi.?._chosen = true;
+                        mi.?.chosen = true;
                         self.focus = .editor;
                         return;
                     };
@@ -490,8 +495,8 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
 
     for (self.getMenubar().?.menus.items) |m|
         for (m.menu_items.items) |mi| {
-            if (mi != null) if (mi.?._shortcut) |s| if (s.matches(keycode, modifiers)) {
-                mi.?._chosen = true;
+            if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
+                mi.?.chosen = true;
                 return;
             };
         };
@@ -500,7 +505,7 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     while (cit.next()) |c|
         switch (c.*) {
             .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
-                s.*._chosen = true;
+                s.*.chosen = true;
                 return;
             },
             else => {},

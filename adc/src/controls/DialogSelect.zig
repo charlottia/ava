@@ -7,7 +7,7 @@ const Dialog = @import("./Dialog.zig");
 const DialogSelect = @This();
 
 pub const Impl = struct {
-    dialog: *Dialog,
+    dialog: *Dialog.Impl,
     ix: usize = undefined,
     generation: usize,
     r1: usize = undefined,
@@ -161,7 +161,7 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !DialogSelect {
+pub fn create(dialog: *Dialog.Impl, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !DialogSelect {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
         .dialog = dialog,

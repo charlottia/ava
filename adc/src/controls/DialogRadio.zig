@@ -7,7 +7,7 @@ const Imtui = @import("../Imtui.zig");
 const DialogRadio = @This();
 
 pub const Impl = struct {
-    dialog: *Dialog,
+    dialog: *Dialog.Impl,
     ix: usize = undefined,
     generation: usize,
     group_id: usize = undefined,
@@ -131,7 +131,7 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
+pub fn create(dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
         .dialog = dialog,

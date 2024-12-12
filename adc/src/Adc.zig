@@ -18,15 +18,15 @@ const Adc = @This();
 imtui: *Imtui,
 prefs: Prefs,
 
-sources: std.ArrayList(*Imtui.Controls.Editor.Source),
+sources: std.ArrayList(*Imtui.Controls.Source),
 
 // primary + secondary don't do their own acquire; sources holds all the
 // lifetimes.
-primary_source: *Imtui.Controls.Editor.Source,
-secondary_source: *Imtui.Controls.Editor.Source,
+primary_source: *Imtui.Controls.Source,
+secondary_source: *Imtui.Controls.Source,
 
 // immediate belongs to Adc.
-immediate_source: *Imtui.Controls.Editor.Source,
+immediate_source: *Imtui.Controls.Source,
 
 view: union(enum) {
     two: [2]usize,
@@ -43,14 +43,14 @@ display_dialog_scroll_bars: bool = undefined,
 display_dialog_tab_stops: u8 = undefined,
 display_dialog_help_dialog_visible: bool = undefined,
 
-pub fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Editor.Source) !Adc {
+pub fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Source) !Adc {
     errdefer primary_source.release();
 
-    var sources = std.ArrayList(*Imtui.Controls.Editor.Source).init(imtui.allocator);
+    var sources = std.ArrayList(*Imtui.Controls.Source).init(imtui.allocator);
     errdefer sources.deinit();
     try sources.append(primary_source);
 
-    var immediate_source = try Imtui.Controls.Editor.Source.createImmediate(imtui.allocator);
+    var immediate_source = try Imtui.Controls.Source.createImmediate(imtui.allocator);
     errdefer immediate_source.release();
 
     return .{
@@ -197,7 +197,7 @@ fn renderEditors(self: *Adc) !void {
         self.fullscreen = !self.fullscreen;
 }
 
-fn renderMenus(self: *Adc) !*Imtui.Controls.Menubar {
+fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
     var menubar = try self.imtui.menubar(0, 0, 80);
 
     var file_menu = try menubar.menu("&File", 16);
@@ -342,13 +342,13 @@ fn renderMenus(self: *Adc) !*Imtui.Controls.Menubar {
     return menubar;
 }
 
-fn renderHelpLine(self: *Adc, menubar: *Imtui.Controls.Menubar) !void {
+fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
     const help_line_colour: u8 = if (self.full_menus) 0x30 else 0x3f;
     self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
     var show_ruler = true;
     switch (self.imtui.focus) {
         .menu => |m| {
-            const help_text = menubar.itemAt(m).help_text.?;
+            const help_text = menubar.itemAt(m).help.?;
             self.imtui.text_mode.write(24, 1, "F1=Help");
             self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
             self.imtui.text_mode.write(24, 11, help_text);
@@ -468,13 +468,13 @@ fn renderDisplayDialog(self: *Adc) !void {
     self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
     self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 
-    self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.show_acc);
+    self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.impl.show_acc);
     var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
     fg.accel('f');
     fg.items(COLOUR_NAMES);
     fg.end();
 
-    self.imtui.text_mode.writeAccelerated(1, 43, "&Background", dialog.show_acc);
+    self.imtui.text_mode.writeAccelerated(1, 43, "&Background", dialog.impl.show_acc);
     var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
     bg.accel('b');
     bg.items(COLOUR_NAMES);
@@ -512,7 +512,7 @@ fn renderDisplayDialog(self: *Adc) !void {
     if (scroll_bars.changed()) |v|
         self.display_dialog_scroll_bars = v;
 
-    self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.show_acc);
+    self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.impl.show_acc);
     var tab_stops = try dialog.input(1, 48, 52);
     tab_stops.accel('t');
     if (tab_stops.initial()) |buf| {
