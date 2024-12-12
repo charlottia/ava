@@ -21,6 +21,82 @@ _annoying_, because we have completely separate APIs in the one namespace!
 
 This'll help a bunch, yikes. Thanks for letting me run with this!
 
+~
+
+OK, that's done. Now. Howwwwwww are we gonna awawa this?
+
+Imtui handles all events. It takes care of instrumenting TextMode, handing only
+translated positions through to controls, and handles click- + type-matic. It
+maintains a sense of what is focussed and chooses where to dispatch events.
+
+At present it privileges Editor/Menu(bar)/Dialog as the only possible focuses
+(which is true inasmuch as those things handle their own "subfocus" currently),
+and deals with how focus gets transferred to the Menu(bar) when Alt is pressed.
+It also entirely handles Menu(bar) controls. That's ugly!
+
+~
+
+DX-wise, we really want a way to instantiate a control as a child of another one
+in a generic fashion. Manual offset tracking sucks, and so does having controls
+split across e.g. Imtui and Dialog. A control probably could have a generic
+"children" thing; whether *all* controls get this (how?) or only the ones that
+want it is a reasonable question. (Probably reasonable to let comptime answer
+this last question.)
+
+Keep in mind, our current event model depends on the current granularity of
+event targets! We pass drag/up events to the current "mouse_event_target", which
+is a ?Imtui.Control. We will need to rework the event model here (and in other
+places).
+
+
+Existing Controls:
+- Button
+- Menubar
+- Menu
+- MenuItem
+- Editor
+- Dialog
+- DialogRadio
+- DialogSelect
+- DialogCheckbox
+- DialogInput
+- DialogButton
+- Shortcut (invisible)
+
+Button and DialogButton are similar yet different. Better off calling Button
+"HelpLineButton" or something. They do have much in common, though ... One big
+differentiator is that a DialogButton anticipates having keyboard focus, an
+accelerator, and a different look.  Indeed -- the Dialog* Controls really do
+belong in their own group.
+
+Different Control types have different restrictions on the kinds of Controls
+that can be their children (with many allowing none).
+
+var radio = dialog.child(imtui.radio());
+var radio = imtui.radio().parent(dialog);
+var radio = imtui.radio(dialog); <-- we'll probably have to do this because
+                                     its parent is a part of its identity.
+
+Establishing this relationship immediately is important because the position of
+the children will depend on the parent!
+
+We'll need some kind of focus tree? Dialog -> DialogButton. ??Menubar->Menu??.
+Technically a Dialog is never focussed -- only its elements are.
+
+How shall we handle e.g. using the editor and then pressing and holding alt.
+The menubar should immediately receive focus. Releasing & depressing again then
+restores focus to the editor. It's more like a focus stack.
+
+Key is that, at least in ADC, there's *always* an Editor at the bottom of that
+stack, and we never get to the Menubar except by Alt or a direct click. In other
+words, those key bindings *could* belong to the Editor, prompting a push to the
+focus stack. And on un-focus, the Menubar just pops itself off again. Menubar
+items render themselves when selected, or when a Menu(Item?) is focused which
+belongs to it.
+
+I can pretty much just start rewonking this by this stage, I think.
+
+
 * [ ] Editor's general text-editing needs to be afforded to DialogInput.
       Selections, dragging, heaps of shortcut keys we don't yet support.
       (Help dialog will need its own read-only Editor-like thing.)

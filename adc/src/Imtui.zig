@@ -3,9 +3,9 @@ const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
 pub const TextMode = @import("./TextMode.zig").TextMode(25, 80);
-const Font = @import("./Font.zig");
-
 pub const Controls = @import("./ImtuiControls.zig");
+
+const Font = @import("./Font.zig");
 
 const Imtui = @This();
 

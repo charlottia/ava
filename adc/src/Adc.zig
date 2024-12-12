@@ -25,6 +25,7 @@ sources: std.ArrayList(*Imtui.Controls.Editor.Source),
 primary_source: *Imtui.Controls.Editor.Source,
 secondary_source: *Imtui.Controls.Editor.Source,
 
+// immediate belongs to Adc.
 immediate_source: *Imtui.Controls.Editor.Source,
 
 view: union(enum) {
