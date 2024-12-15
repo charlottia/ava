@@ -28,45 +28,12 @@ mouse_row: usize = 0,
 mouse_col: usize = 0,
 mouse_down: ?SDL.MouseButton = null,
 mouse_event_target: ?Control = null,
-// Clickmatic requires a model shift above: we want to continue dispatching
-// click events to the same target, as long as our cursor position remains over
-// that same target. The tricky part is defining what a target is: one example
-// is one of the click-to-move-1 scrollbar ends ("<", ">", "^", "v"). Those are
-// unit-sized so it makes sense that dragging your mouse away from it doesn't
-// continue to trigger it, and triggers resume if you drag your mouse back.
-// On the other hand, we have the scroll bar area the thumb tracks in: it's
-// split in two (if not scrolled all the way to one end), with a click and
-// drag in the region of one allowing repeated triggers on that space. Query:
-// is the valid target the _original_ space, or does it shrink/vanish?
-// Answer: it does shrink! You have to keep moving the mouse to it to keep
-// scrolling.
-//
-// Follow-up question: what state do we need to store to match that target? What
-// would identify a target? It updates over time so we definitely need to get an
-// object we can query each frame.
-// Answer: We can maybe just use the mouse_event_target and ask it to do any
-// more specific matching required.
-// Action item: check all references to mouse_event_target & verify the
-// semantics will hold up.
-// Notes:
-// - mouse_event_target is only set for Buttons and Editors at present.
-// - handleMouseDrag is only called on mouse_event_targets.
-// - handleMouseUp is also only called on mouse_event_targets (and clears
-//   mouse_event_target).
-// This is plenty; the main things it needs to work on are scroll-related, which
-// are all contained within Editor.
 clickmatic_on: bool = false,
 clickmatic_tick: ?u64 = null, // Only set when a mouse_event_target is moused down on.
 
 alt_held: bool = false,
-focus: union(enum) {
-    editor,
-    menubar: struct { index: usize, open: bool },
-    menu: Controls.MenuItemReference,
-    dialog,
-} = .editor,
+focus_stack: std.ArrayListUnmanaged(Control) = .{},
 focus_editor: usize = 0,
-focus_dialog: *Controls.Dialog.Impl = undefined,
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
@@ -78,11 +45,11 @@ const Control = union(enum) {
     menu_item: *Controls.MenuItem.Impl,
     editor: *Controls.Editor.Impl,
     dialog: *Controls.Dialog.Impl,
-    // dialog_radio: Controls.DialogRadio.Impl,
-    // dialog_select: Controls.DialogSelect.Impl,
-    // dialog_checkbox: Controls.DialogCheckbox.Impl,
-    // dialog_input: Controls.DialogInput.Impl,
-    // dialog_button: Controls.DialogButton.Impl,
+    // dialog_radio: *Controls.DialogRadio.Impl,
+    // dialog_select: *Controls.DialogSelect.Impl,
+    // dialog_checkbox: *Controls.DialogCheckbox.Impl,
+    // dialog_input: *Controls.DialogInput.Impl,
+    dialog_button: *Controls.DialogButton.Impl,
 
     fn generation(self: Control) usize {
         return switch (self) {
@@ -100,6 +67,40 @@ const Control = union(enum) {
         switch (self) {
             inline else => |c| c.deinit(),
         }
+    }
+
+    fn mouseIsOver(self: Control) bool {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "mouseIsOver")) {
+                return c.mouseIsOver();
+            },
+        }
+        return false;
+    }
+
+    fn handleKeyPress(self: Control, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyPress")) {
+                try c.handleKeyPress(keycode, modifiers);
+            },
+        }
+    }
+
+    fn handleKeyUp(self: Control, keycode: SDL.Keycode) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyUp")) {
+                try c.handleKeyUp(keycode);
+            },
+        }
+    }
+
+    fn handleMouseDown(self: Control, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDown")) {
+                return c.handleMouseDown(b, clicks, cm);
+            },
+        }
+        return false;
     }
 
     fn handleMouseDrag(self: Control, b: SDL.MouseButton) !void {
@@ -222,7 +223,8 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
 }
 
 pub fn render(self: *Imtui) !void {
-    self.text_mode.cursor_inhibit = self.text_mode.cursor_inhibit or self.focus == .menu or self.focus == .menubar;
+    // XXX: Menu and Menubar need to wonk this one out themselves.
+    // self.text_mode.cursor_inhibit = self.text_mode.cursor_inhibit or self.focus == .menu or self.focus == .menubar;
     try self.text_mode.present(self.delta_tick);
 }
 
@@ -232,6 +234,7 @@ pub fn newFrame(self: *Imtui) !void {
     var cit = self.controls.iterator();
     while (cit.next()) |c| {
         if (c.value_ptr.generation() != self.generation) {
+            std.log.debug("newFrame: {s} has aged out", .{@tagName(c.value_ptr.*)});
             self.allocator.free(c.key_ptr.*);
             c.value_ptr.deinit();
             self.controls.removeByPtr(c.key_ptr);
@@ -270,10 +273,12 @@ pub fn newFrame(self: *Imtui) !void {
 
         const target = self.mouse_event_target.?; // Assumed to be present if clickmatic_tick is.
         if (trigger)
+            // Only these get clickmatic events.
             switch (target) {
-                .button => |bu| try bu.handleMouseDown(self.mouse_down.?, 0),
-                .editor => |e| try e.handleMouseDown(self.mouse_down.?, 0, true),
-                .dialog => |d| try d.handleMouseDown(self.mouse_down.?, 0, true),
+                inline .button, .editor => |c| {
+                    const handled = try c.handleMouseDown(self.mouse_down.?, 0, true);
+                    std.debug.assert(handled); // ...
+                },
                 else => {},
             };
     }
@@ -281,257 +286,311 @@ pub fn newFrame(self: *Imtui) !void {
     self.text_mode.clear(0x07);
 }
 
-fn controlById(self: *Imtui, comptime tag: std.meta.Tag(Control), id: []const u8) ?std.meta.TagPayload(Control, tag) {
-    // We remove invalidated objects here (in addition to newFrame), since
-    // a null return here will often be followed by a putNoClobber on
-    // self.controls.
-    const e = self.controls.getEntry(id) orelse return null;
-    if (e.value_ptr.generation() >= self.generation - 1) {
-        e.value_ptr.setGeneration(self.generation);
-        switch (e.value_ptr.*) {
-            tag => |p| return p,
-            else => unreachable,
-        }
+pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
+    switch (try self.getOrPutControl(.menubar, "", .{})) {
+        .present => |mb| return mb,
+        .absent => unreachable,
     }
-
-    self.allocator.free(e.key_ptr.*);
-    e.value_ptr.deinit();
-    self.controls.removeByPtr(e.key_ptr);
-    return null;
 }
 
-pub fn getMenubar(self: *Imtui) ?*Controls.Menubar.Impl {
-    return self.controlById(.menubar, "menubar");
-}
-
-pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
-    switch (self.focus) {
-        .menubar => |mb| if (mb.open) return self.getMenubar().?.menus.items[mb.index],
-        .menu => |m| return self.getMenubar().?.menus.items[m.index],
-        else => {},
-    }
-    return null;
+pub fn openMenu(self: *Imtui) !?*Controls.Menu.Impl {
+    _ = self;
+    @panic("openMenu");
+    // switch (self.focus) {
+    //     .menubar => |mb| if (mb.open) return (try self.getMenubar()).menus.items[mb.index],
+    //     .menu => |m| return (try self.getMenubar()).menus.items[m.index],
+    //     else => {},
+    // }
+    // return null;
 }
 
 pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
     // XXX: this is ridiculous and i cant take it seriously
-    var buf: [10]u8 = undefined; // editor.XYZ
-    const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{self.focus_editor});
-    return self.controlById(.editor, key).?;
+    switch (try self.getOrPutControl(.editor, "{d}", .{self.focus_editor})) {
+        .present => |e| return e,
+        .absent => unreachable,
+    }
 }
 
 pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !Controls.Menubar {
-    if (self.controlById(.menubar, "menubar")) |mb| {
-        mb.describe(r, c1, c2);
-        return .{ .impl = mb };
+    switch (try self.getOrPutControl(.menubar, "", .{})) {
+        .present => |mb| {
+            mb.describe(r, c1, c2);
+            return .{ .impl = mb };
+        },
+        .absent => |mbp| {
+            const mb = try Controls.Menubar.create(self, r, c1, c2);
+            mbp.* = mb.impl;
+            return mb;
+        },
     }
-
-    const mb = try Controls.Menubar.create(self, r, c1, c2);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, "menubar"), .{ .menubar = mb.impl });
-    return mb;
 }
 
 pub fn editor(self: *Imtui, editor_id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !Controls.Editor {
-    var buf: [10]u8 = undefined; // editor.XYZ
-    const key = try std.fmt.bufPrint(&buf, "editor.{d}", .{editor_id});
-    if (self.controlById(.editor, key)) |e| {
-        e.describe(r1, c1, r2, c2);
-        return .{ .impl = e };
+    switch (try self.getOrPutControl(.editor, "{d}", .{editor_id})) {
+        .present => |e| {
+            e.describe(r1, c1, r2, c2);
+            return .{ .impl = e };
+        },
+        .absent => |ep| {
+            const e = try Controls.Editor.create(self, editor_id, r1, c1, r2, c2);
+            ep.* = e.impl;
+            return e;
+        },
     }
-
-    const e = try Controls.Editor.create(self, editor_id, r1, c1, r2, c2);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .editor = e.impl });
-    return e;
 }
 
 pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !Controls.Button {
-    var buf: [60]u8 = undefined; // button.blahblahblahblahblah
-    const key = try std.fmt.bufPrint(&buf, "button.{s}", .{label});
-    if (self.controlById(.button, key)) |b| {
-        b.describe(r, c, colour);
-        return .{ .impl = b };
+    switch (try self.getOrPutControl(.button, "{s}", .{label})) {
+        .present => |b| {
+            b.describe(r, c, colour);
+            return .{ .impl = b };
+        },
+        .absent => |bp| {
+            const b = try Controls.Button.create(self, r, c, colour, label);
+            bp.* = b.impl;
+            return b;
+        },
     }
-
-    const b = try Controls.Button.create(self, r, c, colour, label);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .button = b.impl });
-    return b;
 }
 
 pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !Controls.Shortcut {
-    var buf: [60]u8 = undefined; // shortcut.left_parenthesis.shift
-    const key = try std.fmt.bufPrint(&buf, "shortcut.{s}.{s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" });
-    if (self.controlById(.shortcut, key)) |s|
-        return .{ .impl = s };
-
-    const s = try Controls.Shortcut.create(self, keycode, modifier);
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .shortcut = s.impl });
-    return s;
+    switch (try self.getOrPutControl(.shortcut, "{s}.{s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" })) {
+        .present => |s| return .{ .impl = s },
+        .absent => |sp| {
+            const s = try Controls.Shortcut.create(self, keycode, modifier);
+            sp.* = s.impl;
+            return s;
+        },
+    }
 }
 
 pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !Controls.Dialog {
-    self.focus = .dialog;
+    // self.focus = .dialog;
 
-    var buf: [100]u8 = undefined; // dialog.blahblahblahblahblah
-    const key = try std.fmt.bufPrint(&buf, "dialog.{s}", .{title});
-    if (self.controlById(.dialog, key)) |d| {
-        self.focus_dialog = d;
-        d.describe(height, width);
-        return .{ .impl = d };
+    switch (try self.getOrPutControl(.dialog, "{s}", .{title})) {
+        .present => |d| {
+            // self.focus_dialog = d;
+            d.describe(height, width);
+            return .{ .impl = d };
+        },
+        .absent => |dp| {
+            const d = try Controls.Dialog.create(self, title, height, width);
+            // self.focus_dialog = d.impl;
+            dp.* = d.impl;
+            return d;
+        },
+    }
+}
+
+pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogButton {
+    // We don't actually have a proper ID descendent thing going on here. Get to it XXX
+    defer parent.controls_at += 1;
+    switch (try self.getOrPutControl(.dialog_button, "{s}.{s}", .{ parent.title, label })) {
+        .present => |b| {
+            b.describe(parent.controls_at, r, c, label);
+            return .{ .impl = b };
+        },
+        .absent => |bp| {
+            const b = try Imtui.Controls.DialogButton.create(parent, parent.controls_at, r, c, label);
+            std.log.debug("setting bp.* {*} to {*}", .{ bp, b.impl });
+            // @compileLog("bp is ", bp);
+            bp.* = b.impl;
+            try parent.controls.append(self.allocator, .{ .button = b.impl });
+            return b;
+        },
+    }
+}
+
+fn getOrPutControl(self: *Imtui, comptime tag: std.meta.Tag(Control), comptime fmt: []const u8, parts: anytype) !union(enum) {
+    present: std.meta.TagPayload(Control, tag),
+    absent: *std.meta.TagPayload(Control, tag),
+} {
+    // Not guaranteed to be large enough ... https://media1.tenor.com/m/ZaxUeXcUtDkAAAAd/shrug-smug.gif
+    var buf: [100]u8 = undefined;
+    const id = try std.fmt.bufPrint(&buf, "{s}." ++ fmt, .{@tagName(tag)} ++ parts);
+
+    var e = try self.controls.getOrPut(self.allocator, id);
+
+    if (e.found_existing and e.value_ptr.generation() >= self.generation - 1) {
+        e.value_ptr.setGeneration(self.generation);
+        return switch (e.value_ptr.*) {
+            tag => |p| .{ .present = p },
+            else => unreachable,
+        };
     }
 
-    const d = try Controls.Dialog.create(self, title, height, width);
-    self.focus_dialog = d.impl;
-    try self.controls.putNoClobber(self.allocator, try self.allocator.dupe(u8, key), .{ .dialog = d.impl });
-    return d;
+    if (e.found_existing)
+        e.value_ptr.deinit()
+    else
+        e.key_ptr.* = try self.allocator.dupe(u8, id);
+
+    e.value_ptr.* = @unionInit(Control, @tagName(tag), undefined);
+    std.log.debug("creating {s}, id \"{s}\", &e.value_ptr.*.tag {*}", .{ @tagName(tag), id, &@field(e.value_ptr.*, @tagName(tag)) });
+    return .{ .absent = &@field(e.value_ptr.*, @tagName(tag)) };
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-    if (self.focus == .dialog)
-        return try self.focus_dialog.handleKeyPress(keycode, modifiers);
+    // if (self.focus == .dialog)
+    //     return try self.focus_dialog.handleKeyPress(keycode, modifiers);
 
     if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held) {
         self.alt_held = true;
         return;
     }
 
-    if ((self.focus == .menubar or self.focus == .menu) and self.mouse_down != null)
-        return;
-
-    if (self.alt_held and keycodeAlphanum(keycode)) {
-        for (self.getMenubar().?.menus.items, 0..) |m, mix|
-            if (acceleratorMatch(m.label, keycode)) {
-                self.alt_held = false;
-                self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
-                return;
-            };
+    if (self.focus_stack.getLastOrNull()) |c| {
+        try c.handleKeyPress(keycode, modifiers);
+    } else {
+        const e = try self.focusedEditor();
+        try e.handleKeyPress(keycode, modifiers);
     }
 
-    switch (self.focus) {
-        .menubar => |*mb| switch (keycode) {
-            .left => {
-                if (mb.index == 0)
-                    mb.index = self.getMenubar().?.menus.items.len - 1
-                else
-                    mb.index -= 1;
-                return;
-            },
-            .right => {
-                mb.index = (mb.index + 1) % self.getMenubar().?.menus.items.len;
-                return;
-            },
-            .up, .down => {
-                self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
-                return;
-            },
-            .escape => {
-                self.focus = .editor;
-                return;
-            },
-            .@"return" => {
-                self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
-                return;
-            },
-            else => if (keycodeAlphanum(keycode)) {
-                for (self.getMenubar().?.menus.items, 0..) |m, mix|
-                    if (acceleratorMatch(m.label, keycode)) {
-                        self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
-                        return;
-                    };
-            },
-        },
-        .menu => |*m| switch (keycode) {
-            .left => {
-                m.item = 0;
-                if (m.index == 0)
-                    m.index = self.getMenubar().?.menus.items.len - 1
-                else
-                    m.index -= 1;
-                return;
-            },
-            .right => {
-                m.item = 0;
-                m.index = (m.index + 1) % self.getMenubar().?.menus.items.len;
-                return;
-            },
-            .up => while (true) {
-                if (m.item == 0)
-                    m.item = self.getMenubar().?.menus.items[m.index].menu_items.items.len - 1
-                else
-                    m.item -= 1;
-                if (self.getMenubar().?.menus.items[m.index].menu_items.items[m.item] == null)
-                    continue;
-                return;
-            },
-            .down => while (true) {
-                m.item = (m.item + 1) % self.getMenubar().?.menus.items[m.index].menu_items.items.len;
-                if (self.getMenubar().?.menus.items[m.index].menu_items.items[m.item] == null)
-                    continue;
-                return;
-            },
-            .escape => {
-                self.focus = .editor;
-                return;
-            },
-            .@"return" => {
-                self.getMenubar().?.menus.items[m.index].menu_items.items[m.item].?.chosen = true;
-                self.focus = .editor;
-                return;
-            },
-            else => if (keycodeAlphanum(keycode)) {
-                for (self.getMenubar().?.menus.items[m.index].menu_items.items) |mi|
-                    if (mi != null and acceleratorMatch(mi.?.label, keycode)) {
-                        mi.?.chosen = true;
-                        self.focus = .editor;
-                        return;
-                    };
-            },
-        },
-        .editor => {
-            const e = try self.focusedEditor();
-            try e.handleKeyPress(keycode, modifiers);
-        },
-        .dialog => unreachable, // handled above
-    }
+    // XXX move into menubar/menu
+    // if ((self.focus == .menubar or self.focus == .menu) and self.mouse_down != null)
+    //     return;
 
-    for (self.getMenubar().?.menus.items) |m|
-        for (m.menu_items.items) |mi| {
-            if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
-                mi.?.chosen = true;
-                return;
-            };
-        };
+    // if (self.alt_held and keycodeAlphanum(keycode)) {
+    //     for ((try self.getMenubar()).menus.items, 0..) |m, mix|
+    //         if (acceleratorMatch(m.label, keycode)) {
+    //             self.alt_held = false;
+    //             self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
+    //             return;
+    //         };
+    // }
 
-    var cit = self.controls.valueIterator();
-    while (cit.next()) |c|
-        switch (c.*) {
-            .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
-                s.*.chosen = true;
-                return;
-            },
-            else => {},
-        };
+    // switch (self.focus) {
+    //     .menubar => |*mb| switch (keycode) {
+    //         .left => {
+    //             if (mb.index == 0)
+    //                 mb.index = (try self.getMenubar()).menus.items.len - 1
+    //             else
+    //                 mb.index -= 1;
+    //             return;
+    //         },
+    //         .right => {
+    //             mb.index = (mb.index + 1) % (try self.getMenubar()).menus.items.len;
+    //             return;
+    //         },
+    //         .up, .down => {
+    //             self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
+    //             return;
+    //         },
+    //         .escape => {
+    //             self.focus = .editor;
+    //             return;
+    //         },
+    //         .@"return" => {
+    //             self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
+    //             return;
+    //         },
+    //         else => if (keycodeAlphanum(keycode)) {
+    //             for ((try self.getMenubar()).menus.items, 0..) |m, mix|
+    //                 if (acceleratorMatch(m.label, keycode)) {
+    //                     self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
+    //                     return;
+    //                 };
+    //         },
+    //     },
+    //     .menu => |*m| switch (keycode) {
+    //         .left => {
+    //             m.item = 0;
+    //             if (m.index == 0)
+    //                 m.index = (try self.getMenubar()).menus.items.len - 1
+    //             else
+    //                 m.index -= 1;
+    //             return;
+    //         },
+    //         .right => {
+    //             m.item = 0;
+    //             m.index = (m.index + 1) % (try self.getMenubar()).menus.items.len;
+    //             return;
+    //         },
+    //         .up => while (true) {
+    //             if (m.item == 0)
+    //                 m.item = (try self.getMenubar()).menus.items[m.index].menu_items.items.len - 1
+    //             else
+    //                 m.item -= 1;
+    //             if ((try self.getMenubar()).menus.items[m.index].menu_items.items[m.item] == null)
+    //                 continue;
+    //             return;
+    //         },
+    //         .down => while (true) {
+    //             m.item = (m.item + 1) % (try self.getMenubar()).menus.items[m.index].menu_items.items.len;
+    //             if ((try self.getMenubar()).menus.items[m.index].menu_items.items[m.item] == null)
+    //                 continue;
+    //             return;
+    //         },
+    //         .escape => {
+    //             self.focus = .editor;
+    //             return;
+    //         },
+    //         .@"return" => {
+    //             (try self.getMenubar()).menus.items[m.index].menu_items.items[m.item].?.chosen = true;
+    //             self.focus = .editor;
+    //             return;
+    //         },
+    //         else => if (keycodeAlphanum(keycode)) {
+    //             for ((try self.getMenubar()).menus.items[m.index].menu_items.items) |mi|
+    //                 if (mi != null and acceleratorMatch(mi.?.label, keycode)) {
+    //                     mi.?.chosen = true;
+    //                     self.focus = .editor;
+    //                     return;
+    //                 };
+    //         },
+    //     },
+    //     .editor => {
+    //         const e = try self.focusedEditor();
+    //         try e.handleKeyPress(keycode, modifiers);
+    //     },
+    //     .dialog => unreachable, // handled above
+    // }
+
+    // for ((try self.getMenubar()).menus.items) |m|
+    //     for (m.menu_items.items) |mi| {
+    //         if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
+    //             mi.?.chosen = true;
+    //             return;
+    //         };
+    //     };
+
+    // var cit = self.controls.valueIterator();
+    // while (cit.next()) |c|
+    //     switch (c.*) {
+    //         .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
+    //             s.*.chosen = true;
+    //             return;
+    //         },
+    //         else => {},
+    //     };
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
-    if (self.focus == .dialog)
-        return try self.focus_dialog.handleKeyUp(keycode);
+    // if (self.focus == .dialog)
+    //     return try self.focus_dialog.handleKeyUp(keycode);
 
-    if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held) {
+    if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
         self.alt_held = false;
 
-        if (self.focus == .menu) {
-            self.focus = .{ .menubar = .{ .index = self.focus.menu.index, .open = false } };
-        } else if (self.focus != .menubar) {
-            self.focus = .{ .menubar = .{ .index = 0, .open = false } };
-        } else {
-            self.focus = .editor;
-        }
-    }
-
-    if (self.focus == .editor) {
+    if (self.focus_stack.getLastOrNull()) |c| {
+        try c.handleKeyUp(keycode);
+    } else {
         const e = try self.focusedEditor();
         try e.handleKeyUp(keycode);
     }
+
+    // if (self.focus == .menu) {
+    //     self.focus = .{ .menubar = .{ .index = self.focus.menu.index, .open = false } };
+    // } else if (self.focus != .menubar) {
+    //     self.focus = .{ .menubar = .{ .index = 0, .open = false } };
+    // } else {
+    //     self.focus = .editor;
+    // }
+
+    // if (self.focus == .editor) {
+    //     const e = try self.focusedEditor();
+    //     try e.handleKeyUp(keycode);
+    // }
 }
 
 fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
@@ -545,41 +604,45 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
 }
 
 fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Control {
-    if (self.focus == .dialog) {
-        try self.focus_dialog.handleMouseDown(b, clicks, cm);
-        return .{ .dialog = self.focus_dialog };
+    if (self.focus_stack.getLastOrNull()) |c| {
+        if (try c.handleMouseDown(b, clicks, cm))
+            return c;
+    } else {
+        const e = try self.focusedEditor();
+        if (try e.handleMouseDown(b, clicks, cm))
+            return .{ .editor = e };
     }
 
-    if (b == .left and (self.getMenubar().?.mouseIsOver() or
-        (self.openMenu() != null and self.openMenu().?.mouseIsOverItem())))
-    {
-        // meu Deus.
-        try self.getMenubar().?.handleMouseDown(b, clicks);
-        return .{ .menubar = self.getMenubar().? };
-    }
-
-    if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
-        self.focus = .editor;
-        // fall through
-    }
-
-    // I don't think it's critical to check for generational liveness in every
-    // possible access. If something has indeed aged out, then a false match
-    // here writes state that will never be read by user code, and the object
-    // will be collected at the start of the next frame.
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
-        switch (c.*) {
-            .button => |bu| if (bu.mouseIsOver()) {
-                try bu.handleMouseDown(b, clicks);
-                return .{ .button = bu };
-            },
-            .editor => |e| if (e.mouseIsOver()) {
-                try e.handleMouseDown(b, clicks, cm);
-                return .{ .editor = e };
-            },
-            else => {},
+        if (c.mouseIsOver()) {
+            const handled = try c.handleMouseDown(b, clicks, cm);
+            std.debug.assert(handled); // ...
+            return c.*;
         };
+
+    // if (self.focus == .dialog) {
+    //     try self.focus_dialog.handleMouseDown(b, clicks, cm);
+    //     return .{ .dialog = self.focus_dialog };
+    // }
+
+    // if (b == .left and ((try self.getMenubar()).mouseIsOver() or
+    //     ((try self.openMenu()) != null and (try self.openMenu()).?.mouseIsOverItem())))
+    // {
+    //     // meu Deus.
+    //     try (try self.getMenubar()).handleMouseDown(b, clicks);
+    //     return .{ .menubar = (try self.getMenubar()) };
+    // }
+
+    // if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
+    //     self.focus = .editor;
+    //     // fall through
+    // }
+
+    // // I don't think it's critical to check for generational liveness in every
+    // // possible access. If something has indeed aged out, then a false match
+    // // here writes state that will never be read by user code, and the object
+    // // will be collected at the start of the next frame.
 
     return null;
 }

@@ -20,6 +20,7 @@ pub const Impl = struct {
     menu_items_at: usize = undefined,
 
     pub fn deinit(self: *Impl) void {
+        std.log.debug("Menu.Impl deinit self is {*}", .{self});
         for (self.menu_items.items) |mit|
             if (mit) |it|
                 it.deinit();
@@ -43,13 +44,14 @@ pub const Impl = struct {
 
         self.menu_items_at = 0;
 
-        if ((self.imtui.focus == .menubar and self.imtui.focus.menubar.index == index) or
-            (self.imtui.focus == .menu and self.imtui.focus.menu.index == index))
-            self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
+        // if ((self.imtui.focus == .menubar and self.imtui.focus.menubar.index == index) or
+        //     (self.imtui.focus == .menu and self.imtui.focus.menu.index == index))
+        //     self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
 
-        const show_acc = self.imtui.focus != .menu and
-            self.imtui.focus != .dialog and
-            (self.imtui.alt_held or (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
+        // const show_acc = self.imtui.focus != .menu and
+        //     self.imtui.focus != .dialog and
+        //     (self.imtui.alt_held or (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
+        const show_acc = true;
         self.imtui.text_mode.writeAccelerated(r, c + 1, label, show_acc);
     }
 
@@ -128,45 +130,47 @@ pub fn end(self: Menu) !void {
     }
     std.debug.assert(impl.menu_items.items.len == impl.menu_items_at);
 
-    if (impl.imtui.openMenu() != impl)
-        return;
+    // if ((try impl.imtui.openMenu()) != impl)
+    //     return;
 
-    impl.imtui.text_mode.box(impl.r + 1, impl.menu_c1, impl.r + 3 + impl.menu_items.items.len, impl.menu_c2 + 1, 0x70);
+    // impl.imtui.text_mode.box(impl.r + 1, impl.menu_c1, impl.r + 3 + impl.menu_items.items.len, impl.menu_c2 + 1, 0x70);
 
-    var row = impl.r + 2;
-    for (impl.menu_items.items, 0..) |mit, ix| {
-        if (mit) |it| {
-            const selected = impl.imtui.focus == .menu and impl.imtui.focus.menu.item == ix;
-            const colour: u8 = if (selected)
-                0x07
-            else if (!it.enabled)
-                0x78
-            else
-                0x70;
-            impl.imtui.text_mode.paint(row, impl.menu_c1 + 1, row + 1, impl.menu_c2, colour, .Blank);
+    // var row = impl.r + 2;
+    // for (impl.menu_items.items, 0..) |mit, ix| {
+    //     if (mit) |it| {
+    //         // const selected = impl.imtui.focus == .menu and impl.imtui.focus.menu.item == ix;
+    //         const selected = false;
+    //         _ = ix;
+    //         const colour: u8 = if (selected)
+    //             0x07
+    //         else if (!it.enabled)
+    //             0x78
+    //         else
+    //             0x70;
+    //         impl.imtui.text_mode.paint(row, impl.menu_c1 + 1, row + 1, impl.menu_c2, colour, .Blank);
 
-            if (it.bullet)
-                impl.imtui.text_mode.draw(row, impl.menu_c1 + 1, colour, .Bullet);
+    //         if (it.bullet)
+    //             impl.imtui.text_mode.draw(row, impl.menu_c1 + 1, colour, .Bullet);
 
-            impl.imtui.text_mode.writeAccelerated(row, impl.menu_c1 + 2, it.label, it.enabled);
+    //         impl.imtui.text_mode.writeAccelerated(row, impl.menu_c1 + 2, it.label, it.enabled);
 
-            if (it.shortcut) |shortcut| {
-                var buf: [20]u8 = undefined;
-                const text = Imtui.Controls.formatShortcut(&buf, shortcut);
-                impl.imtui.text_mode.write(row, impl.menu_c2 - 1 - text.len, text);
-            }
-        } else {
-            impl.imtui.text_mode.draw(row, impl.menu_c1, 0x70, .VerticalRight);
-            impl.imtui.text_mode.paint(row, impl.menu_c1 + 1, row + 1, impl.menu_c2, 0x70, .Horizontal);
-            impl.imtui.text_mode.draw(row, impl.menu_c2, 0x70, .VerticalLeft);
-        }
-        impl.imtui.text_mode.shadow(row, impl.menu_c2 + 1);
-        impl.imtui.text_mode.shadow(row, impl.menu_c2 + 2);
-        row += 1;
-    }
-    impl.imtui.text_mode.shadow(row, impl.menu_c2 + 1);
-    impl.imtui.text_mode.shadow(row, impl.menu_c2 + 2);
-    row += 1;
-    for (impl.menu_c1 + 2..impl.menu_c2 + 3) |j|
-        impl.imtui.text_mode.shadow(row, j);
+    //         if (it.shortcut) |shortcut| {
+    //             var buf: [20]u8 = undefined;
+    //             const text = Imtui.Controls.formatShortcut(&buf, shortcut);
+    //             impl.imtui.text_mode.write(row, impl.menu_c2 - 1 - text.len, text);
+    //         }
+    //     } else {
+    //         impl.imtui.text_mode.draw(row, impl.menu_c1, 0x70, .VerticalRight);
+    //         impl.imtui.text_mode.paint(row, impl.menu_c1 + 1, row + 1, impl.menu_c2, 0x70, .Horizontal);
+    //         impl.imtui.text_mode.draw(row, impl.menu_c2, 0x70, .VerticalLeft);
+    //     }
+    //     impl.imtui.text_mode.shadow(row, impl.menu_c2 + 1);
+    //     impl.imtui.text_mode.shadow(row, impl.menu_c2 + 2);
+    //     row += 1;
+    // }
+    // impl.imtui.text_mode.shadow(row, impl.menu_c2 + 1);
+    // impl.imtui.text_mode.shadow(row, impl.menu_c2 + 2);
+    // row += 1;
+    // for (impl.menu_c1 + 2..impl.menu_c2 + 3) |j|
+    //     impl.imtui.text_mode.shadow(row, j);
 }

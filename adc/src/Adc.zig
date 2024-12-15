@@ -18,7 +18,7 @@ const Adc = @This();
 imtui: *Imtui,
 prefs: Prefs,
 
-sources: std.ArrayList(*Imtui.Controls.Source),
+sources: std.ArrayListUnmanaged(*Imtui.Controls.Source),
 
 // primary + secondary don't do their own acquire; sources holds all the
 // lifetimes.
@@ -46,9 +46,9 @@ display_dialog_help_dialog_visible: bool = undefined,
 pub fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Source) !Adc {
     errdefer primary_source.release();
 
-    var sources = std.ArrayList(*Imtui.Controls.Source).init(imtui.allocator);
-    errdefer sources.deinit();
-    try sources.append(primary_source);
+    var sources = std.ArrayListUnmanaged(*Imtui.Controls.Source){};
+    errdefer sources.deinit(imtui.allocator);
+    try sources.append(imtui.allocator, primary_source);
 
     var immediate_source = try Imtui.Controls.Source.createImmediate(imtui.allocator);
     errdefer immediate_source.release();
@@ -64,10 +64,10 @@ pub fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Source)
     };
 }
 
-pub fn deinit(self: Adc) void {
+pub fn deinit(self: *Adc) void {
     for (self.sources.items) |s|
         s.release();
-    self.sources.deinit();
+    self.sources.deinit(self.imtui.allocator);
     self.immediate_source.release();
 }
 
@@ -345,45 +345,47 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
 fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
     const help_line_colour: u8 = if (self.full_menus) 0x30 else 0x3f;
     self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
-    var show_ruler = true;
-    switch (self.imtui.focus) {
-        .menu => |m| {
-            const help_text = menubar.itemAt(m).help.?;
-            self.imtui.text_mode.write(24, 1, "F1=Help");
-            self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
-            self.imtui.text_mode.write(24, 11, help_text);
-            show_ruler = (11 + help_text.len) <= 62;
-        },
-        .menubar => {
-            self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
-        },
-        .dialog => {
-            self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
-            show_ruler = false;
-        },
-        else => {
-            var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
-            if (help_button.chosen()) {
-                // TODO do same as "&Help on Help"
-            }
-            var window_button = try self.imtui.button(24, 17, help_line_colour, "<F6=Window>");
-            if (window_button.chosen())
-                self.windowFunction();
-
-            _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
-            if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
-                std.debug.print("run!\n", .{});
-            }
-            _ = try self.imtui.button(24, 48, help_line_colour, "<F8=Step>");
-
-            // TODO During active execution, these change to:
-            // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
-
-            // TODO: When the Immediate window is focussed (regardless of
-            // active execution), these change to:
-            // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
-        },
+    // var show_ruler = true;
+    const show_ruler = true;
+    _ = menubar;
+    // switch (self.imtui.focus) {
+    //     .menu => |m| {
+    //         const help_text = menubar.itemAt(m).help.?;
+    //         self.imtui.text_mode.write(24, 1, "F1=Help");
+    //         self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
+    //         self.imtui.text_mode.write(24, 11, help_text);
+    //         show_ruler = (11 + help_text.len) <= 62;
+    //     },
+    //     .menubar => {
+    //         self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
+    //     },
+    //     .dialog => {
+    //         self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
+    //         show_ruler = false;
+    //     },
+    //     else => {
+    var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
+    if (help_button.chosen()) {
+        // TODO do same as "&Help on Help"
     }
+    var window_button = try self.imtui.button(24, 17, help_line_colour, "<F6=Window>");
+    if (window_button.chosen())
+        self.windowFunction();
+
+    _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
+    if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
+        std.debug.print("run!\n", .{});
+    }
+    _ = try self.imtui.button(24, 48, help_line_colour, "<F8=Step>");
+
+    // TODO During active execution, these change to:
+    // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
+
+    // TODO: When the Immediate window is focussed (regardless of
+    // active execution), these change to:
+    // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
+    //     },
+    // }
 
     var f6 = try self.imtui.shortcut(.f6, null);
     if (f6.chosen())
@@ -455,83 +457,79 @@ fn renderDisplayDialog(self: *Adc) !void {
 
     var dialog = try self.imtui.dialog("Display", 22, 60);
 
-    // XXX Colours?
-    var colors = dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
+    // // XXX Colours?
+    dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
 
-    var r1 = try dialog.radio(0, 0, 3, 2, "&1. ");
-    self.imtui.text_mode.paint(3, 9, 4, 29, self.display_dialog_colours_normal, .Blank);
-    self.imtui.text_mode.write(3, 10, "Normal Text");
-    var r2 = try dialog.radio(0, 1, 5, 2, "&2. ");
-    self.imtui.text_mode.paint(5, 9, 6, 29, self.display_dialog_colours_current, .Blank);
-    self.imtui.text_mode.write(5, 10, "Current Statement");
-    var r3 = try dialog.radio(0, 2, 7, 2, "&3. ");
-    self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
-    self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
+    // var r1 = try dialog.radio(0, 0, 3, 2, "&1. ");
+    // self.imtui.text_mode.paint(3, 9, 4, 29, self.display_dialog_colours_normal, .Blank);
+    // self.imtui.text_mode.write(3, 10, "Normal Text");
+    // var r2 = try dialog.radio(0, 1, 5, 2, "&2. ");
+    // self.imtui.text_mode.paint(5, 9, 6, 29, self.display_dialog_colours_current, .Blank);
+    // self.imtui.text_mode.write(5, 10, "Current Statement");
+    // var r3 = try dialog.radio(0, 2, 7, 2, "&3. ");
+    // self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
+    // self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
 
-    self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.impl.show_acc);
-    var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
-    fg.accel('f');
-    fg.items(COLOUR_NAMES);
-    fg.end();
+    // self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.impl.show_acc);
+    // var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
+    // fg.accel('f');
+    // fg.items(COLOUR_NAMES);
+    // fg.end();
 
-    self.imtui.text_mode.writeAccelerated(1, 43, "&Background", dialog.impl.show_acc);
-    var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
-    bg.accel('b');
-    bg.items(COLOUR_NAMES);
-    bg.end();
+    // self.imtui.text_mode.writeAccelerated(1, 43, "&Background", dialog.impl.show_acc);
+    // var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
+    // bg.accel('b');
+    // bg.items(COLOUR_NAMES);
+    // bg.end();
 
-    if (r1.selected()) {
-        fg.impl.value(self.display_dialog_colours_normal & 0x0f);
-        bg.impl.value(self.display_dialog_colours_normal >> 4);
-    } else if (r1.impl.selected) {
-        self.display_dialog_colours_normal = @as(u8, @intCast(fg.impl.selected_ix)) |
-            (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
-    }
+    // if (r1.selected()) {
+    //     fg.impl.value(self.display_dialog_colours_normal & 0x0f);
+    //     bg.impl.value(self.display_dialog_colours_normal >> 4);
+    // } else if (r1.impl.selected) {
+    //     self.display_dialog_colours_normal = @as(u8, @intCast(fg.impl.selected_ix)) |
+    //         (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
+    // }
 
-    if (r2.selected()) {
-        fg.impl.value(self.display_dialog_colours_current & 0x0f);
-        bg.impl.value(self.display_dialog_colours_current >> 4);
-    } else if (r2.impl.selected) {
-        self.display_dialog_colours_current = @as(u8, @intCast(fg.impl.selected_ix)) |
-            (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
-    }
+    // if (r2.selected()) {
+    //     fg.impl.value(self.display_dialog_colours_current & 0x0f);
+    //     bg.impl.value(self.display_dialog_colours_current >> 4);
+    // } else if (r2.impl.selected) {
+    //     self.display_dialog_colours_current = @as(u8, @intCast(fg.impl.selected_ix)) |
+    //         (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
+    // }
 
-    if (r3.selected()) {
-        fg.impl.value(self.display_dialog_colours_breakpoint & 0x0f);
-        bg.impl.value(self.display_dialog_colours_breakpoint >> 4);
-    } else if (r3.impl.selected) {
-        self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg.impl.selected_ix)) |
-            (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
-    }
+    // if (r3.selected()) {
+    //     fg.impl.value(self.display_dialog_colours_breakpoint & 0x0f);
+    //     bg.impl.value(self.display_dialog_colours_breakpoint >> 4);
+    // } else if (r3.impl.selected) {
+    //     self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg.impl.selected_ix)) |
+    //         (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
+    // }
 
-    colors.end();
+    dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
 
-    var display_options = dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
+    // var scroll_bars = try dialog.checkbox(1, 4, "&Scroll Bars", self.display_dialog_scroll_bars);
+    // if (scroll_bars.changed()) |v|
+    //     self.display_dialog_scroll_bars = v;
 
-    var scroll_bars = try dialog.checkbox(1, 4, "&Scroll Bars", self.display_dialog_scroll_bars);
-    if (scroll_bars.changed()) |v|
-        self.display_dialog_scroll_bars = v;
+    // self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.impl.show_acc);
+    // var tab_stops = try dialog.input(1, 48, 52);
+    // tab_stops.accel('t');
+    // if (tab_stops.initial()) |buf| {
+    //     try buf.writer().print("{d}", .{self.display_dialog_tab_stops});
+    //     // TODO: the value should start selected
+    //     tab_stops.impl.cursor_col = buf.items.len; // XXX
+    // }
+    // if (tab_stops.changed()) |v| {
+    //     if (std.fmt.parseInt(u8, v, 10)) |n| {
+    //         if (n > 0 and n < 100)
+    //             self.display_dialog_tab_stops = n;
+    //     } else |_| {}
+    // }
 
-    self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.impl.show_acc);
-    var tab_stops = try dialog.input(1, 48, 52);
-    tab_stops.accel('t');
-    if (tab_stops.initial()) |buf| {
-        try buf.writer().print("{d}", .{self.display_dialog_tab_stops});
-        // TODO: the value should start selected
-        tab_stops.impl.cursor_col = buf.items.len; // XXX
-    }
-    if (tab_stops.changed()) |v| {
-        if (std.fmt.parseInt(u8, v, 10)) |n| {
-            if (n > 0 and n < 100)
-                self.display_dialog_tab_stops = n;
-        } else |_| {}
-    }
-
-    display_options.end();
-
-    self.imtui.text_mode.draw(19, 0, 0x70, .VerticalRight);
-    self.imtui.text_mode.paint(19, 1, 19 + 1, 60 - 1, 0x70, .Horizontal);
-    self.imtui.text_mode.draw(19, 60 - 1, 0x70, .VerticalLeft);
+    self.imtui.text_mode.draw(dialog.impl.r1 + 19, dialog.impl.c1, 0x70, .VerticalRight);
+    self.imtui.text_mode.paint(dialog.impl.r1 + 19, dialog.impl.c1 + 1, dialog.impl.r1 + 19 + 1, dialog.impl.c1 + 60 - 1, 0x70, .Horizontal);
+    self.imtui.text_mode.draw(dialog.impl.r1 + 19, dialog.impl.c1 + 60 - 1, 0x70, .VerticalLeft);
 
     var ok = try dialog.button(20, 10, "OK");
     ok.default();
@@ -543,14 +541,14 @@ fn renderDisplayDialog(self: *Adc) !void {
         self.prefs.settings.tab_stops = self.display_dialog_tab_stops;
         try self.prefs.save();
         self.display_dialog_visible = false;
-        self.imtui.focus = .editor;
+        // self.imtui.focus = .editor;
     }
 
     var cancel = try dialog.button(20, 24, "Cancel");
     cancel.cancel();
     if (cancel.chosen()) {
         self.display_dialog_visible = false;
-        self.imtui.focus = .editor;
+        // self.imtui.focus = .editor;
     }
 
     var help = try dialog.button(20, 42, "&Help");
@@ -563,9 +561,9 @@ fn renderDisplayDialog(self: *Adc) !void {
 
     if (self.display_dialog_help_dialog_visible) {
         var help_dialog = try self.imtui.dialog("HELP: Display Dialog", 21, 70);
-        self.imtui.text_mode.draw(18, 0, 0x70, .VerticalRight);
-        self.imtui.text_mode.paint(18, 1, 18 + 1, 70 - 1, 0x70, .Horizontal);
-        self.imtui.text_mode.draw(18, 70 - 1, 0x70, .VerticalLeft);
+        self.imtui.text_mode.draw(help_dialog.impl.r1 + 18, help_dialog.impl.c1, 0x70, .VerticalRight);
+        self.imtui.text_mode.paint(help_dialog.impl.r1 + 18, help_dialog.impl.c1 + 1, help_dialog.impl.r1 + 18 + 1, help_dialog.impl.c1 + 70 - 1, 0x70, .Horizontal);
+        self.imtui.text_mode.draw(help_dialog.impl.r1 + 18, help_dialog.impl.c1 + 70 - 1, 0x70, .VerticalLeft);
         var help_dialog_ok = try help_dialog.button(19, 31, "OK");
         help_dialog_ok.default();
         help_dialog_ok.cancel();

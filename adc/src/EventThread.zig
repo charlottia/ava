@@ -12,7 +12,7 @@ thread: std.Thread = undefined,
 mutex: std.Thread.Mutex = .{},
 sema: std.Thread.Semaphore = .{},
 
-evs: std.ArrayList(proto.Event),
+evs: std.ArrayListUnmanaged(proto.Event),
 running: std.atomic.Value(bool),
 
 pub fn init(allocator: Allocator, reader: std.io.AnyReader, handle: std.posix.fd_t) !*EventThread {
@@ -21,7 +21,7 @@ pub fn init(allocator: Allocator, reader: std.io.AnyReader, handle: std.posix.fd
         .allocator = allocator,
         .reader = reader,
         .handle = handle,
-        .evs = std.ArrayList(proto.Event).init(allocator),
+        .evs = std.ArrayListUnmanaged(proto.Event).init(allocator),
         .running = std.atomic.Value(bool).init(true),
     };
     et.thread = try std.Thread.spawn(.{}, run, .{et});

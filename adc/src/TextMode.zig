@@ -46,9 +46,6 @@ pub fn TextMode(h: usize, w: usize) type {
         cursor_row: usize = 0,
         cursor_col: usize = 0,
 
-        offset_row: usize = 0,
-        offset_col: usize = 0,
-
         pub fn init(renderer: SDL.Renderer, font: Font) !Self {
             return .{
                 .renderer = renderer,
@@ -116,50 +113,42 @@ pub fn TextMode(h: usize, w: usize) type {
         }
 
         pub fn draw(self: *Self, r: usize, c: usize, colour: u8, special: Special) void {
-            self.screen[(self.offset_row + r) * W + (self.offset_col + c)] = @as(u16, colour) << 8 | @intFromEnum(special);
+            self.screen[r * W + c] = @as(u16, colour) << 8 | @intFromEnum(special);
         }
 
         pub fn paint(self: *Self, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, char: anytype) void {
-            const ar1 = self.offset_row + r1;
-            const ac1 = self.offset_col + c1;
-            const ar2 = self.offset_row + r2;
-            const ac2 = self.offset_col + c2;
-            std.debug.assert(ar1 >= 0 and ar1 <= H and ar2 >= 0 and ar2 <= H);
-            std.debug.assert(ac1 >= 0 and ac1 <= W and ac2 >= 0 and ac2 <= W);
-            for (ar1..ar2) |r|
-                for (ac1..ac2) |c| {
+            std.debug.assert(r1 >= 0 and r1 <= H and r2 >= 0 and r2 <= H);
+            std.debug.assert(c1 >= 0 and c1 <= W and c2 >= 0 and c2 <= W);
+            for (r1..r2) |r|
+                for (c1..c2) |c| {
                     self.screen[r * W + c] = @as(u16, colour) << 8 |
                         (if (@TypeOf(char) == @TypeOf(.enum_literal)) @intFromEnum(@as(Special, char)) else char);
                 };
         }
 
         pub fn shadow(self: *Self, r: usize, c: usize) void {
-            self.screen[(self.offset_row + r) * W + (self.offset_col + c)] &= 0x00ff;
-            self.screen[(self.offset_row + r) * W + (self.offset_col + c)] |= 0x0800;
+            self.screen[r * W + c] &= 0x00ff;
+            self.screen[r * W + c] |= 0x0800;
         }
 
         pub fn write(self: *Self, r: usize, c: usize, text: []const u8) void {
             // For now we depend on there being zero char value in the cell.
-            const ar = r + self.offset_row;
-            const ac = c + self.offset_col;
             for (text, 0..) |char, i|
-                self.screen[ar * W + ac + i] |= char;
+                self.screen[r * W + c + i] |= char;
         }
 
         pub fn writeAccelerated(self: *Self, r: usize, c: usize, text: []const u8, show_acc: bool) void {
             // As above.
-            const ar = r + self.offset_row;
-            const ac = c + self.offset_col;
             var next_highlight = false;
             var j: usize = 0;
             for (text) |char| {
                 if (char == '&')
                     next_highlight = true
                 else {
-                    self.screen[ar * W + ac + j] |= char;
+                    self.screen[r * W + c + j] |= char;
                     if (next_highlight and show_acc) {
-                        self.screen[ar * W + ac + j] &= 0xf0ff;
-                        self.screen[ar * W + ac + j] |= 0x0f00;
+                        self.screen[r * W + c + j] &= 0xf0ff;
+                        self.screen[r * W + c + j] |= 0x0f00;
                         next_highlight = false;
                     }
                     j += 1;
@@ -238,9 +227,9 @@ pub fn TextMode(h: usize, w: usize) type {
             self.draw(r, c1 + 1 + thumb, 0x00, .Blank);
             self.draw(r, c2 - 1, 0x70, .ArrowRight);
             return .{
-                .r = r + self.offset_row,
-                .c1 = c1 + self.offset_col,
-                .c2 = c2 + self.offset_col,
+                .r = r,
+                .c1 = c1,
+                .c2 = c2,
                 .thumb = thumb,
                 .highest = highest,
             };
@@ -280,9 +269,9 @@ pub fn TextMode(h: usize, w: usize) type {
             self.draw(r1 + 1 + thumb, c, 0x00, .Blank);
             self.draw(r2 - 1, c, 0x70, .ArrowDown);
             return .{
-                .c = c + self.offset_col,
-                .r1 = r1 + self.offset_row,
-                .r2 = r2 + self.offset_row,
+                .c = c,
+                .r1 = r1,
+                .r2 = r2,
                 .thumb = thumb,
                 .highest = highest,
             };

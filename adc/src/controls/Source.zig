@@ -7,7 +7,7 @@ allocator: Allocator,
 ref_count: usize,
 title: []const u8,
 
-lines: std.ArrayList(std.ArrayList(u8)),
+lines: std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)) = .{},
 
 pub fn createUntitled(allocator: Allocator) !*Source {
     const s = try allocator.create(Source);
@@ -16,7 +16,6 @@ pub fn createUntitled(allocator: Allocator) !*Source {
         .allocator = allocator,
         .ref_count = 1,
         .title = try allocator.dupe(u8, "Untitled"),
-        .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
     };
     return s;
 }
@@ -28,7 +27,6 @@ pub fn createImmediate(allocator: Allocator) !*Source {
         .allocator = allocator,
         .ref_count = 1,
         .title = try allocator.dupe(u8, "Immediate"),
-        .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
     };
     return s;
 }
@@ -37,17 +35,17 @@ pub fn createFromFile(allocator: Allocator, filename: []const u8) !*Source {
     const s = try allocator.create(Source);
     errdefer allocator.destroy(s);
 
-    var lines = std.ArrayList(std.ArrayList(u8)).init(allocator);
+    var lines = std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)){};
     errdefer {
-        for (lines.items) |line| line.deinit();
-        lines.deinit();
+        for (lines.items) |*line| line.deinit(allocator);
+        lines.deinit(allocator);
     }
 
     const f = try std.fs.cwd().openFile(filename, .{});
     defer f.close();
 
     while (try f.reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 10240)) |line|
-        try lines.append(std.ArrayList(u8).fromOwnedSlice(allocator, line));
+        try lines.append(allocator, std.ArrayListUnmanaged(u8).fromOwnedSlice(line));
 
     const index = std.mem.lastIndexOfScalar(u8, filename, '/');
 
@@ -73,8 +71,8 @@ pub fn release(self: *Source) void {
 
     // deinit
     self.allocator.free(self.title);
-    for (self.lines.items) |line|
-        line.deinit();
-    self.lines.deinit();
+    for (self.lines.items) |*line|
+        line.deinit(self.allocator);
+    self.lines.deinit(self.allocator);
     self.allocator.destroy(self);
 }

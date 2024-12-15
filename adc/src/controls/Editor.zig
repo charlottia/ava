@@ -124,7 +124,7 @@ pub const Impl = struct {
             .tab => {
                 var line = try self.currentLine();
                 while (line.items.len < MAX_LINE - 1) {
-                    try line.insert(self.cursor_col, ' ');
+                    try line.insert(src.allocator, self.cursor_col, ' ');
                     self.cursor_col += 1;
                     if (self.cursor_col % self.tab_stops == 0)
                         break;
@@ -136,8 +136,8 @@ pub const Impl = struct {
             else => if (isPrintableKey(keycode) and (try self.currentLine()).items.len < (MAX_LINE - 1)) {
                 var line = try self.currentLine();
                 if (line.items.len < self.cursor_col)
-                    try line.appendNTimes(' ', self.cursor_col - line.items.len);
-                try line.insert(self.cursor_col, getCharacter(keycode, modifiers));
+                    try line.appendNTimes(src.allocator, ' ', self.cursor_col - line.items.len);
+                try line.insert(src.allocator, self.cursor_col, getCharacter(keycode, modifiers));
                 self.cursor_col += 1;
             },
         }
@@ -148,7 +148,7 @@ pub const Impl = struct {
             self.shift_down = false;
     }
 
-    pub fn handleMouseDown(self: *Impl, button: SDL.MouseButton, clicks: u8, cm: bool) !void {
+    pub fn handleMouseDown(self: *Impl, button: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         _ = clicks;
 
         const r = self.imtui.mouse_row;
@@ -159,13 +159,16 @@ pub const Impl = struct {
             if (!self.shift_down)
                 self.selection_start = null;
             self.cmt = null;
+
+            if (!(r >= self.r1 and r < self.r2 and c >= self.c1 and c < self.c2))
+                return false;
         }
 
         if (cm and self.imtui.focus_editor == self.id and self.dragging == .text) {
             // Transform clickmatic events to drag events when dragging text so you
             // can drag to an edge and continue selecting.
             try self.handleMouseDrag(button);
-            return;
+            return true;
         }
 
         if (r == self.r1) {
@@ -174,7 +177,7 @@ pub const Impl = struct {
                 self.imtui.focus_editor = self.id;
                 self.dragging = .header;
             }
-            return;
+            return true;
         }
 
         if (c > self.c1 and c < self.c2 - 1) {
@@ -221,7 +224,7 @@ pub const Impl = struct {
                     self.cursor_col = self.scroll_col
                 else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
                     self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
-                return;
+                return true;
             } else if (!cm) {
                 // Implication: either we're focussing this window for the first
                 // time, or it's already focussed (and we didn't click in the
@@ -251,7 +254,7 @@ pub const Impl = struct {
                         .cursor_row = self.cursor_row,
                         .cursor_col = self.cursor_col,
                     };
-                return;
+                return true; // XXX Menu/Bar
             }
         }
 
@@ -293,9 +296,11 @@ pub const Impl = struct {
                             self.vscrDown();
                         },
                     };
-                return;
+                return true;
             }
         }
+
+        return false;
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
@@ -374,14 +379,14 @@ pub const Impl = struct {
         }
     }
 
-    fn currentLine(self: *Impl) !*std.ArrayList(u8) {
+    fn currentLine(self: *Impl) !*std.ArrayListUnmanaged(u8) {
         const src = self.source.?;
         if (self.cursor_row == src.lines.items.len)
-            try src.lines.append(std.ArrayList(u8).init(src.allocator));
+            try src.lines.append(src.allocator, .{});
         return &src.lines.items[self.cursor_row];
     }
 
-    fn maybeCurrentLine(self: *Impl) ?*std.ArrayList(u8) {
+    fn maybeCurrentLine(self: *Impl) ?*std.ArrayListUnmanaged(u8) {
         const src = self.source.?;
         if (self.cursor_row == src.lines.items.len)
             return null;
@@ -393,14 +398,14 @@ pub const Impl = struct {
 
         var line = try self.currentLine();
         const first = lineFirst(line.items);
-        var next = std.ArrayList(u8).init(src.allocator);
-        try next.appendNTimes(' ', first);
+        var next = std.ArrayListUnmanaged(u8){};
+        try next.appendNTimes(src.allocator, ' ', first);
 
         const appending = if (self.cursor_col < line.items.len) line.items[self.cursor_col..] else "";
-        try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
+        try next.appendSlice(src.allocator, std.mem.trimLeft(u8, appending, " "));
         if (line.items.len > self.cursor_col)
-            try line.replaceRange(self.cursor_col, line.items.len - self.cursor_col, &.{});
-        try src.lines.insert(self.cursor_row + 1, next);
+            try line.replaceRange(src.allocator, self.cursor_col, line.items.len - self.cursor_col, &.{});
+        try src.lines.insert(src.allocator, self.cursor_row + 1, next);
 
         self.cursor_col = first;
         self.cursor_row += 1;
@@ -421,11 +426,11 @@ pub const Impl = struct {
                 self.cursor_row -= 1;
                 self.cursor_col = @intCast((try self.currentLine()).items.len);
             } else {
-                const removed = src.lines.orderedRemove(self.cursor_row);
+                var removed = src.lines.orderedRemove(self.cursor_row);
                 self.cursor_row -= 1;
                 self.cursor_col = @intCast((try self.currentLine()).items.len);
-                try (try self.currentLine()).appendSlice(removed.items);
-                removed.deinit();
+                try (try self.currentLine()).appendSlice(src.allocator, removed.items);
+                removed.deinit(src.allocator);
             }
         } else if (mode == .backspace) {
             // self.cursor_col > 0
@@ -444,7 +449,7 @@ pub const Impl = struct {
                         if (y == 0) break;
                     }
                 }
-                try line.replaceRange(0, first - back_to, &.{});
+                try line.replaceRange(src.allocator, 0, first - back_to, &.{});
                 self.cursor_col = back_to;
             } else {
                 if (self.cursor_col - 1 < line.items.len)
@@ -456,9 +461,9 @@ pub const Impl = struct {
             if (self.cursor_row == src.lines.items.len - 1)
                 return;
 
-            const removed = src.lines.orderedRemove(self.cursor_row + 1);
-            try (try self.currentLine()).appendSlice(removed.items);
-            removed.deinit();
+            var removed = src.lines.orderedRemove(self.cursor_row + 1);
+            try (try self.currentLine()).appendSlice(src.allocator, removed.items);
+            removed.deinit(src.allocator);
         } else {
             // mode == .delete, self.cursor_col < (try self.currentLine()).items.len
             _ = (try self.currentLine()).orderedRemove(self.cursor_col);
@@ -642,7 +647,7 @@ pub fn end(self: Editor) void {
         impl.vscrollbar = impl.imtui.text_mode.vscrollbar(impl.c2 - 1, impl.r1 + 1, impl.r2 - 1, impl.cursor_row, impl.source.?.lines.items.len);
     }
 
-    if (active and impl.imtui.focus == .editor) {
+    if (active and impl.imtui.focus_stack.items.len == 0) { // ... XXX?
         impl.imtui.text_mode.cursor_inhibit = impl.imtui.text_mode.cursor_inhibit or (impl.r2 - impl.r1 == 1);
         impl.imtui.text_mode.cursor_row = impl.cursor_row + 1 - impl.scroll_row + impl.r1;
         impl.imtui.text_mode.cursor_col = impl.cursor_col + 1 - impl.scroll_col;

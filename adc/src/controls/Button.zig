@@ -34,12 +34,17 @@ pub const Impl = struct {
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         // These don't discriminate on mouse button.
         _ = b;
         _ = clicks;
+        _ = cm;
+
+        if (!self.mouseIsOver())
+            return false;
 
         self.inverted = true;
+        return true;
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {

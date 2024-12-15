@@ -19,6 +19,7 @@ pub const Impl = struct {
     op_closable: bool = false,
 
     pub fn deinit(self: *Impl) void {
+        std.log.debug("MenuBar.Impl deinit self is {*}", .{self});
         for (self.menus.items) |m|
             m.deinit();
         self.menus.deinit(self.imtui.allocator);
@@ -38,25 +39,29 @@ pub const Impl = struct {
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         _ = b;
         _ = clicks;
+        _ = cm;
 
         self.op_closable = false;
 
         for (self.menus.items, 0..) |m, mix|
             if (m.mouseIsOver()) {
-                if (self.imtui.openMenu()) |om|
+                if (try self.imtui.openMenu()) |om|
                     self.op_closable = om.index == mix;
-                self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
-                return;
+                // self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
+                return true;
             };
 
-        if (self.imtui.openMenu()) |m|
+        if (try self.imtui.openMenu()) |m|
             if (m.mouseOverItem()) |i| {
-                self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-                return;
+                _ = i;
+                // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+                return true;
             };
+
+        return false;
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
@@ -65,20 +70,23 @@ pub const Impl = struct {
         if (self.imtui.mouse_row == self.r) {
             for (self.menus.items, 0..) |m, mix|
                 if (m.mouseIsOver()) {
-                    if (self.imtui.openMenu()) |om|
+                    if (try self.imtui.openMenu()) |om|
                         self.op_closable = self.op_closable and om.index == mix;
-                    self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
+                    // self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
                     return;
                 };
-            self.imtui.focus = .editor;
+            // self.imtui.focus = .editor;
             return;
         }
 
-        if (self.imtui.openMenu()) |m| {
+        if (try self.imtui.openMenu()) |m| {
             if (m.mouseOverItem()) |i| {
+                _ = i;
                 self.op_closable = false;
-                self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-            } else self.imtui.focus = .{ .menubar = .{ .index = m.index, .open = true } };
+                // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+            } else {
+                // self.imtui.focus = .{ .menubar = .{ .index = m.index, .open = true } };
+            }
             return;
         }
     }
@@ -87,19 +95,19 @@ pub const Impl = struct {
         _ = b;
         _ = clicks;
 
-        if (self.imtui.openMenu()) |m| {
+        if (try self.imtui.openMenu()) |m| {
             if (m.mouseOverItem()) |i| {
                 i.chosen = true;
-                self.imtui.focus = .editor;
+                // self.imtui.focus = .editor;
                 return;
             }
 
             if (m.mouseIsOver() and !self.op_closable) {
-                self.imtui.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
+                // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
                 return;
             }
 
-            self.imtui.focus = .editor;
+            // self.imtui.focus = .editor;
         }
     }
 };

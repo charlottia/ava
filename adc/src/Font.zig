@@ -32,8 +32,8 @@ pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
     var char_width: usize = undefined;
     var char_height: usize = undefined;
 
-    var chars = std.ArrayList([]const u16).init(allocator);
-    defer chars.deinit();
+    var chars = std.ArrayListUnmanaged([]const u16){};
+    defer chars.deinit(allocator);
     errdefer for (chars.items) |c| allocator.free(c);
 
     var parser_state: enum {
@@ -43,8 +43,8 @@ pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
         ended,
     } = .init;
 
-    var char = std.ArrayList(u16).init(allocator);
-    defer char.deinit();
+    var char = std.ArrayListUnmanaged(u16){};
+    defer char.deinit(allocator);
 
     var it = std.mem.tokenizeScalar(u8, data, '\n');
     while (it.next()) |line| {
@@ -72,9 +72,9 @@ pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
                     if (line[char_width - 1 - x] != ' ') {
                         c |= @as(u16, 1) << @intCast(x);
                     };
-                try char.append(c);
+                try char.append(allocator, c);
                 if (char.items.len == char_height) {
-                    try chars.append(try char.toOwnedSlice());
+                    try chars.append(allocator, try char.toOwnedSlice(allocator));
                     parser_state = .ready_next;
                 }
             },
@@ -88,7 +88,7 @@ pub fn fromGlyphTxt(allocator: Allocator, data: []const u8) !Font {
         .allocator = allocator,
         .char_width = char_width,
         .char_height = char_height,
-        .chars = try chars.toOwnedSlice(),
+        .chars = try chars.toOwnedSlice(allocator),
     };
 }
 

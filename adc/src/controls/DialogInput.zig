@@ -15,7 +15,7 @@ pub const Impl = struct {
     c2: usize = undefined,
     accel: ?u8 = undefined,
 
-    value: std.ArrayList(u8),
+    value: std.ArrayListUnmanaged(u8) = .{},
     initted: bool = false,
     changed: bool = false,
 
@@ -128,7 +128,6 @@ pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c1: usize, c2: usize) !
     b.* = .{
         .dialog = dialog,
         .generation = dialog.imtui.generation,
-        .value = std.ArrayList(u8).init(dialog.imtui.allocator),
     };
     b.describe(ix, r, c1, c2);
     return .{ .impl = b };
@@ -138,7 +137,7 @@ pub fn accel(self: DialogInput, key: u8) void {
     self.impl.accel = key;
 }
 
-pub fn initial(self: DialogInput) ?*std.ArrayList(u8) {
+pub fn initial(self: DialogInput) ?*std.ArrayListUnmanaged(u8) {
     if (self.impl.initted) return null;
     self.impl.initted = true;
     return &self.impl.value;

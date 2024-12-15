@@ -6,6 +6,7 @@ const Imtui = @import("../Imtui.zig");
 const DialogButton = @This();
 
 pub const Impl = struct {
+    imtui: *Imtui,
     dialog: *Dialog.Impl,
     ix: usize = undefined,
     generation: usize,
@@ -18,13 +19,14 @@ pub const Impl = struct {
     inverted: bool = false,
 
     pub fn deinit(self: *Impl) void {
-        self.dialog.imtui.allocator.destroy(self);
+        @import("std").log.debug("DialogButton.Impl self is {*}", .{self});
+        self.imtui.allocator.destroy(self);
     }
 
     pub fn describe(self: *Impl, ix: usize, r: usize, c: usize, label: []const u8) void {
         self.ix = ix;
-        self.r = r;
-        self.c = c;
+        self.r = self.dialog.r1 + r;
+        self.c = self.dialog.c1 + c;
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
     }
@@ -44,18 +46,15 @@ pub const Impl = struct {
         }
 
         const ec = self.c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1;
-        self.dialog.imtui.text_mode.paint(self.r, self.c + 1, self.r + 1, ec, textcolour, .Blank);
+        self.imtui.text_mode.paint(self.r, self.c + 1, self.r + 1, ec, textcolour, .Blank);
 
-        self.dialog.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, arrowcolour, '<');
-        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
-        self.dialog.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
-
-        self.r += self.dialog.imtui.text_mode.offset_row;
-        self.c += self.dialog.imtui.text_mode.offset_col;
+        self.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, arrowcolour, '<');
+        self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
+        self.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
 
         if (self.dialog.focus_ix == self.ix) {
-            self.dialog.imtui.text_mode.cursor_row = self.r;
-            self.dialog.imtui.text_mode.cursor_col = self.c + 2;
+            self.imtui.text_mode.cursor_row = self.r;
+            self.imtui.text_mode.cursor_col = self.c + 2;
         }
     }
 
@@ -80,16 +79,21 @@ pub const Impl = struct {
     }
 
     pub fn mouseIsOver(self: *const Impl) bool {
-        return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+        return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         _ = clicks;
 
-        if (b != .left or cm) return;
+        if (!self.mouseIsOver())
+            return false;
+
+        if (b != .left or cm) return true;
 
         self.dialog.focus_ix = self.ix;
         self.inverted = true;
+
+        return true;
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
@@ -115,6 +119,7 @@ impl: *Impl,
 pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogButton {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
+        .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
     };
