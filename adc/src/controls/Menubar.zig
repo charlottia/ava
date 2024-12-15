@@ -20,6 +20,7 @@ pub const Impl = struct {
     op_closable: bool = false,
 
     const Focus = union(enum) {
+        pre,
         menubar: struct { index: usize, open: bool },
         menu: struct { index: usize, item: usize },
     };
@@ -43,9 +44,9 @@ pub const Impl = struct {
         self.imtui.text_mode.paint(r, c1, r + 1, c2, 0x70, .Blank);
     }
 
-    fn openMenu(self: *const Impl) ?*Imtui.Controls.Menu.Impl {
-        const focus = self.focus orelse return null;
-        switch (focus) {
+    pub fn openMenu(self: *const Impl) ?*Imtui.Controls.Menu.Impl {
+        switch (self.focus.?) {
+            .pre => {},
             .menubar => |d| if (d.open) return self.menus.items[d.index],
             .menu => |d| return self.menus.items[d.index],
         }
@@ -54,6 +55,12 @@ pub const Impl = struct {
 
     pub fn mouseIsOver(self: *const Impl) bool {
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+    }
+
+    pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
+        std.log.debug("Menubar handleKeyUp: keycode {any} self.focus {any}", .{ keycode, self.focus });
+        if ((keycode == .left_alt or keycode == .right_alt) and self.focus.? == .pre)
+            self.focus = .{ .menubar = .{ .index = 0, .open = false } };
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {

@@ -48,21 +48,16 @@ pub const Impl = struct {
 
         self.menu_items_at = 0;
 
-        // if (self.imtui.focus_stack.getLastOrNull() == .{ .menubar ==
+        const focussed = self.imtui.focus_stack.getLastOrNull() != null and
+            self.imtui.focus_stack.getLastOrNull().? == .menubar;
 
-        // if ((self.imtui.focus == .menubar and self.imtui.focus.menubar.index == index) or
-        //     (self.imtui.focus == .menu and self.imtui.focus.menu.index == index))
-        //     self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
+        if (focussed and ((self.menubar.focus.? == .menubar and self.menubar.focus.?.menubar.index == index) or
+            (self.menubar.focus.? == .menu and self.menubar.focus.?.menu.index == index)))
+            self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
 
-        var show_acc = false;
+        const show_acc = focussed and (self.menubar.focus.? == .pre or
+            (self.menubar.focus.? == .menubar and !self.menubar.focus.?.menubar.open));
 
-        const focussed = self.imtui.focus_stack.getLastOrNull();
-        if (focussed != null and focussed.? == .menubar and self.menubar.focus == null)
-            show_acc = true;
-
-        // const show_acc = self.imtui.focus != .menu and
-        //     self.imtui.focus != .dialog and
-        //     (self.imtui.alt_held or (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
         self.imtui.text_mode.writeAccelerated(r, c + 1, label, show_acc);
     }
 

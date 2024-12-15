@@ -82,7 +82,7 @@ pub const Impl = struct {
     pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         if (keycode == .left_alt or keycode == .right_alt) {
             var mb = try self.imtui.getMenubar();
-            mb.focus = null;
+            mb.focus = .pre;
             try self.imtui.focus_stack.append(self.imtui.allocator, .{ .menubar = mb });
             return;
         }

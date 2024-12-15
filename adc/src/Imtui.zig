@@ -305,10 +305,7 @@ pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
 
 pub fn openMenu(self: *Imtui) !?*Controls.Menu.Impl {
     if (self.focus_stack.getLastOrNull()) |f| switch (f) {
-        .menubar => |mb| switch (mb.focus.?) {
-            .menubar => |d| if (d.open) return mb.menus.items[d.index],
-            .menu => |d| return mb.menus.items[d.index],
-        },
+        .menubar => |mb| return mb.openMenu(),
         else => {},
     };
     return null;
