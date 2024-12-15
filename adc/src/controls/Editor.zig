@@ -75,7 +75,7 @@ pub const Impl = struct {
         return self.scroll_bars and self.r2 - self.r1 > 4;
     }
 
-    pub fn mouseIsOver(self: *const Impl) bool {
+    pub fn isMouseOver(self: *const Impl) bool {
         return self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
     }
 
@@ -234,7 +234,7 @@ pub const Impl = struct {
                 return true;
             } else if (!cm) {
                 // Implication: either we're focussing this window for the first
-                // time, or it's already focussed (and we didn't click in the
+                // time, or it's already focused (and we didn't click in the
                 // hscroll).
                 if (self.imtui.focus_editor != self.id) {
                     self.imtui.focus_editor = self.id;

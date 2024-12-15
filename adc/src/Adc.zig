@@ -383,7 +383,7 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
     // TODO During active execution, these change to:
     // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
 
-    // TODO: When the Immediate window is focussed (regardless of
+    // TODO: When the Immediate window is focused (regardless of
     // active execution), these change to:
     // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
     //     },

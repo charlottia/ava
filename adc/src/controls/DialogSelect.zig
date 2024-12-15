@@ -83,7 +83,7 @@ pub const Impl = struct {
         }
     }
 
-    pub fn mouseIsOver(self: *const Impl) bool {
+    pub fn isMouseOver(self: *const Impl) bool {
         return self.dialog.imtui.mouse_row >= self.r1 and self.dialog.imtui.mouse_row < self.r2 and
             self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
     }
@@ -135,9 +135,9 @@ pub const Impl = struct {
         if (self.cmt != null) return;
 
         // - If click is on top row, or left column before the bottom row, we just
-        //   shift the selection up by one, as if pressing up() when focussed.
+        //   shift the selection up by one, as if pressing up() when focused.
         // - If click is on bottom row, or right column after the top row, we just
-        //   shift the selection down by one, as if pressing down() when focussed.
+        //   shift the selection down by one, as if pressing down() when focused.
         // - If it's elsewhere, we focus the selectbox and select the item under
         //   cursor.
         if (self.dialog.imtui.mouse_row <= self.r1 or

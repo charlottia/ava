@@ -41,8 +41,6 @@ const Control = union(enum) {
     button: *Controls.Button.Impl,
     shortcut: *Controls.Shortcut.Impl,
     menubar: *Controls.Menubar.Impl,
-    // menu: *Controls.Menu.Impl,
-    // menu_item: *Controls.MenuItem.Impl,
     editor: *Controls.Editor.Impl,
     dialog: *Controls.Dialog.Impl,
     // dialog_radio: *Controls.DialogRadio.Impl,
@@ -50,6 +48,8 @@ const Control = union(enum) {
     // dialog_checkbox: *Controls.DialogCheckbox.Impl,
     // dialog_input: *Controls.DialogInput.Impl,
     dialog_button: *Controls.DialogButton.Impl,
+
+    // Consider a real vtable for these (Zig has examples).
 
     fn same(self: Control, other: Control) bool {
         return switch (self) {
@@ -80,10 +80,10 @@ const Control = union(enum) {
         }
     }
 
-    fn mouseIsOver(self: Control) bool {
+    fn isMouseOver(self: Control) bool {
         switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "mouseIsOver")) {
-                return c.mouseIsOver();
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "isMouseOver")) {
+                return c.isMouseOver();
             },
         }
         return false;
@@ -172,7 +172,6 @@ pub fn deinit(self: *Imtui) void {
     self.controls.deinit(self.allocator);
 
     self.focus_stack.deinit(self.allocator);
-
     self.text_mode.deinit();
 
     self.allocator.destroy(self);
@@ -312,13 +311,23 @@ pub fn openMenu(self: *Imtui) !?*Controls.Menu.Impl {
 }
 
 pub fn focus(self: *Imtui, control: Control) !void {
-    const append = self.focus_stack.items.len == 0 or
-        !self.focus_stack.items[self.focus_stack.items.len - 1].same(control);
-    if (append)
+    // TODO: will this ever be called with an Editor?
+    if (!self.focused(control))
         try self.focus_stack.append(self.allocator, control);
 }
 
+pub fn focused(self: *Imtui, control: Control) bool {
+    // TODO: will this ever be called with an Editor?
+    return (self.focus_stack.getLastOrNull() orelse return false).same(control);
+}
+
+pub fn unfocus(self: *Imtui, control: Control) void {
+    std.debug.assert(self.focused(control));
+    _ = self.focus_stack.pop();
+}
+
 pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
+    // TODO: but it may not be _focused_.
     // XXX: this is ridiculous and i cant take it seriously
     switch (try self.getOrPutControl(.editor, "{d}", .{self.focus_editor})) {
         .present => |e| return e,
@@ -461,8 +470,6 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     }
 
     // XXX move into menubar/menu
-    // if ((self.focus == .menubar or self.focus == .menu) and self.mouse_down != null)
-    //     return;
 
     // if (self.alt_held and keycodeAlphanum(keycode)) {
     //     for ((try self.getMenubar()).menus.items, 0..) |m, mix|
@@ -474,39 +481,8 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     // }
 
     // switch (self.focus) {
-    //     .menubar => |*mb| switch (keycode) {
-    //         .left => {
-    //             if (mb.index == 0)
-    //                 mb.index = (try self.getMenubar()).menus.items.len - 1
-    //             else
-    //                 mb.index -= 1;
-    //             return;
-    //         },
-    //         .right => {
-    //             mb.index = (mb.index + 1) % (try self.getMenubar()).menus.items.len;
-    //             return;
-    //         },
-    //         .up, .down => {
-    //             self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
-    //             return;
-    //         },
-    //         .escape => {
-    //             self.focus = .editor;
-    //             return;
-    //         },
-    //         .@"return" => {
-    //             self.focus = .{ .menu = .{ .index = mb.index, .item = 0 } };
-    //             return;
-    //         },
-    //         else => if (keycodeAlphanum(keycode)) {
-    //             for ((try self.getMenubar()).menus.items, 0..) |m, mix|
-    //                 if (acceleratorMatch(m.label, keycode)) {
-    //                     self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
-    //                     return;
-    //                 };
-    //         },
-    //     },
-    //     .menu => |*m| switch (keycode) {
+    // TODO NEXT
+    //        //     .menu => |*m| switch (keycode) {
     //         .left => {
     //             m.item = 0;
     //             if (m.index == 0)
@@ -553,11 +529,6 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     //                 };
     //         },
     //     },
-    //     .editor => {
-    //         const e = try self.focusedEditor();
-    //         try e.handleKeyPress(keycode, modifiers);
-    //     },
-    //     .dialog => unreachable, // handled above
     // }
 
     // for ((try self.getMenubar()).menus.items) |m|
@@ -629,7 +600,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
 
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
-        if (c.mouseIsOver()) {
+        if (c.isMouseOver()) {
             const handled = try c.handleMouseDown(b, clicks, cm);
             std.debug.assert(handled); // ...
             return c.*;
@@ -640,8 +611,8 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     //     return .{ .dialog = self.focus_dialog };
     // }
 
-    // if (b == .left and ((try self.getMenubar()).mouseIsOver() or
-    //     ((try self.openMenu()) != null and (try self.openMenu()).?.mouseIsOverItem())))
+    // if (b == .left and ((try self.getMenubar()).isMouseOver() or
+    //     ((try self.openMenu()) != null and (try self.openMenu()).?.isMouseOverItem())))
     // {
     //     // meu Deus.
     //     try (try self.getMenubar()).handleMouseDown(b, clicks);
@@ -683,7 +654,7 @@ fn interpolateMouse(self: *const Imtui, payload: anytype) struct { x: usize, y: 
     };
 }
 
-fn acceleratorMatch(label: []const u8, keycode: SDL.Keycode) bool {
+pub fn acceleratorMatch(label: []const u8, keycode: SDL.Keycode) bool {
     var next_acc = false;
     for (label) |c| {
         if (c == '&')
@@ -694,7 +665,7 @@ fn acceleratorMatch(label: []const u8, keycode: SDL.Keycode) bool {
     return false;
 }
 
-fn keycodeAlphanum(keycode: SDL.Keycode) bool {
+pub fn keycodeAlphanum(keycode: SDL.Keycode) bool {
     return @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
         @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z);
 }

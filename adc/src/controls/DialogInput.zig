@@ -98,7 +98,7 @@ pub const Impl = struct {
         }
     }
 
-    pub fn mouseIsOver(self: *const Impl) bool {
+    pub fn isMouseOver(self: *const Impl) bool {
         return self.dialog.imtui.mouse_row == self.r and
             self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
     }

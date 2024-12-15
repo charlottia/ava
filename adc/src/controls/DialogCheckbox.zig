@@ -58,7 +58,7 @@ pub const Impl = struct {
         self.dialog.focus_ix = self.ix;
     }
 
-    pub fn mouseIsOver(self: *const Impl) bool {
+    pub fn isMouseOver(self: *const Impl) bool {
         return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
@@ -74,7 +74,7 @@ pub const Impl = struct {
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
         if (b != .left) return;
 
-        self.targeted = self.mouseIsOver();
+        self.targeted = self.isMouseOver();
     }
 
     pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {

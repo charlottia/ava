@@ -30,7 +30,7 @@ pub const Impl = struct {
         self.imtui.allocator.destroy(self);
     }
 
-    pub fn mouseIsOver(self: *const Impl) bool {
+    pub fn isMouseOver(self: *const Impl) bool {
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len;
     }
 
@@ -42,7 +42,7 @@ pub const Impl = struct {
         if (cm) // Do nothing in response to clickmatic.
             return true;
 
-        if (!self.mouseIsOver())
+        if (!self.isMouseOver())
             return false;
 
         self.inverted = true;
@@ -52,7 +52,7 @@ pub const Impl = struct {
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
         _ = b;
 
-        self.inverted = self.mouseIsOver();
+        self.inverted = self.isMouseOver();
     }
 
     pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {

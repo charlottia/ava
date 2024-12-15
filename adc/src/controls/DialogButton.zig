@@ -78,14 +78,14 @@ pub const Impl = struct {
         self.inverted = false;
     }
 
-    pub fn mouseIsOver(self: *const Impl) bool {
+    pub fn isMouseOver(self: *const Impl) bool {
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         _ = clicks;
 
-        if (!self.mouseIsOver())
+        if (!self.isMouseOver())
             return false;
 
         if (b != .left or cm) return true;
@@ -99,7 +99,7 @@ pub const Impl = struct {
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
         if (b != .left) return;
 
-        self.inverted = self.mouseIsOver();
+        self.inverted = self.isMouseOver();
     }
 
     pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
