@@ -1,12 +1,14 @@
 const std = @import("std");
 
+// Not a Control in the separately-dispatchable sense.
+
 const Imtui = @import("../Imtui.zig");
 
 const Menu = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
-    generation: usize,
+    menubar: *Imtui.Controls.Menubar.Impl,
     r: usize = undefined,
     c1: usize = undefined,
     c2: usize = undefined,
@@ -17,7 +19,7 @@ pub const Impl = struct {
     menu_c2: usize = undefined,
 
     menu_items: std.ArrayListUnmanaged(?*Imtui.Controls.MenuItem.Impl) = .{},
-    menu_items_at: usize = undefined,
+    menu_items_at: usize = 0,
 
     pub fn deinit(self: *Impl) void {
         std.log.debug("Menu.Impl deinit self is {*}", .{self});
@@ -29,6 +31,8 @@ pub const Impl = struct {
     }
 
     pub fn describe(self: *Impl, r: usize, c: usize, label: []const u8, index: usize, width: usize) void {
+        std.debug.assert(self.menu_items.items.len == self.menu_items_at);
+
         self.r = r;
         self.c1 = c;
         self.c2 = c + Imtui.Controls.lenWithoutAccelerators(label) + 2;
@@ -37,21 +41,28 @@ pub const Impl = struct {
         self.width = width;
 
         self.menu_c1 = c - 1;
-        const sw = @TypeOf(self.imtui.text_mode).W;
+        const sw = self.imtui.text_mode.W;
         if (self.menu_c1 + self.width + 3 > sw - 3)
             self.menu_c1 -= self.menu_c1 + self.width + 3 - (sw - 3);
         self.menu_c2 = self.menu_c1 + self.width + 3;
 
         self.menu_items_at = 0;
 
+        // if (self.imtui.focus_stack.getLastOrNull() == .{ .menubar ==
+
         // if ((self.imtui.focus == .menubar and self.imtui.focus.menubar.index == index) or
         //     (self.imtui.focus == .menu and self.imtui.focus.menu.index == index))
         //     self.imtui.text_mode.paint(r, c, r + 1, self.c2, 0x07, .Blank);
 
+        var show_acc = false;
+
+        const focussed = self.imtui.focus_stack.getLastOrNull();
+        if (focussed != null and focussed.? == .menubar and self.menubar.focus == null)
+            show_acc = true;
+
         // const show_acc = self.imtui.focus != .menu and
         //     self.imtui.focus != .dialog and
         //     (self.imtui.alt_held or (self.imtui.focus == .menubar and !self.imtui.focus.menubar.open));
-        const show_acc = true;
         self.imtui.text_mode.writeAccelerated(r, c + 1, label, show_acc);
     }
 
@@ -74,11 +85,11 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(imtui: *Imtui, r: usize, c: usize, label: []const u8, index: usize, width: usize) !Menu {
-    var m = try imtui.allocator.create(Impl);
+pub fn create(menubar: *Imtui.Controls.Menubar.Impl, r: usize, c: usize, label: []const u8, index: usize, width: usize) !Menu {
+    var m = try menubar.imtui.allocator.create(Impl);
     m.* = .{
-        .imtui = imtui,
-        .generation = imtui.generation,
+        .imtui = menubar.imtui,
+        .menubar = menubar,
     };
     m.describe(r, c, label, index, width);
     return .{ .impl = m };
@@ -115,20 +126,18 @@ pub fn separator(self: Menu) !void {
     impl.menu_items_at += 1;
 }
 
-pub fn end(self: Menu) !void {
+pub fn end(self: Menu) void {
     const impl = self.impl;
     if (impl.menu_items.items.len > impl.menu_items_at) {
         for (impl.menu_items.items[impl.menu_items_at..]) |mit|
             if (mit) |it|
                 it.deinit();
-        try impl.menu_items.replaceRange(
-            impl.imtui.allocator,
+        impl.menu_items.replaceRangeAssumeCapacity(
             impl.menu_items_at,
             impl.menu_items.items.len - impl.menu_items_at,
             &.{},
         );
     }
-    std.debug.assert(impl.menu_items.items.len == impl.menu_items_at);
 
     // if ((try impl.imtui.openMenu()) != impl)
     //     return;

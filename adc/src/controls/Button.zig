@@ -38,7 +38,9 @@ pub const Impl = struct {
         // These don't discriminate on mouse button.
         _ = b;
         _ = clicks;
-        _ = cm;
+
+        if (cm) // Do nothing in response to clickmatic.
+            return true;
 
         if (!self.mouseIsOver())
             return false;

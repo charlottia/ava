@@ -13,10 +13,16 @@ pub const Impl = struct {
     c2: usize = undefined,
 
     offset: usize = undefined,
-    menus: std.ArrayListUnmanaged(*Imtui.Controls.Menu.Impl) = .{},
-    menus_at: usize = undefined,
 
+    menus: std.ArrayListUnmanaged(*Imtui.Controls.Menu.Impl) = .{},
+    menus_at: usize = 0,
+    focus: ?Focus = null,
     op_closable: bool = false,
+
+    const Focus = union(enum) {
+        menubar: struct { index: usize, open: bool },
+        menu: struct { index: usize, item: usize },
+    };
 
     pub fn deinit(self: *Impl) void {
         std.log.debug("MenuBar.Impl deinit self is {*}", .{self});
@@ -27,12 +33,23 @@ pub const Impl = struct {
     }
 
     pub fn describe(self: *Impl, r: usize, c1: usize, c2: usize) void {
+        std.debug.assert(self.menus.items.len == self.menus_at);
+
         self.r = r;
         self.c1 = c1;
         self.c2 = c2;
         self.offset = 2;
         self.menus_at = 0;
         self.imtui.text_mode.paint(r, c1, r + 1, c2, 0x70, .Blank);
+    }
+
+    fn openMenu(self: *const Impl) ?*Imtui.Controls.Menu.Impl {
+        const focus = self.focus orelse return null;
+        switch (focus) {
+            .menubar => |d| if (d.open) return self.menus.items[d.index],
+            .menu => |d| return self.menus.items[d.index],
+        }
+        return null;
     }
 
     pub fn mouseIsOver(self: *const Impl) bool {
@@ -50,11 +67,12 @@ pub const Impl = struct {
             if (m.mouseIsOver()) {
                 if (try self.imtui.openMenu()) |om|
                     self.op_closable = om.index == mix;
-                // self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
+                try self.imtui.focus(.{ .menubar = self });
+                self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                 return true;
             };
 
-        if (try self.imtui.openMenu()) |m|
+        if (self.openMenu()) |m|
             if (m.mouseOverItem()) |i| {
                 _ = i;
                 // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
@@ -127,10 +145,10 @@ pub fn create(imtui: *Imtui, r: usize, c1: usize, c2: usize) !Menubar {
 pub fn menu(self: Menubar, label: []const u8, width: usize) !Imtui.Controls.Menu {
     const impl = self.impl;
     if (std.mem.eql(u8, label, "&Help")) // XXX
-        impl.offset = @TypeOf(impl.imtui.text_mode).W - 7;
+        impl.offset = impl.imtui.text_mode.W - 7;
 
     const m = if (impl.menus_at == impl.menus.items.len) m: {
-        const m = try Imtui.Controls.Menu.create(impl.imtui, impl.r, impl.c1 + impl.offset, label, impl.menus.items.len, width);
+        const m = try Imtui.Controls.Menu.create(impl, impl.r, impl.c1 + impl.offset, label, impl.menus.items.len, width);
         try impl.menus.append(impl.imtui.allocator, m.impl);
         break :m m.impl;
     } else m: {
@@ -146,4 +164,13 @@ pub fn menu(self: Menubar, label: []const u8, width: usize) !Imtui.Controls.Menu
 
 pub fn itemAt(self: Menubar, ref: Imtui.Controls.MenuItemReference) *const Imtui.Controls.MenuItem.Impl {
     return self.impl.menus.items[ref.index].menu_items.items[ref.item].?;
+}
+
+pub fn end(self: Menubar) void {
+    const impl = self.impl;
+    if (impl.menus.items.len > impl.menus_at) {
+        for (impl.menus.items[impl.menus_at..]) |m|
+            m.deinit();
+        impl.menus.replaceRangeAssumeCapacity(impl.menus_at, impl.menus.items.len - impl.menus_at, &.{});
+    }
 }

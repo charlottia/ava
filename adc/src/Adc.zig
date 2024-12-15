@@ -224,7 +224,7 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
     if (exit.chosen()) {
         self.imtui.running = false;
     }
-    try file_menu.end();
+    file_menu.end();
 
     var edit_menu = try menubar.menu("&Edit", 20);
     if (self.full_menus)
@@ -238,7 +238,7 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
         _ = (try edit_menu.item("New &SUB...")).help("Opens a window for a new subprogram");
         _ = (try edit_menu.item("New &FUNCTION...")).help("Opens a window for a new FUNCTION procedure");
     }
-    try edit_menu.end();
+    edit_menu.end();
 
     var view_menu = try menubar.menu("&View", 21);
     _ = (try view_menu.item("&SUBs...")).shortcut(.f2, null).help("Displays a loaded SUB, FUNCTION, module, include file, or document");
@@ -256,7 +256,7 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
         _ = (try view_menu.item("&Included File")).help("Displays include file for editing");
     }
     _ = (try view_menu.item("Included &Lines")).help("Displays include file for viewing only (not for editing)");
-    try view_menu.end();
+    view_menu.end();
 
     var search_menu = try menubar.menu("&Search", 24);
     _ = (try search_menu.item("&Find...")).help("Finds specified text");
@@ -267,7 +267,7 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
     _ = (try search_menu.item("&Change...")).help("Finds and changes specified text");
     if (self.full_menus)
         _ = (try search_menu.item("&Label...")).help("Finds specified line label");
-    try search_menu.end();
+    search_menu.end();
 
     var run_menu = try menubar.menu("&Run", 19);
     _ = (try run_menu.item("&Start")).shortcut(.f5, .shift).help("Runs current program");
@@ -282,7 +282,7 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
         try run_menu.separator();
         _ = (try run_menu.item("Set &Main Module...")).help("Makes the specified module the main module");
     }
-    try run_menu.end();
+    run_menu.end();
 
     var debug_menu = try menubar.menu("&Debug", 27);
     _ = (try debug_menu.item("&Add Watch...")).help("Adds specified expression to the Watch window");
@@ -303,12 +303,12 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
         _ = (try debug_menu.item("Break on &Errors")).help("Stops execution at first statement in error handler");
         _ = (try debug_menu.item("&Set Next Statement")).disabled().help("Indicates next statement to be executed");
     }
-    try debug_menu.end();
+    debug_menu.end();
 
     if (self.full_menus) {
         var calls_menu = try menubar.menu("&Calls", 10);
         _ = (try calls_menu.item("&Untitled")).help("Displays next statement to be executed in module or procedure");
-        try calls_menu.end();
+        calls_menu.end();
     }
 
     var options_menu = try menubar.menu("&Options", 15);
@@ -330,14 +330,16 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
         self.prefs.settings.full_menus = self.full_menus;
         try self.prefs.save();
     }
-    try options_menu.end();
+    options_menu.end();
 
     var help_menu = try menubar.menu("&Help", 25);
     _ = (try help_menu.item("&Index")).help("Displays help index");
     _ = (try help_menu.item("&Contents")).help("Displays help table of contents");
     _ = (try help_menu.item("&Topic: XXX")).shortcut(.f1, null).help("Displays information about the BASIC keyword the cursor is on");
     _ = (try help_menu.item("&Help on Help")).shortcut(.f1, .shift).help("Displays help on help");
-    try help_menu.end();
+    help_menu.end();
+
+    menubar.end();
 
     return menubar;
 }

@@ -168,6 +168,8 @@ pub fn main() !void {
     var adc = try Adc.init(imtui, prefs, primary_source);
     defer adc.deinit();
 
+    var c: usize = 0;
+
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
             try imtui.processEvent(ev);
@@ -177,6 +179,10 @@ pub fn main() !void {
         try adc.render();
 
         try imtui.render();
+
+        c += 1;
+        if (c == 90 * 3)
+            adc.full_menus = !adc.full_menus;
 
         // std.debug.print("> ", .{});
         // const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;

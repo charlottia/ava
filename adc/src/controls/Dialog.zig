@@ -28,8 +28,8 @@ pub const Impl = struct {
     }
 
     pub fn describe(self: *Impl, height: usize, width: usize) void {
-        self.r1 = (@TypeOf(self.imtui.text_mode).H - height) / 2;
-        self.c1 = (@TypeOf(self.imtui.text_mode).W - width) / 2;
+        self.r1 = (self.imtui.text_mode.H - height) / 2;
+        self.c1 = (self.imtui.text_mode.W - width) / 2;
         self.controls_at = 0;
         self.default_button = null;
         self.cancel_button = null;

@@ -41,8 +41,8 @@ const Control = union(enum) {
     button: *Controls.Button.Impl,
     shortcut: *Controls.Shortcut.Impl,
     menubar: *Controls.Menubar.Impl,
-    menu: *Controls.Menu.Impl,
-    menu_item: *Controls.MenuItem.Impl,
+    // menu: *Controls.Menu.Impl,
+    // menu_item: *Controls.MenuItem.Impl,
     editor: *Controls.Editor.Impl,
     dialog: *Controls.Dialog.Impl,
     // dialog_radio: *Controls.DialogRadio.Impl,
@@ -50,6 +50,17 @@ const Control = union(enum) {
     // dialog_checkbox: *Controls.DialogCheckbox.Impl,
     // dialog_input: *Controls.DialogInput.Impl,
     dialog_button: *Controls.DialogButton.Impl,
+
+    fn same(self: Control, other: Control) bool {
+        return switch (self) {
+            inline else => |lhs| switch (other) {
+                inline else => |rhs| {
+                    if (@TypeOf(lhs) != @TypeOf(rhs)) return false;
+                    return lhs == rhs;
+                },
+            },
+        };
+    }
 
     fn generation(self: Control) usize {
         return switch (self) {
@@ -159,6 +170,8 @@ pub fn deinit(self: *Imtui) void {
         c.value_ptr.deinit();
     }
     self.controls.deinit(self.allocator);
+
+    self.focus_stack.deinit(self.allocator);
 
     self.text_mode.deinit();
 
@@ -272,19 +285,16 @@ pub fn newFrame(self: *Imtui) !void {
         }
 
         const target = self.mouse_event_target.?; // Assumed to be present if clickmatic_tick is.
-        if (trigger)
-            // Only these get clickmatic events.
-            switch (target) {
-                inline .button, .editor => |c| {
-                    const handled = try c.handleMouseDown(self.mouse_down.?, 0, true);
-                    std.debug.assert(handled); // ...
-                },
-                else => {},
-            };
+        if (trigger) {
+            const handled = try target.handleMouseDown(self.mouse_down.?, 0, true);
+            std.debug.assert(handled); // ...
+        }
     }
 
     self.text_mode.clear(0x07);
 }
+
+// the following calls are kinda internal-external
 
 pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
     switch (try self.getOrPutControl(.menubar, "", .{})) {
@@ -294,14 +304,21 @@ pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
 }
 
 pub fn openMenu(self: *Imtui) !?*Controls.Menu.Impl {
-    _ = self;
-    @panic("openMenu");
-    // switch (self.focus) {
-    //     .menubar => |mb| if (mb.open) return (try self.getMenubar()).menus.items[mb.index],
-    //     .menu => |m| return (try self.getMenubar()).menus.items[m.index],
-    //     else => {},
-    // }
-    // return null;
+    if (self.focus_stack.getLastOrNull()) |f| switch (f) {
+        .menubar => |mb| switch (mb.focus.?) {
+            .menubar => |d| if (d.open) return mb.menus.items[d.index],
+            .menu => |d| return mb.menus.items[d.index],
+        },
+        else => {},
+    };
+    return null;
+}
+
+pub fn focus(self: *Imtui, control: Control) !void {
+    const append = self.focus_stack.items.len == 0 or
+        !self.focus_stack.items[self.focus_stack.items.len - 1].same(control);
+    if (append)
+        try self.focus_stack.append(self.allocator, control);
 }
 
 pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
@@ -311,6 +328,8 @@ pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
         .absent => unreachable,
     }
 }
+
+// 100% public
 
 pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !Controls.Menubar {
     switch (try self.getOrPutControl(.menubar, "", .{})) {
@@ -434,10 +453,8 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     // if (self.focus == .dialog)
     //     return try self.focus_dialog.handleKeyPress(keycode, modifiers);
 
-    if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held) {
+    if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held)
         self.alt_held = true;
-        return;
-    }
 
     if (self.focus_stack.getLastOrNull()) |c| {
         try c.handleKeyPress(keycode, modifiers);

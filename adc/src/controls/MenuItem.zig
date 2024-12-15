@@ -1,5 +1,7 @@
 const SDL = @import("sdl2");
 
+// Not a Control in the separately-dispatchable sense.
+
 const Imtui = @import("../Imtui.zig");
 
 const MenuItem = @This();
