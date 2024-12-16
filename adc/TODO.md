@@ -1,13 +1,35 @@
+2024-12-16: refactor done, now what
+
+* [ ] fix 'blur'
+* [ ] investigate vtable instead of comptime wonk
+* [ ] centralise editing between Editor/DialogInput/DialogTextarea
+  * last one doesn't exist yet, but think of the &Help dialog
+* [ ] consider if we care to look into ctm stuff per below
+* [ ] what ids _should_ we use for dialog stuff? buncha XXX there
+* [ ] scour remaining XXX/TODO and just do a bunch (h.a.d)
+* [ ] do the dialog designer. HACE LA COSA VERDADERA.
+* [ ] consider interaction tests -- can test against TextArea w/o backing, no
+      graphics required.
+
+---
+
 Two major refactors need to be done:
 
-* [ ] Imtui's existing model has been stretched and kinda frankenstein'd with
-      the Dialog and all the forwarding to very similar interfaces. Ideally
-      everything is managed by the top-level system, with parent-child
+* [x] Imtui's existing model has been stretched and kinda frankenstein'd
+      with the Dialog and all the forwarding to very similar interfaces.
+      Ideally everything is managed by the top-level system, with parent-child
       relationships known to the system.
-  * The Menubar reconciliation task already wants this.
-  * Remember we have this "offset" stuff right now with Dialogs which is super
-    busted.
-    * Dialog also is really confused about how to handle click/drag/clickmatic.
+  * The Menubar reconciliation task already wants this. -- turns out it didn't!
+  * [x] Remember we have this "offset" stuff right now with Dialogs which is
+        super busted.
+    * [ ] Dialog also is really confused about how to handle click/drag/
+          clickmatic.
+          We still are fairly confused about clickmatic across the board, but
+          now there at least aren't as many layers of it.  THERE ARE, however,
+          still layers of it, where dialog control events need to decide when to
+          delegate to the "common" dialog handler; we haven't actually settled
+          on a heuristic for that yet, and each control does something slightly
+          different and some of the are probably wrong in an observable way.
 
 Thinking about WinForms and DOM when searching for API inspiration (particularly
 on recently adding "blur()" as an 'event', the general state of confusion of
