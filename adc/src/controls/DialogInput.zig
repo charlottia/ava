@@ -3,10 +3,12 @@ const SDL = @import("sdl2");
 
 const Dialog = @import("./Dialog.zig");
 const Editor = @import("./Editor.zig");
+const Imtui = @import("../Imtui.zig");
 
 const DialogInput = @This();
 
 pub const Impl = struct {
+    imtui: *Imtui,
     dialog: *Dialog.Impl,
     generation: usize,
     ix: usize = undefined,
@@ -23,15 +25,19 @@ pub const Impl = struct {
     scroll_col: usize = 0,
 
     pub fn deinit(self: *Impl) void {
-        self.value.deinit();
-        self.dialog.imtui.allocator.destroy(self);
+        self.value.deinit(self.imtui.allocator);
+        self.imtui.allocator.destroy(self);
+    }
+
+    pub fn parent(self: *const Impl) Imtui.Control {
+        return .{ .dialog = self.dialog };
     }
 
     pub fn describe(self: *Impl, ix: usize, r: usize, c1: usize, c2: usize) void {
         self.ix = ix;
-        self.r = self.dialog.imtui.text_mode.offset_row + r;
-        self.c1 = self.dialog.imtui.text_mode.offset_col + c1;
-        self.c2 = self.dialog.imtui.text_mode.offset_col + c2;
+        self.r = self.dialog.r1 + r;
+        self.c1 = self.dialog.c1 + c1;
+        self.c2 = self.dialog.c1 + c2;
         self.accel = null;
 
         if (self.cursor_col < self.scroll_col)
@@ -40,16 +46,16 @@ pub const Impl = struct {
             self.scroll_col = self.cursor_col - (c2 - c1 - 1);
 
         const clipped = if (self.scroll_col < self.value.items.len) self.value.items[self.scroll_col..] else "";
-        self.dialog.imtui.text_mode.write(r, c1, clipped[0..@min(self.c2 - self.c1, clipped.len)]);
+        self.dialog.imtui.text_mode.write(self.r, self.c1, clipped[0..@min(self.c2 - self.c1, clipped.len)]);
 
-        if (self.dialog.focus_ix == self.dialog.controls_at) {
+        if (self.imtui.focused(self)) {
             self.dialog.imtui.text_mode.cursor_row = self.r;
             self.dialog.imtui.text_mode.cursor_col = self.c1 + self.cursor_col - self.scroll_col;
         }
     }
 
-    pub fn accelerate(self: *Impl) void {
-        self.dialog.focus_ix = self.ix;
+    pub fn accelerate(self: *Impl) !void {
+        try self.imtui.focus(self);
     }
 
     pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -68,13 +74,13 @@ pub const Impl = struct {
             .end => self.cursor_col = self.value.items.len,
             .backspace => try self.deleteAt(.backspace),
             .delete => try self.deleteAt(.delete),
-            else => if (Editor.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
+            else => if (!self.imtui.alt_held and Editor.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
                 if (self.value.items.len < self.cursor_col)
-                    try self.value.appendNTimes(' ', self.cursor_col - self.value.items.len);
-                try self.value.insert(self.cursor_col, Editor.getCharacter(keycode, modifiers));
+                    try self.value.appendNTimes(self.imtui.allocator, ' ', self.cursor_col - self.value.items.len);
+                try self.value.insert(self.imtui.allocator, self.cursor_col, Editor.getCharacter(keycode, modifiers));
                 self.cursor_col += 1;
                 self.changed = true;
-            },
+            } else try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
         }
     }
 
@@ -103,21 +109,23 @@ pub const Impl = struct {
             self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
     }
 
-    pub fn handleMouseDown(self: *Impl, button: SDL.MouseButton, clicks: u8, cm: bool) !void {
-        _ = button;
-        _ = clicks;
-
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         if (cm)
             // XXX ignore clickmatic for now.
-            return;
+            return .{ .dialog_input = self };
 
-        if (self.dialog.focus_ix != self.ix) {
-            self.dialog.focus_ix = self.ix;
+        if (!self.isMouseOver())
+            return self.dialog.commonMouseDown(b, clicks, cm); // <- pretty sure this is wrong cf `cm`; check XXX
+
+        if (!self.imtui.focused(self)) {
+            try self.imtui.focus(self);
             // TODO: select all by default, but we currently don't support selections
         } else {
             // clicking on already selected; set cursor where clicked.
             self.cursor_col = self.scroll_col + self.dialog.imtui.mouse_col - self.c1;
         }
+
+        return .{ .dialog_input = self };
     }
 };
 
@@ -126,6 +134,7 @@ impl: *Impl,
 pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c1: usize, c2: usize) !DialogInput {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
+        .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
     };

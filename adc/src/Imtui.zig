@@ -46,7 +46,7 @@ pub const Control = union(enum) {
     dialog_radio: *Controls.DialogRadio.Impl,
     dialog_select: *Controls.DialogSelect.Impl,
     dialog_checkbox: *Controls.DialogCheckbox.Impl,
-    // dialog_input: *Controls.DialogInput.Impl,
+    dialog_input: *Controls.DialogInput.Impl,
     dialog_button: *Controls.DialogButton.Impl,
 
     // Consider a real vtable for these (Zig has examples).
@@ -496,6 +496,22 @@ pub fn dialogcheckbox(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: 
         },
         .present => |b| {
             b.describe(parent.controls_at, r, c, label);
+            return .{ .impl = b };
+        },
+    }
+}
+
+pub fn dialoginput(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c1: usize, c2: usize) !Imtui.Controls.DialogInput {
+    defer parent.controls_at += 1;
+    switch (try self.getOrPutControl(.dialog_input, "{s}.{d}.{d}", .{ parent.title, r, c1 })) {
+        .absent => |bp| {
+            const b = try Imtui.Controls.DialogInput.create(parent, parent.controls_at, r, c1, c2);
+            bp.* = b.impl;
+            try parent.controls.append(self.allocator, .{ .dialog_input = b.impl });
+            return b;
+        },
+        .present => |b| {
+            b.describe(parent.controls_at, r, c1, c2);
             return .{ .impl = b };
         },
     }

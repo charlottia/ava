@@ -62,7 +62,8 @@ pub const Impl = struct {
     }
 
     pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-        if (@intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
+        if (!self.imtui.alt_held and
+            @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
             @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
         {
             // advance to next item starting with pressed key (if any)

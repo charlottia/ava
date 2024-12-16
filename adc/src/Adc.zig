@@ -519,20 +519,20 @@ fn renderDisplayDialog(self: *Adc) !void {
     if (scroll_bars.changed()) |v|
         self.display_dialog_scroll_bars = v;
 
-    // self.imtui.text_mode.writeAccelerated(1, 37, "&Tab Stops:", dialog.impl.show_acc);
-    // var tab_stops = try dialog.input(1, 48, 52);
-    // tab_stops.accel('t');
-    // if (tab_stops.initial()) |buf| {
-    //     try buf.writer().print("{d}", .{self.display_dialog_tab_stops});
-    //     // TODO: the value should start selected
-    //     tab_stops.impl.cursor_col = buf.items.len; // XXX
-    // }
-    // if (tab_stops.changed()) |v| {
-    //     if (std.fmt.parseInt(u8, v, 10)) |n| {
-    //         if (n > 0 and n < 100)
-    //             self.display_dialog_tab_stops = n;
-    //     } else |_| {}
-    // }
+    self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 17, dialog.impl.c1 + 39, "&Tab Stops:", dialog.impl.show_acc);
+    var tab_stops = try dialog.input(17, 50, 54);
+    tab_stops.accel('t');
+    if (tab_stops.initial()) |buf| {
+        try buf.writer(self.imtui.allocator).print("{d}", .{self.display_dialog_tab_stops});
+        // TODO: the value should start selected
+        tab_stops.impl.cursor_col = buf.items.len; // XXX
+    }
+    if (tab_stops.changed()) |v| {
+        if (std.fmt.parseInt(u8, v, 10)) |n| {
+            if (n > 0 and n < 100)
+                self.display_dialog_tab_stops = n;
+        } else |_| {}
+    }
 
     self.imtui.text_mode.draw(dialog.impl.r1 + 19, dialog.impl.c1, 0x70, .VerticalRight);
     self.imtui.text_mode.paint(dialog.impl.r1 + 19, dialog.impl.c1 + 1, dialog.impl.r1 + 19 + 1, dialog.impl.c1 + 60 - 1, 0x70, .Horizontal);

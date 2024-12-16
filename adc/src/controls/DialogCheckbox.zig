@@ -43,16 +43,6 @@ pub const Impl = struct {
         }
     }
 
-    fn up(self: *Impl) void {
-        self.changed = !self.selected;
-        self.selected = true;
-    }
-
-    fn down(self: *Impl) void {
-        self.changed = self.selected;
-        self.selected = false;
-    }
-
     fn space(self: *Impl) void {
         self.changed = true;
         self.selected = !self.selected;
@@ -65,8 +55,14 @@ pub const Impl = struct {
 
     pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         switch (keycode) {
-            .up, .left => self.up(),
-            .down, .right => self.down(),
+            .up, .left => {
+                self.changed = !self.selected;
+                self.selected = true;
+            },
+            .down, .right => {
+                self.changed = self.selected;
+                self.selected = false;
+            },
             .space => self.space(),
             else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
         }
@@ -78,8 +74,6 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-        // _ = clicks;
-
         if (!self.isMouseOver())
             return self.dialog.commonMouseDown(b, clicks, cm); // <- pretty sure this is wrong cf `cm`; check XXX
 
