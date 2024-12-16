@@ -26,7 +26,6 @@ pub const Impl = struct {
     };
 
     pub fn deinit(self: *Impl) void {
-        // std.log.debug("MenuBar.Impl deinit self is {*}", .{self});
         for (self.menus.items) |m|
             m.deinit();
         self.menus.deinit(self.imtui.allocator);
@@ -76,10 +75,7 @@ pub const Impl = struct {
                 .left => d.index = if (d.index == 0) self.menus.items.len - 1 else d.index - 1,
                 .right => d.index = (d.index + 1) % self.menus.items.len,
                 .up, .down => self.focus = .{ .menu = .{ .index = d.index, .item = 0 } },
-                .escape => {
-                    self.focus = null;
-                    self.imtui.unfocus(.{ .menubar = self });
-                },
+                .escape => self.unfocus(),
                 .@"return" => self.focus = .{ .menu = .{ .index = d.index, .item = 0 } },
                 else => if (Imtui.keycodeAlphanum(keycode)) {
                     for (self.menus.items, 0..) |m, mix|
@@ -116,21 +112,16 @@ pub const Impl = struct {
                         continue;
                     break;
                 },
-                .escape => {
-                    self.focus = null;
-                    self.imtui.unfocus(.{ .menubar = self });
-                },
+                .escape => self.unfocus(),
                 .@"return" => {
                     self.menus.items[d.index].menu_items.items[d.item].?.chosen = true;
-                    self.focus = null;
-                    self.imtui.unfocus(.{ .menubar = self });
+                    self.unfocus();
                 },
                 else => if (Imtui.keycodeAlphanum(keycode)) {
                     for (self.menus.items[d.index].menu_items.items) |mi|
                         if (mi != null and Imtui.acceleratorMatch(mi.?.label, keycode)) {
                             mi.?.chosen = true;
-                            self.focus = null;
-                            self.imtui.unfocus(.{ .menubar = self });
+                            self.unfocus();
                             return;
                         };
                 },
@@ -144,12 +135,10 @@ pub const Impl = struct {
                 self.focus = .{ .menubar = .{ .index = 0, .open = false } };
             },
             .menubar => |*d| if (keycode == .left_alt or keycode == .right_alt) {
-                if (d.open) {
-                    d.open = false;
-                } else {
-                    self.focus = null;
-                    self.imtui.unfocus(.{ .menubar = self });
-                }
+                if (d.open)
+                    d.open = false
+                else
+                    self.unfocus();
             },
             .menu => |d| if (keycode == .left_alt or keycode == .right_alt) {
                 self.focus = .{ .menubar = .{ .index = d.index, .open = false } };
@@ -160,13 +149,14 @@ pub const Impl = struct {
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         _ = b;
         _ = clicks;
-        _ = cm;
+
+        if (cm) return false;
 
         self.op_closable = false;
 
         for (self.menus.items, 0..) |m, mix|
             if (m.isMouseOver()) {
-                if (try self.imtui.openMenu()) |om|
+                if (self.openMenu()) |om|
                     self.op_closable = om.index == mix;
                 try self.imtui.focus(.{ .menubar = self });
                 self.focus = .{ .menubar = .{ .index = mix, .open = true } };
@@ -175,12 +165,17 @@ pub const Impl = struct {
 
         if (self.openMenu()) |m|
             if (m.mousedOverItem()) |i| {
-                _ = i;
-                // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+                self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
                 return true;
             };
 
-        return false;
+        if (self.imtui.focused(.{ .menubar = self })) {
+            // XXX: this should fallthrough to the editor; it doesn't.
+            self.unfocus();
+            return true;
+        }
+
+        return true;
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
@@ -189,22 +184,25 @@ pub const Impl = struct {
         if (self.imtui.mouse_row == self.r) {
             for (self.menus.items, 0..) |m, mix|
                 if (m.isMouseOver()) {
-                    if (try self.imtui.openMenu()) |om|
+                    if (self.openMenu()) |om|
                         self.op_closable = self.op_closable and om.index == mix;
-                    // self.imtui.focus = .{ .menubar = .{ .index = mix, .open = true } };
+                    try self.imtui.focus(.{ .menubar = self });
+                    self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                     return;
                 };
-            // self.imtui.focus = .editor;
+
+            if (self.imtui.focused(.{ .menubar = self }))
+                self.unfocus();
+
             return;
         }
 
-        if (try self.imtui.openMenu()) |m| {
+        if (self.openMenu()) |m| {
             if (m.mousedOverItem()) |i| {
-                _ = i;
                 self.op_closable = false;
-                // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
+                self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
             } else {
-                // self.imtui.focus = .{ .menubar = .{ .index = m.index, .open = true } };
+                self.focus = .{ .menubar = .{ .index = m.index, .open = true } };
             }
             return;
         }
@@ -214,20 +212,25 @@ pub const Impl = struct {
         _ = b;
         _ = clicks;
 
-        if (try self.imtui.openMenu()) |m| {
+        if (self.openMenu()) |m| {
             if (m.mousedOverItem()) |i| {
                 i.chosen = true;
-                // self.imtui.focus = .editor;
+                self.unfocus();
                 return;
             }
 
             if (m.isMouseOver() and !self.op_closable) {
-                // self.imtui.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
+                self.focus = .{ .menu = .{ .index = m.index, .item = 0 } };
                 return;
             }
 
-            // self.imtui.focus = .editor;
+            self.unfocus();
         }
+    }
+
+    fn unfocus(self: *Impl) void {
+        self.focus = null;
+        self.imtui.unfocus(.{ .menubar = self });
     }
 };
 

@@ -282,10 +282,8 @@ pub fn newFrame(self: *Imtui) !void {
         }
 
         const target = self.mouse_event_target.?; // Assumed to be present if clickmatic_tick is.
-        if (trigger) {
-            const handled = try target.handleMouseDown(self.mouse_down.?, 0, true);
-            std.debug.assert(handled); // ...
-        }
+        if (trigger)
+            _ = try target.handleMouseDown(self.mouse_down.?, 0, true);
     }
 
     self.text_mode.clear(0x07);
@@ -297,7 +295,7 @@ pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
     return (try self.getOrPutControl(.menubar, "", .{})).present;
 }
 
-pub fn openMenu(self: *Imtui) !?*Controls.Menu.Impl {
+pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
     if (self.focus_stack.getLastOrNull()) |f| switch (f) {
         .menubar => |mb| return mb.openMenu(),
         else => {},
@@ -498,8 +496,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         if (c.isMouseOver()) {
-            const handled = try c.handleMouseDown(b, clicks, cm);
-            std.debug.assert(handled); // ...
+            _ = try c.handleMouseDown(b, clicks, cm);
             return c.*;
         };
 
@@ -507,24 +504,6 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     //     try self.focus_dialog.handleMouseDown(b, clicks, cm);
     //     return .{ .dialog = self.focus_dialog };
     // }
-
-    // if (b == .left and ((try self.getMenubar()).isMouseOver() or
-    //     ((try self.openMenu()) != null and (try self.openMenu()).?.isMouseOverItem())))
-    // {
-    //     // meu Deus.
-    //     try (try self.getMenubar()).handleMouseDown(b, clicks);
-    //     return .{ .menubar = (try self.getMenubar()) };
-    // }
-
-    // if (b == .left and (self.focus == .menubar or self.focus == .menu)) {
-    //     self.focus = .editor;
-    //     // fall through
-    // }
-
-    // // I don't think it's critical to check for generational liveness in every
-    // // possible access. If something has indeed aged out, then a false match
-    // // here writes state that will never be read by user code, and the object
-    // // will be collected at the start of the next frame.
 
     return null;
 }

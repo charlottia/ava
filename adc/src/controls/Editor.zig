@@ -103,6 +103,9 @@ pub const Impl = struct {
             self.shift_down = true;
             if (self.selection_start == null)
                 // We probably wanna restrict the cases this is applicable in.
+                // e.g. only actually start a selection when we're moving the
+                // cursor, not stopping it with the hack down in the else =>
+                // below.
                 self.selection_start = .{
                     .cursor_row = self.cursor_row,
                     .cursor_col = self.cursor_col,
@@ -145,6 +148,10 @@ pub const Impl = struct {
                 if (line.items.len < self.cursor_col)
                     try line.appendNTimes(src.allocator, ' ', self.cursor_col - line.items.len);
                 try line.insert(src.allocator, self.cursor_col, getCharacter(keycode, modifiers));
+                // XXX
+                if (self.shift_down and self.selection_start.?.cursor_col == self.cursor_col and
+                    self.selection_start.?.cursor_row == self.cursor_row)
+                    self.selection_start.?.cursor_col += 1;
                 self.cursor_col += 1;
             } else {
                 for ((try self.imtui.getMenubar()).menus.items) |m|
