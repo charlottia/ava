@@ -34,19 +34,19 @@ pub const Impl = struct {
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         // These don't discriminate on mouse button.
         _ = b;
         _ = clicks;
 
         if (cm) // Do nothing in response to clickmatic.
-            return true;
+            return .{ .button = self };
 
         if (!self.isMouseOver())
-            return false;
+            return null;
 
         self.inverted = true;
-        return true;
+        return .{ .button = self };
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {

@@ -43,7 +43,7 @@ pub const Control = union(enum) {
     menubar: *Controls.Menubar.Impl,
     editor: *Controls.Editor.Impl,
     dialog: *Controls.Dialog.Impl,
-    // dialog_radio: *Controls.DialogRadio.Impl,
+    dialog_radio: *Controls.DialogRadio.Impl,
     // dialog_select: *Controls.DialogSelect.Impl,
     // dialog_checkbox: *Controls.DialogCheckbox.Impl,
     // dialog_input: *Controls.DialogInput.Impl,
@@ -103,7 +103,7 @@ pub const Control = union(enum) {
         }
     }
 
-    fn isMouseOver(self: Control) bool {
+    pub fn isMouseOver(self: Control) bool {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "isMouseOver")) {
                 return c.isMouseOver();
@@ -128,13 +128,13 @@ pub const Control = union(enum) {
         }
     }
 
-    fn handleMouseDown(self: Control, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
+    pub fn handleMouseDown(self: Control, b: SDL.MouseButton, clicks: u8, cm: bool) Allocator.Error!?Control {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDown")) {
                 return c.handleMouseDown(b, clicks, cm);
             },
         }
-        return false;
+        return null;
     }
 
     fn handleMouseDrag(self: Control, b: SDL.MouseButton) !void {
@@ -327,6 +327,8 @@ pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
 
 pub fn focus(self: *Imtui, control: Control) !void {
     // TODO: will this ever be called with an Editor?
+    if (self.focused(control)) return;
+
     if (self.focus_stack.getLastOrNull()) |curr| {
         // First unfocus when we're focusing something with the same parent.
         const curr_parent = curr.parent();
@@ -335,8 +337,8 @@ pub fn focus(self: *Imtui, control: Control) !void {
             curr_parent.?.same(new_parent.?))
             _ = self.focus_stack.pop();
     }
-    if (!self.focused(control))
-        try self.focus_stack.append(self.allocator, control);
+
+    try self.focus_stack.append(self.allocator, control);
 }
 
 pub fn focused(self: *Imtui, control: Control) bool {
@@ -370,67 +372,83 @@ pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
 
 pub fn menubar(self: *Imtui, r: usize, c1: usize, c2: usize) !Controls.Menubar {
     switch (try self.getOrPutControl(.menubar, "", .{})) {
-        .present => |mb| {
-            mb.describe(r, c1, c2);
-            return .{ .impl = mb };
-        },
         .absent => |mbp| {
             const mb = try Controls.Menubar.create(self, r, c1, c2);
             mbp.* = mb.impl;
             return mb;
+        },
+        .present => |mb| {
+            mb.describe(r, c1, c2);
+            return .{ .impl = mb };
         },
     }
 }
 
 pub fn editor(self: *Imtui, editor_id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !Controls.Editor {
     switch (try self.getOrPutControl(.editor, "{d}", .{editor_id})) {
-        .present => |e| {
-            e.describe(r1, c1, r2, c2);
-            return .{ .impl = e };
-        },
         .absent => |ep| {
             const e = try Controls.Editor.create(self, editor_id, r1, c1, r2, c2);
             ep.* = e.impl;
             return e;
+        },
+        .present => |e| {
+            e.describe(r1, c1, r2, c2);
+            return .{ .impl = e };
         },
     }
 }
 
 pub fn button(self: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !Controls.Button {
     switch (try self.getOrPutControl(.button, "{s}", .{label})) {
-        .present => |b| {
-            b.describe(r, c, colour);
-            return .{ .impl = b };
-        },
         .absent => |bp| {
             const b = try Controls.Button.create(self, r, c, colour, label);
             bp.* = b.impl;
             return b;
+        },
+        .present => |b| {
+            b.describe(r, c, colour);
+            return .{ .impl = b };
         },
     }
 }
 
 pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier) !Controls.Shortcut {
     switch (try self.getOrPutControl(.shortcut, "{s}.{s}", .{ @tagName(keycode), if (modifier) |m| @tagName(m) else "none" })) {
-        .present => |s| return .{ .impl = s },
         .absent => |sp| {
             const s = try Controls.Shortcut.create(self, keycode, modifier);
             sp.* = s.impl;
             return s;
         },
+        .present => |s| return .{ .impl = s },
     }
 }
 
 pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !Controls.Dialog {
     switch (try self.getOrPutControl(.dialog, "{s}", .{title})) {
-        .present => |d| {
-            d.describe(height, width);
-            return .{ .impl = d };
-        },
         .absent => |dp| {
             const d = try Controls.Dialog.create(self, title, height, width);
             dp.* = d.impl;
             return d;
+        },
+        .present => |d| {
+            d.describe(height, width);
+            return .{ .impl = d };
+        },
+    }
+}
+
+pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
+    defer parent.controls_at += 1;
+    switch (try self.getOrPutControl(.dialog_radio, "{s}.{d}.{d}", .{ parent.title, group_id, item_id })) {
+        .absent => |bp| {
+            const b = try Imtui.Controls.DialogRadio.create(parent, parent.controls_at, group_id, item_id, r, c, label);
+            bp.* = b.impl;
+            try parent.controls.append(self.allocator, .{ .dialog_radio = b.impl });
+            return b;
+        },
+        .present => |b| {
+            b.describe(parent.controls_at, group_id, item_id, r, c, label);
+            return .{ .impl = b };
         },
     }
 }
@@ -439,22 +457,22 @@ pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: us
     // We don't actually have a proper ID descendent thing going on here. Get to it XXX
     defer parent.controls_at += 1;
     switch (try self.getOrPutControl(.dialog_button, "{s}.{s}", .{ parent.title, label })) {
-        .present => |b| {
-            b.describe(parent.controls_at, r, c, label);
-            return .{ .impl = b };
-        },
         .absent => |bp| {
             const b = try Imtui.Controls.DialogButton.create(parent, parent.controls_at, r, c, label);
             bp.* = b.impl;
             try parent.controls.append(self.allocator, .{ .dialog_button = b.impl });
             return b;
         },
+        .present => |b| {
+            b.describe(parent.controls_at, r, c, label);
+            return .{ .impl = b };
+        },
     }
 }
 
 fn getOrPutControl(self: *Imtui, comptime tag: std.meta.Tag(Control), comptime fmt: []const u8, parts: anytype) !union(enum) {
-    present: std.meta.TagPayload(Control, tag),
     absent: *std.meta.TagPayload(Control, tag),
+    present: std.meta.TagPayload(Control, tag),
 } {
     // Not guaranteed to be large enough ... https://media1.tenor.com/m/ZaxUeXcUtDkAAAAd/shrug-smug.gif
     var buf: [100]u8 = undefined;
@@ -514,20 +532,29 @@ fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
 }
 
 fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Control {
+    // The return value becomes self.mouse_event_target.
+    // This means a focused dialog control can take the event, decide it doesn't
+    // match it, and dispatch to the dialog to see if another one does instead.
+    // (If one doesn't, the dialog takes it for itself, and swallows them fro
+    // now.)
+
     if (self.focus_stack.getLastOrNull()) |c| {
-        if (try c.handleMouseDown(b, clicks, cm))
-            return c;
+        if (try c.handleMouseDown(b, clicks, cm)) |t|
+            return t;
     } else {
         const e = try self.focusedEditor();
-        if (try e.handleMouseDown(b, clicks, cm))
-            return .{ .editor = e };
+        if (try e.handleMouseDown(b, clicks, cm)) |t|
+            return t;
     }
 
+    // This fallback is rather awkward. It takes care of the menu and help-line
+    // shortcuts for us, but we have to explicitly avoid it whenever we're not
+    // focusing an editor, i.e. like the dialog case above. Perhaps we should
+    // just put it in Editor. XXX
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         if (c.isMouseOver()) {
-            _ = try c.handleMouseDown(b, clicks, cm);
-            return c.*;
+            return try c.handleMouseDown(b, clicks, cm);
         };
 
     return null;

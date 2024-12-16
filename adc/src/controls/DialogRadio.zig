@@ -7,6 +7,7 @@ const Imtui = @import("../Imtui.zig");
 const DialogRadio = @This();
 
 pub const Impl = struct {
+    imtui: *Imtui,
     dialog: *Dialog.Impl,
     ix: usize = undefined,
     generation: usize,
@@ -21,61 +22,49 @@ pub const Impl = struct {
     targeted: bool = false,
 
     pub fn deinit(self: *Impl) void {
-        self.dialog.imtui.allocator.destroy(self);
+        self.imtui.allocator.destroy(self);
+    }
+
+    pub fn parent(self: *const Impl) Imtui.Control {
+        return .{ .dialog = self.dialog };
     }
 
     pub fn describe(self: *Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
-        self.dialog.imtui.text_mode.write(r, c, "( ) ");
-        if (self.selected)
-            self.dialog.imtui.text_mode.draw(r, c + 1, 0x70, .Bullet);
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
-
         self.ix = ix;
         self.group_id = group_id;
         self.item_id = item_id;
-        self.r = self.dialog.imtui.text_mode.offset_row + r;
-        self.c = self.dialog.imtui.text_mode.offset_col + c;
+        self.r = self.dialog.r1 + r;
+        self.c = self.dialog.c1 + c;
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
 
-        if (self.dialog.focus_ix == ix) {
+        self.dialog.imtui.text_mode.write(self.r, self.c, "( ) ");
+        if (self.selected)
+            self.dialog.imtui.text_mode.draw(self.r, self.c + 1, 0x70, .Bullet);
+        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
+
+        if (self.imtui.focused(.{ .dialog_radio = self })) {
             self.dialog.imtui.text_mode.cursor_row = self.r;
             self.dialog.imtui.text_mode.cursor_col = self.c + 1;
         }
     }
 
-    pub fn up(self: *Impl) void {
-        std.debug.assert(self.selected);
-        self.selected = false;
-        self.findKin(self.item_id -% 1).select();
-    }
-
-    pub fn down(self: *Impl) void {
-        std.debug.assert(self.selected);
-        self.selected = false;
-        self.findKin(self.item_id + 1).select();
-    }
-
-    pub fn space(self: *Impl) void {
-        self.accelerate();
-    }
-
-    fn select(self: *Impl) void {
+    fn select(self: *Impl) !void {
         self.selected = true;
         self.selected_read = false;
-        self.dialog.focus_ix = self.ix;
+        try self.imtui.focus(.{ .dialog_radio = self });
     }
 
-    pub fn accelerate(self: *Impl) void {
+    pub fn accelerate(self: *Impl) !void {
         for (self.dialog.controls.items) |c|
             switch (c) {
-                .radio => |b| if (b.group_id == self.group_id) {
+                .dialog_radio => |b| if (b.group_id == self.group_id) {
                     b.selected = false;
                 },
                 else => {},
             };
 
-        self.select();
+        try self.select();
     }
 
     fn findKin(self: *Impl, id: usize) *Impl {
@@ -83,7 +72,7 @@ pub const Impl = struct {
         var high: ?*Impl = null;
         for (self.dialog.controls.items) |c|
             switch (c) {
-                .radio => |b| if (b.group_id == self.group_id) {
+                .dialog_radio => |b| if (b.group_id == self.group_id) {
                     if (b.item_id == 0)
                         zero = b
                     else if (b.item_id == id)
@@ -99,16 +88,37 @@ pub const Impl = struct {
     }
 
     pub fn isMouseOver(self: *const Impl) bool {
-        return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+        return self.dialog.imtui.mouse_row == self.r and
+            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
-        _ = clicks;
+    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        switch (keycode) {
+            .space => try self.accelerate(),
+            .up, .left => {
+                std.debug.assert(self.selected);
+                self.selected = false;
+                try self.findKin(self.item_id -% 1).select();
+            },
+            .down, .right => {
+                std.debug.assert(self.selected);
+                self.selected = false;
+                try self.findKin(self.item_id + 1).select();
+            },
+            else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
+        }
+    }
 
-        if (b != .left or cm) return;
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        if (!self.isMouseOver())
+            return self.dialog.commonMouseDown(b, clicks, cm);
 
-        self.dialog.focus_ix = self.ix;
+        if (b != .left or cm) return .{ .dialog_radio = self };
+
+        try self.imtui.focus(.{ .dialog_radio = self });
         self.targeted = true;
+
+        return .{ .dialog_radio = self };
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
@@ -124,7 +134,7 @@ pub const Impl = struct {
 
         if (self.targeted) {
             self.targeted = false;
-            self.accelerate();
+            try self.accelerate();
         }
     }
 };
@@ -134,6 +144,7 @@ impl: *Impl,
 pub fn create(dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
+        .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
         .selected = item_id == 0,

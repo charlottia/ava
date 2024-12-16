@@ -146,11 +146,11 @@ pub const Impl = struct {
         }
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         _ = b;
         _ = clicks;
 
-        if (cm) return false;
+        if (cm) return null; // XXX ?
 
         self.op_closable = false;
 
@@ -160,22 +160,24 @@ pub const Impl = struct {
                     self.op_closable = om.index == mix;
                 try self.imtui.focus(.{ .menubar = self });
                 self.focus = .{ .menubar = .{ .index = mix, .open = true } };
-                return true;
+                return .{ .menubar = self };
             };
 
+        // XXX: in QB you can click down on a separator, and then drag to
+        // an item. We can't yet.
         if (self.openMenu()) |m|
             if (m.mousedOverItem()) |i| {
                 self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-                return true;
+                return .{ .menubar = self };
             };
 
         if (self.imtui.focused(.{ .menubar = self })) {
             // XXX: this should fallthrough to the editor; it doesn't.
             self.unfocus();
-            return true;
+            return .{ .menubar = self };
         }
 
-        return true;
+        return .{ .menubar = self };
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {

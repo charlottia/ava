@@ -50,7 +50,7 @@ pub const Impl = struct {
                 const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
-                // XXX XXX
+                // XXX XXX extended vtable for dialog controls?
                 switch (self.controls.items[ix]) {
                     inline else => |c| if (@hasDecl(@TypeOf(c.*), "blur")) {
                         try c.blur();
@@ -58,18 +58,18 @@ pub const Impl = struct {
                 }
 
                 var nix = ix;
-                // if (self.controls.items[nix] == .radio) {
-                //     const rg = self.controls.items[nix].radio.group_id;
-                //     while (self.controls.items[nix] == .radio and
-                //         self.controls.items[nix].radio.group_id == rg)
-                //         nix = (nix + inc) % self.controls.items.len;
-                // } else {
-                nix = (nix + inc) % self.controls.items.len;
-                // if (reverse and self.controls.items[nix] == .radio)
-                //     while (!self.controls.items[nix].radio.selected) {
-                //         nix -= 1;
-                //     };
-                // }
+                if (self.controls.items[nix] == .dialog_radio) {
+                    const rg = self.controls.items[nix].dialog_radio.group_id;
+                    while (self.controls.items[nix] == .dialog_radio and
+                        self.controls.items[nix].dialog_radio.group_id == rg)
+                        nix = (nix + inc) % self.controls.items.len;
+                } else {
+                    nix = (nix + inc) % self.controls.items.len;
+                    if (reverse and self.controls.items[nix] == .dialog_radio)
+                        while (!self.controls.items[nix].dialog_radio.selected) {
+                            nix -= 1;
+                        };
+                }
 
                 try self.imtui.focus(self.controls.items[nix]);
             },
@@ -83,12 +83,22 @@ pub const Impl = struct {
         }
     }
 
+    pub fn commonMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        for (self.controls.items) |c|
+            if (c.isMouseOver()) {
+                return try c.handleMouseDown(b, clicks, cm);
+            };
+
+        return .{ .dialog = self }; // nothing matched. eat the events.
+    }
+
     fn handleAccelerator(self: *Impl, keycode: SDL.Keycode) !void {
         for (self.controls.items) |c|
-            if (c.accel()) |a| {
-                if (std.ascii.toLower(a) == @intFromEnum(keycode))
+            if (c.accel()) |a|
+                if (std.ascii.toLower(a) == @intFromEnum(keycode)) {
                     try c.accelerate();
-            };
+                    return;
+                };
     }
 };
 
@@ -129,19 +139,9 @@ pub fn groupbox(self: Dialog, title: []const u8, r1: usize, c1: usize, r2: usize
     self.impl.imtui.text_mode.write(self.impl.r1 + r1, start, title);
 }
 
-// pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
-//     const impl = self.impl;
-//     defer impl.controls_at += 1;
-//     if (impl.controls_at == impl.controls.items.len) {
-//         const b = try Imtui.Controls.DialogRadio.create(impl, impl.controls_at, group_id, item_id, r, c, label);
-//         try impl.controls.append(impl.imtui.allocator, .{ .radio = b.impl });
-//         return b;
-//     } else {
-//         const b = impl.controls.items[impl.controls_at].radio;
-//         b.describe(impl.controls_at, group_id, item_id, r, c, label);
-//         return .{ .impl = b };
-//     }
-// }
+pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
+    return self.impl.imtui.dialogradio(self.impl, group_id, item_id, r, c, label);
+}
 
 // pub fn select(self: Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
 //     const impl = self.impl;

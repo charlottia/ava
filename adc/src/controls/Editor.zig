@@ -180,7 +180,7 @@ pub const Impl = struct {
             self.shift_down = false;
     }
 
-    pub fn handleMouseDown(self: *Impl, button: SDL.MouseButton, clicks: u8, cm: bool) !bool {
+    pub fn handleMouseDown(self: *Impl, button: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         _ = clicks;
 
         const r = self.imtui.mouse_row;
@@ -193,14 +193,14 @@ pub const Impl = struct {
             self.cmt = null;
 
             if (!(r >= self.r1 and r < self.r2 and c >= self.c1 and c < self.c2))
-                return false;
+                return null;
         }
 
         if (cm and self.imtui.focus_editor == self.id and self.dragging == .text) {
             // Transform clickmatic events to drag events when dragging text so you
             // can drag to an edge and continue selecting.
             try self.handleMouseDrag(button);
-            return true;
+            return .{ .editor = self };
         }
 
         if (r == self.r1) {
@@ -209,7 +209,7 @@ pub const Impl = struct {
                 self.imtui.focus_editor = self.id;
                 self.dragging = .header;
             }
-            return true;
+            return .{ .editor = self };
         }
 
         if (c > self.c1 and c < self.c2 - 1) {
@@ -256,7 +256,7 @@ pub const Impl = struct {
                     self.cursor_col = self.scroll_col
                 else if (self.cursor_col > self.scroll_col + (self.c2 - self.c1 - 3))
                     self.cursor_col = self.scroll_col + (self.c2 - self.c1 - 3);
-                return true;
+                return .{ .editor = self };
             } else if (!cm) {
                 // Implication: either we're focussing this window for the first
                 // time, or it's already focused (and we didn't click in the
@@ -286,7 +286,7 @@ pub const Impl = struct {
                         .cursor_row = self.cursor_row,
                         .cursor_col = self.cursor_col,
                     };
-                return true;
+                return .{ .editor = self };
             }
         }
 
@@ -328,11 +328,11 @@ pub const Impl = struct {
                             self.vscrDown();
                         },
                     };
-                return true;
+                return .{ .editor = self };
             }
         }
 
-        return false;
+        return null;
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {

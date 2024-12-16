@@ -8,7 +8,6 @@ const MenuItem = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
-    generation: usize,
     label: []const u8 = undefined,
     index: usize = undefined,
     enabled: bool = undefined,
@@ -36,10 +35,7 @@ impl: *Impl,
 
 pub fn create(imtui: *Imtui, label: []const u8, index: usize) !MenuItem {
     var i = try imtui.allocator.create(Impl);
-    i.* = .{
-        .imtui = imtui,
-        .generation = imtui.generation,
-    };
+    i.* = .{ .imtui = imtui };
     i.describe(label, index);
     return .{ .impl = i };
 }

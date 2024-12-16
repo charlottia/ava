@@ -92,16 +92,16 @@ pub const Impl = struct {
             self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
-        _ = clicks;
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        if (!self.isMouseOver())
+            return self.dialog.commonMouseDown(b, clicks, cm);
 
-        if (!self.isMouseOver()) return false; // TODO: delegate to dialog; this delegates to editor/etc.!!!
-        if (b != .left or cm) return true;
+        if (b != .left or cm) return .{ .dialog_button = self };
 
         try self.imtui.focus(.{ .dialog_button = self });
         self.inverted = true;
 
-        return true;
+        return .{ .dialog_button = self };
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {

@@ -467,15 +467,19 @@ fn renderDisplayDialog(self: *Adc) !void {
 
     dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
 
-    // var r1 = try dialog.radio(0, 0, 3, 2, "&1. ");
-    // self.imtui.text_mode.paint(3, 9, 4, 29, self.display_dialog_colours_normal, .Blank);
-    // self.imtui.text_mode.write(3, 10, "Normal Text");
-    // var r2 = try dialog.radio(0, 1, 5, 2, "&2. ");
-    // self.imtui.text_mode.paint(5, 9, 6, 29, self.display_dialog_colours_current, .Blank);
-    // self.imtui.text_mode.write(5, 10, "Current Statement");
-    // var r3 = try dialog.radio(0, 2, 7, 2, "&3. ");
-    // self.imtui.text_mode.paint(7, 9, 8, 29, self.display_dialog_colours_breakpoint, .Blank);
-    // self.imtui.text_mode.write(7, 10, "Breakpoint Lines");
+    var r1 = try dialog.radio(0, 0, 4, 4, "&1. ");
+    self.imtui.text_mode.paint(dialog.impl.r1 + 4, dialog.impl.c1 + 11, dialog.impl.r1 + 5, dialog.impl.c1 + 31, self.display_dialog_colours_normal, .Blank);
+    self.imtui.text_mode.write(dialog.impl.r1 + 4, dialog.impl.c1 + 12, "Normal Text");
+    var r2 = try dialog.radio(0, 1, 6, 4, "&2. ");
+    self.imtui.text_mode.paint(dialog.impl.r1 + 6, dialog.impl.c1 + 11, dialog.impl.r1 + 7, dialog.impl.c1 + 31, self.display_dialog_colours_current, .Blank);
+    self.imtui.text_mode.write(dialog.impl.r1 + 6, dialog.impl.c1 + 12, "Current Statement");
+    var r3 = try dialog.radio(0, 2, 8, 4, "&3. ");
+    self.imtui.text_mode.paint(dialog.impl.r1 + 8, dialog.impl.c1 + 11, dialog.impl.r1 + 9, dialog.impl.c1 + 31, self.display_dialog_colours_breakpoint, .Blank);
+    self.imtui.text_mode.write(dialog.impl.r1 + 8, dialog.impl.c1 + 12, "Breakpoint Lines");
+
+    r1 = r1;
+    r2 = r2;
+    r3 = r3;
 
     // self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.impl.show_acc);
     // var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
