@@ -158,7 +158,7 @@ pub const Impl = struct {
             if (m.isMouseOver()) {
                 if (self.openMenu()) |om|
                     self.op_closable = om.index == mix;
-                try self.imtui.focus(.{ .menubar = self });
+                try self.imtui.focus(self);
                 self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                 return .{ .menubar = self };
             };
@@ -171,7 +171,7 @@ pub const Impl = struct {
                 return .{ .menubar = self };
             };
 
-        if (self.imtui.focused(.{ .menubar = self })) {
+        if (self.imtui.focused(self)) {
             // XXX: this should fallthrough to the editor; it doesn't.
             self.unfocus();
             return .{ .menubar = self };
@@ -188,12 +188,12 @@ pub const Impl = struct {
                 if (m.isMouseOver()) {
                     if (self.openMenu()) |om|
                         self.op_closable = self.op_closable and om.index == mix;
-                    try self.imtui.focus(.{ .menubar = self });
+                    try self.imtui.focus(self);
                     self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                     return;
                 };
 
-            if (self.imtui.focused(.{ .menubar = self }))
+            if (self.imtui.focused(self))
                 self.unfocus();
 
             return;
@@ -232,7 +232,7 @@ pub const Impl = struct {
 
     fn unfocus(self: *Impl) void {
         self.focus = null;
-        self.imtui.unfocus(.{ .menubar = self });
+        self.imtui.unfocus(self);
     }
 };
 

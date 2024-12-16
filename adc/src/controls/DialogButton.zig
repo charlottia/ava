@@ -36,7 +36,7 @@ pub const Impl = struct {
 
     pub fn draw(self: *Impl) void {
         var arrowcolour: u8 =
-            if (self.imtui.focused(.{ .dialog_button = self }) or
+            if (self.imtui.focused(self) or
             (self.dialog.default_button == self and
             (self.imtui.focus_stack.getLastOrNull() == null or // XXX <- buttons are drawn on end(), by which case a button may have caused the dialog to unfocus & thus the stack is empty. annoying.
             self.imtui.focus_stack.getLastOrNull().? != .dialog_button)))
@@ -57,14 +57,14 @@ pub const Impl = struct {
         self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
         self.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
 
-        if (self.imtui.focused(.{ .dialog_button = self })) {
+        if (self.imtui.focused(self)) {
             self.imtui.text_mode.cursor_row = self.r;
             self.imtui.text_mode.cursor_col = self.c + 2;
         }
     }
 
     pub fn accelerate(self: *Impl) !void {
-        try self.imtui.focus(.{ .dialog_button = self });
+        try self.imtui.focus(self);
         self.chosen = true;
     }
 
@@ -77,7 +77,7 @@ pub const Impl = struct {
     }
 
     pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
-        if (keycode == .space and self.inverted and self.imtui.focused(.{ .dialog_button = self })) {
+        if (keycode == .space and self.inverted and self.imtui.focused(self)) {
             self.inverted = false;
             self.chosen = true;
         }
@@ -98,7 +98,7 @@ pub const Impl = struct {
 
         if (b != .left or cm) return .{ .dialog_button = self };
 
-        try self.imtui.focus(.{ .dialog_button = self });
+        try self.imtui.focus(self);
         self.inverted = true;
 
         return .{ .dialog_button = self };

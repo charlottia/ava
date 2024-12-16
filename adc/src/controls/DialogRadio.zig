@@ -43,7 +43,7 @@ pub const Impl = struct {
             self.dialog.imtui.text_mode.draw(self.r, self.c + 1, 0x70, .Bullet);
         self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
 
-        if (self.imtui.focused(.{ .dialog_radio = self })) {
+        if (self.imtui.focused(self)) {
             self.dialog.imtui.text_mode.cursor_row = self.r;
             self.dialog.imtui.text_mode.cursor_col = self.c + 1;
         }
@@ -52,7 +52,7 @@ pub const Impl = struct {
     fn select(self: *Impl) !void {
         self.selected = true;
         self.selected_read = false;
-        try self.imtui.focus(.{ .dialog_radio = self });
+        try self.imtui.focus(self);
     }
 
     pub fn accelerate(self: *Impl) !void {
@@ -115,7 +115,7 @@ pub const Impl = struct {
 
         if (b != .left or cm) return .{ .dialog_radio = self };
 
-        try self.imtui.focus(.{ .dialog_radio = self });
+        try self.imtui.focus(self);
         self.targeted = true;
 
         return .{ .dialog_radio = self };

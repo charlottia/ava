@@ -44,12 +44,23 @@ pub const Control = union(enum) {
     editor: *Controls.Editor.Impl,
     dialog: *Controls.Dialog.Impl,
     dialog_radio: *Controls.DialogRadio.Impl,
-    // dialog_select: *Controls.DialogSelect.Impl,
+    dialog_select: *Controls.DialogSelect.Impl,
     // dialog_checkbox: *Controls.DialogCheckbox.Impl,
     // dialog_input: *Controls.DialogInput.Impl,
     dialog_button: *Controls.DialogButton.Impl,
 
     // Consider a real vtable for these (Zig has examples).
+
+    fn fromImpl(impl: anytype) Control {
+        if (@TypeOf(impl) == Control) return impl;
+
+        inline for (std.meta.fields(Control)) |f|
+            if (f.type == @TypeOf(impl)) {
+                return @unionInit(Control, f.name, impl);
+            };
+
+        @compileError("couldn't resolve Control for " ++ @typeName(@TypeOf(impl)));
+    }
 
     fn parent(self: Control) ?Control {
         switch (self) {
@@ -325,9 +336,11 @@ pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
     return null;
 }
 
-pub fn focus(self: *Imtui, control: Control) !void {
+pub fn focus(self: *Imtui, impl: anytype) !void {
+    const control = Control.fromImpl(impl);
+
     // TODO: will this ever be called with an Editor?
-    if (self.focused(control)) return;
+    if (self.focused(impl)) return;
 
     if (self.focus_stack.getLastOrNull()) |curr| {
         // First unfocus when we're focusing something with the same parent.
@@ -341,12 +354,14 @@ pub fn focus(self: *Imtui, control: Control) !void {
     try self.focus_stack.append(self.allocator, control);
 }
 
-pub fn focused(self: *Imtui, control: Control) bool {
+pub fn focused(self: *Imtui, impl: anytype) bool {
     // TODO: will this ever be called with an Editor?
+    const control = Control.fromImpl(impl);
     return (self.focus_stack.getLastOrNull() orelse return false).same(control);
 }
 
-pub fn unfocus(self: *Imtui, control: Control) void {
+pub fn unfocus(self: *Imtui, impl: anytype) void {
+    const control = Control.fromImpl(impl);
     switch (control) {
         .dialog => {
             // Myth: Cats can only have a little salami as a treat
@@ -356,7 +371,7 @@ pub fn unfocus(self: *Imtui, control: Control) void {
             _ = self.focus_stack.pop();
         },
         else => {
-            std.debug.assert(self.focused(control));
+            std.debug.assert(self.focused(impl));
             _ = self.focus_stack.pop();
         },
     }
@@ -448,6 +463,23 @@ pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, group_id: usize,
         },
         .present => |b| {
             b.describe(parent.controls_at, group_id, item_id, r, c, label);
+            return .{ .impl = b };
+        },
+    }
+}
+
+pub fn dialogselect(self: *Imtui, parent: *Controls.Dialog.Impl, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
+    defer parent.controls_at += 1;
+    // this id makes no sense but Good Enough XXX
+    switch (try self.getOrPutControl(.dialog_select, "{s}.{d}.{d}", .{ parent.title, r1, c1 })) {
+        .absent => |bp| {
+            const b = try Imtui.Controls.DialogSelect.create(parent, parent.controls_at, r1, c1, r2, c2, colour, selected);
+            bp.* = b.impl;
+            try parent.controls.append(self.allocator, .{ .dialog_select = b.impl });
+            return b;
+        },
+        .present => |b| {
+            b.describe(parent.controls_at, r1, c1, r2, c2, colour);
             return .{ .impl = b };
         },
     }

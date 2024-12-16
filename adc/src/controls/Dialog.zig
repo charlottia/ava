@@ -51,6 +51,7 @@ pub const Impl = struct {
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
                 // XXX XXX extended vtable for dialog controls?
+                // XXX: ORRRRRRR. Just handle this in `tab` in DialogButton!!
                 switch (self.controls.items[ix]) {
                     inline else => |c| if (@hasDecl(@TypeOf(c.*), "blur")) {
                         try c.blur();
@@ -143,19 +144,9 @@ pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, 
     return self.impl.imtui.dialogradio(self.impl, group_id, item_id, r, c, label);
 }
 
-// pub fn select(self: Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
-//     const impl = self.impl;
-//     defer impl.controls_at += 1;
-//     if (impl.controls_at == impl.controls.items.len) {
-//         const b = try Imtui.Controls.DialogSelect.create(impl, impl.controls_at, r1, c1, r2, c2, colour, selected);
-//         try impl.controls.append(impl.imtui.allocator, .{ .select = b.impl });
-//         return b;
-//     } else {
-//         const b = impl.controls.items[impl.controls_at].select;
-//         b.describe(impl.controls_at, r1, c1, r2, c2, colour);
-//         return .{ .impl = b };
-//     }
-// }
+pub fn select(self: Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
+    return self.impl.imtui.dialogselect(self.impl, r1, c1, r2, c2, colour, selected);
+}
 
 // pub fn checkbox(self: Dialog, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
 //     const impl = self.impl;

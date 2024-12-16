@@ -47,7 +47,7 @@ pub const Impl = struct {
 
         self.menu_items_at = 0;
 
-        const focused = self.imtui.focused(.{ .menubar = self.menubar });
+        const focused = self.imtui.focused(self.menubar);
 
         if (focused and
             ((self.menubar.focus.? == .menubar and self.menubar.focus.?.menubar.index == index) or
@@ -149,7 +149,7 @@ pub fn end(self: Menu) void {
     var row = impl.r + 2;
     for (impl.menu_items.items, 0..) |mit, ix| {
         if (mit) |it| {
-            const selected = impl.imtui.focused(.{ .menubar = self.impl.menubar }) and
+            const selected = impl.imtui.focused(self.impl.menubar) and
                 self.impl.menubar.focus.? == .menu and self.impl.menubar.focus.?.menu.item == ix;
             const colour: u8 = if (selected)
                 0x07

@@ -477,45 +477,41 @@ fn renderDisplayDialog(self: *Adc) !void {
     self.imtui.text_mode.paint(dialog.impl.r1 + 8, dialog.impl.c1 + 11, dialog.impl.r1 + 9, dialog.impl.c1 + 31, self.display_dialog_colours_breakpoint, .Blank);
     self.imtui.text_mode.write(dialog.impl.r1 + 8, dialog.impl.c1 + 12, "Breakpoint Lines");
 
-    r1 = r1;
-    r2 = r2;
-    r3 = r3;
+    self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 1, dialog.impl.c1 + 31, "&Foreground", dialog.impl.show_acc);
+    var fg = try dialog.select(3, 32, 13, 43, 0x70, self.display_dialog_colours_normal & 0x0f);
+    fg.accel('f');
+    fg.items(COLOUR_NAMES);
+    fg.end();
 
-    // self.imtui.text_mode.writeAccelerated(1, 31, "&Foreground", dialog.impl.show_acc);
-    // var fg = try dialog.select(2, 30, 12, 41, 0x70, self.display_dialog_colours_normal & 0x0f);
-    // fg.accel('f');
-    // fg.items(COLOUR_NAMES);
-    // fg.end();
+    self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 1, dialog.impl.c1 + 43, "&Background", dialog.impl.show_acc);
+    var bg = try dialog.select(3, 44, 13, 55, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
+    bg.accel('b');
+    bg.items(COLOUR_NAMES);
+    bg.end();
 
-    // self.imtui.text_mode.writeAccelerated(1, 43, "&Background", dialog.impl.show_acc);
-    // var bg = try dialog.select(2, 42, 12, 53, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
-    // bg.accel('b');
-    // bg.items(COLOUR_NAMES);
-    // bg.end();
+    if (r1.selected()) {
+        fg.impl.value(self.display_dialog_colours_normal & 0x0f);
+        bg.impl.value(self.display_dialog_colours_normal >> 4);
+    } else if (r1.impl.selected) {
+        self.display_dialog_colours_normal = @as(u8, @intCast(fg.impl.selected_ix)) |
+            (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
+    }
 
-    // if (r1.selected()) {
-    //     fg.impl.value(self.display_dialog_colours_normal & 0x0f);
-    //     bg.impl.value(self.display_dialog_colours_normal >> 4);
-    // } else if (r1.impl.selected) {
-    //     self.display_dialog_colours_normal = @as(u8, @intCast(fg.impl.selected_ix)) |
-    //         (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
-    // }
+    if (r2.selected()) {
+        fg.impl.value(self.display_dialog_colours_current & 0x0f);
+        bg.impl.value(self.display_dialog_colours_current >> 4);
+    } else if (r2.impl.selected) {
+        self.display_dialog_colours_current = @as(u8, @intCast(fg.impl.selected_ix)) |
+            (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
+    }
 
-    // if (r2.selected()) {
-    //     fg.impl.value(self.display_dialog_colours_current & 0x0f);
-    //     bg.impl.value(self.display_dialog_colours_current >> 4);
-    // } else if (r2.impl.selected) {
-    //     self.display_dialog_colours_current = @as(u8, @intCast(fg.impl.selected_ix)) |
-    //         (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
-    // }
-
-    // if (r3.selected()) {
-    //     fg.impl.value(self.display_dialog_colours_breakpoint & 0x0f);
-    //     bg.impl.value(self.display_dialog_colours_breakpoint >> 4);
-    // } else if (r3.impl.selected) {
-    //     self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg.impl.selected_ix)) |
-    //         (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
-    // }
+    if (r3.selected()) {
+        fg.impl.value(self.display_dialog_colours_breakpoint & 0x0f);
+        bg.impl.value(self.display_dialog_colours_breakpoint >> 4);
+    } else if (r3.impl.selected) {
+        self.display_dialog_colours_breakpoint = @as(u8, @intCast(fg.impl.selected_ix)) |
+            (@as(u8, @intCast(bg.impl.selected_ix)) << 4);
+    }
 
     dialog.groupbox("Display Options", 16, 2, 19, 58, 0x70);
 
@@ -552,14 +548,14 @@ fn renderDisplayDialog(self: *Adc) !void {
         self.prefs.settings.tab_stops = self.display_dialog_tab_stops;
         try self.prefs.save();
         self.display_dialog_visible = false;
-        self.imtui.unfocus(.{ .dialog = dialog.impl });
+        self.imtui.unfocus(dialog.impl);
     }
 
     var cancel = try dialog.button(20, 24, "Cancel");
     cancel.cancel();
     if (cancel.chosen()) {
         self.display_dialog_visible = false;
-        self.imtui.unfocus(.{ .dialog = dialog.impl });
+        self.imtui.unfocus(dialog.impl);
     }
 
     var help = try dialog.button(20, 42, "&Help");
@@ -581,7 +577,7 @@ fn renderDisplayDialog(self: *Adc) !void {
         if (help_dialog_ok.chosen()) {
             std.log.debug("help OK chosen", .{});
             self.display_dialog_help_dialog_visible = false;
-            self.imtui.unfocus(.{ .dialog = help_dialog.impl });
+            self.imtui.unfocus(help_dialog.impl);
         }
         try help_dialog.end();
     }
