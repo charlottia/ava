@@ -6,6 +6,7 @@ const Imtui = @import("../Imtui.zig");
 const DialogCheckbox = @This();
 
 pub const Impl = struct {
+    imtui: *Imtui,
     dialog: *Dialog.Impl,
     generation: usize,
     ix: usize = undefined,
@@ -19,56 +20,75 @@ pub const Impl = struct {
     targeted: bool = false,
 
     pub fn deinit(self: *Impl) void {
-        self.dialog.imtui.allocator.destroy(self);
+        self.imtui.allocator.destroy(self);
+    }
+
+    pub fn parent(self: *const Impl) Imtui.Control {
+        return .{ .dialog = self.dialog };
     }
 
     pub fn describe(self: *Impl, ix: usize, r: usize, c: usize, label: []const u8) void {
-        self.dialog.imtui.text_mode.write(r, c, if (self.selected) "[X] " else "[ ] ");
-        self.dialog.imtui.text_mode.writeAccelerated(r, c + 4, label, self.dialog.show_acc);
-
         self.ix = ix;
-        self.r = self.dialog.imtui.text_mode.offset_row + r;
-        self.c = self.dialog.imtui.text_mode.offset_col + c;
+        self.r = self.dialog.r1 + r;
+        self.c = self.dialog.c1 + c;
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
 
-        if (self.dialog.focus_ix == self.dialog.controls_at) {
+        self.dialog.imtui.text_mode.write(self.r, self.c, if (self.selected) "[X] " else "[ ] ");
+        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
+
+        if (self.imtui.focused(self)) {
             self.dialog.imtui.text_mode.cursor_row = self.r;
             self.dialog.imtui.text_mode.cursor_col = self.c + 1;
         }
     }
 
-    pub fn up(self: *Impl) void {
+    fn up(self: *Impl) void {
         self.changed = !self.selected;
         self.selected = true;
     }
 
-    pub fn down(self: *Impl) void {
+    fn down(self: *Impl) void {
         self.changed = self.selected;
         self.selected = false;
     }
 
-    pub fn space(self: *Impl) void {
+    fn space(self: *Impl) void {
         self.changed = true;
         self.selected = !self.selected;
     }
 
-    pub fn accelerate(self: *Impl) void {
+    pub fn accelerate(self: *Impl) !void {
         self.space();
-        self.dialog.focus_ix = self.ix;
+        try self.imtui.focus(self);
+    }
+
+    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        switch (keycode) {
+            .up, .left => self.up(),
+            .down, .right => self.down(),
+            .space => self.space(),
+            else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
+        }
     }
 
     pub fn isMouseOver(self: *const Impl) bool {
-        return self.dialog.imtui.mouse_row == self.r and self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+        return self.dialog.imtui.mouse_row == self.r and
+            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
-        _ = clicks;
+    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        // _ = clicks;
 
-        if (b != .left or cm) return;
+        if (!self.isMouseOver())
+            return self.dialog.commonMouseDown(b, clicks, cm); // <- pretty sure this is wrong cf `cm`; check XXX
 
-        self.dialog.focus_ix = self.ix;
+        if (b != .left or cm) return .{ .dialog_checkbox = self };
+
+        try self.imtui.focus(self);
         self.targeted = true;
+
+        return .{ .dialog_checkbox = self };
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
@@ -84,7 +104,7 @@ pub const Impl = struct {
 
         if (self.targeted) {
             self.targeted = false;
-            self.accelerate();
+            try self.accelerate();
         }
     }
 };
@@ -94,6 +114,7 @@ impl: *Impl,
 pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !DialogCheckbox {
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
+        .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
         .selected = selected,

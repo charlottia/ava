@@ -27,6 +27,10 @@ pub const Impl = struct {
         self.imtui.allocator.destroy(self);
     }
 
+    pub fn parent(self: *const Impl) Imtui.Control {
+        return .{ .dialog = self.dialog };
+    }
+
     pub fn describe(self: *Impl, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
         self.ix = ix;
         self.r1 = self.dialog.r1 + r1;
@@ -37,7 +41,7 @@ pub const Impl = struct {
         self.items = &.{};
         self.accel = null;
 
-        self.dialog.imtui.text_mode.box(r1, c1, r2, c2, colour);
+        self.dialog.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, colour);
 
         if (self.imtui.focused(self)) {
             self.dialog.imtui.text_mode.cursor_row = self.r1 + 1 + self.selected_ix - self.scroll_row;
@@ -86,12 +90,13 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-        _ = clicks;
-
         if (b != .left) return .{ .dialog_select = self };
 
-        if (!cm)
+        if (!cm) {
+            if (!self.isMouseOver())
+                return self.dialog.commonMouseDown(b, clicks, cm);
             self.cmt = null;
+        }
 
         if (self.dialog.imtui.mouse_col == self.c2 - 1 or (cm and self.cmt != null and self.cmt.?.isVscr())) {
             if (self.vscrollbar.hit(self.dialog.imtui.mouse_row, cm, self.cmt)) |hit| {

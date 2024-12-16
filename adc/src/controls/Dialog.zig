@@ -148,19 +148,9 @@ pub fn select(self: Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: 
     return self.impl.imtui.dialogselect(self.impl, r1, c1, r2, c2, colour, selected);
 }
 
-// pub fn checkbox(self: Dialog, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
-//     const impl = self.impl;
-//     defer impl.controls_at += 1;
-//     if (impl.controls_at == impl.controls.items.len) {
-//         const b = try Imtui.Controls.DialogCheckbox.create(impl, impl.controls_at, r, c, label, selected);
-//         try impl.controls.append(impl.imtui.allocator, .{ .checkbox = b.impl });
-//         return b;
-//     } else {
-//         const b = impl.controls.items[impl.controls_at].checkbox;
-//         b.describe(impl.controls_at, r, c, label);
-//         return .{ .impl = b };
-//     }
-// }
+pub fn checkbox(self: Dialog, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
+    return self.impl.imtui.dialogcheckbox(self.impl, r, c, label, selected);
+}
 
 // pub fn input(self: Dialog, r: usize, c1: usize, c2: usize) !Imtui.Controls.DialogInput {
 //     const impl = self.impl;

@@ -89,7 +89,7 @@ pub const Impl = struct {
 
     pub fn isMouseOver(self: *const Impl) bool {
         return self.dialog.imtui.mouse_row == self.r and
-            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 3;
     }
 
     pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {

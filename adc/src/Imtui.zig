@@ -45,7 +45,7 @@ pub const Control = union(enum) {
     dialog: *Controls.Dialog.Impl,
     dialog_radio: *Controls.DialogRadio.Impl,
     dialog_select: *Controls.DialogSelect.Impl,
-    // dialog_checkbox: *Controls.DialogCheckbox.Impl,
+    dialog_checkbox: *Controls.DialogCheckbox.Impl,
     // dialog_input: *Controls.DialogInput.Impl,
     dialog_button: *Controls.DialogButton.Impl,
 
@@ -480,6 +480,22 @@ pub fn dialogselect(self: *Imtui, parent: *Controls.Dialog.Impl, r1: usize, c1: 
         },
         .present => |b| {
             b.describe(parent.controls_at, r1, c1, r2, c2, colour);
+            return .{ .impl = b };
+        },
+    }
+}
+
+pub fn dialogcheckbox(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
+    defer parent.controls_at += 1;
+    switch (try self.getOrPutControl(.dialog_checkbox, "{s}.{s}", .{ parent.title, label })) {
+        .absent => |bp| {
+            const b = try Imtui.Controls.DialogCheckbox.create(parent, parent.controls_at, r, c, label, selected);
+            bp.* = b.impl;
+            try parent.controls.append(self.allocator, .{ .dialog_checkbox = b.impl });
+            return b;
+        },
+        .present => |b| {
+            b.describe(parent.controls_at, r, c, label);
             return .{ .impl = b };
         },
     }
