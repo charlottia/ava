@@ -286,7 +286,7 @@ pub const Impl = struct {
                         .cursor_row = self.cursor_row,
                         .cursor_col = self.cursor_col,
                     };
-                return true; // XXX Menu/Bar
+                return true;
             }
         }
 

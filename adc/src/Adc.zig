@@ -347,47 +347,53 @@ fn renderMenus(self: *Adc) !Imtui.Controls.Menubar {
 fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
     const help_line_colour: u8 = if (self.full_menus) 0x30 else 0x3f;
     self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
-    // var show_ruler = true;
-    const show_ruler = true;
-    _ = menubar;
-    // switch (self.imtui.focus) {
-    //     .menu => |m| {
-    //         const help_text = menubar.itemAt(m).help.?;
-    //         self.imtui.text_mode.write(24, 1, "F1=Help");
-    //         self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
-    //         self.imtui.text_mode.write(24, 11, help_text);
-    //         show_ruler = (11 + help_text.len) <= 62;
-    //     },
-    //     .menubar => {
-    //         self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
-    //     },
-    //     .dialog => {
-    //         self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
-    //         show_ruler = false;
-    //     },
-    //     else => {
-    var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
-    if (help_button.chosen()) {
-        // TODO do same as "&Help on Help"
+
+    var show_ruler = true;
+    var handled = false;
+    if (self.imtui.focus_stack.getLastOrNull()) |c| switch (c) {
+        .menubar => |mb| {
+            if (mb.focus != null and mb.focus.? == .menu) {
+                const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
+                self.imtui.text_mode.write(24, 1, "F1=Help");
+                self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
+                self.imtui.text_mode.write(24, 11, help_text);
+                show_ruler = (11 + help_text.len) <= 62;
+                handled = true;
+            } else if (mb.focus != null and mb.focus.? == .menubar) {
+                self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
+                handled = true;
+            }
+        },
+        .dialog => {
+            self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
+            show_ruler = false;
+            handled = true;
+        },
+        else => {},
+    };
+
+    if (!handled) {
+        var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
+        if (help_button.chosen()) {
+            // TODO do same as "&Help on Help"
+        }
+        var window_button = try self.imtui.button(24, 17, help_line_colour, "<F6=Window>");
+        if (window_button.chosen())
+            self.windowFunction();
+
+        _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
+        if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
+            std.debug.print("run!\n", .{});
+        }
+        _ = try self.imtui.button(24, 48, help_line_colour, "<F8=Step>");
+
+        // TODO During active execution, these change to:
+        // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
+
+        // TODO: When the Immediate window is focused (regardless of
+        // active execution), these change to:
+        // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
     }
-    var window_button = try self.imtui.button(24, 17, help_line_colour, "<F6=Window>");
-    if (window_button.chosen())
-        self.windowFunction();
-
-    _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
-    if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
-        std.debug.print("run!\n", .{});
-    }
-    _ = try self.imtui.button(24, 48, help_line_colour, "<F8=Step>");
-
-    // TODO During active execution, these change to:
-    // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
-
-    // TODO: When the Immediate window is focused (regardless of
-    // active execution), these change to:
-    // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
-    //     },
-    // }
 
     var f6 = try self.imtui.shortcut(.f6, null);
     if (f6.chosen())
@@ -447,8 +453,8 @@ fn renderDisplayDialog(self: *Adc) !void {
     //         class of items
     //     [x] select
     //     [-] input
-    // [ ] help sub-dialog
-    // [ ] whole-of-Imtui refactor to capture more commonality; ideally we
+    // [-] help sub-dialog
+    // [-] whole-of-Imtui refactor to capture more commonality; ideally we
     //     wouldn't have Imtui having to dispatch to Editor, which sometimes
     //     does its scrollbar stuff; and then Imtui dispatching to Dialog,
     //     which dispatches to its controls, with all this repeated code.
@@ -459,7 +465,6 @@ fn renderDisplayDialog(self: *Adc) !void {
 
     var dialog = try self.imtui.dialog("Display", 22, 60);
 
-    // // XXX Colours?
     dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
 
     // var r1 = try dialog.radio(0, 0, 3, 2, "&1. ");
@@ -543,14 +548,14 @@ fn renderDisplayDialog(self: *Adc) !void {
         self.prefs.settings.tab_stops = self.display_dialog_tab_stops;
         try self.prefs.save();
         self.display_dialog_visible = false;
-        // self.imtui.focus = .editor;
+        self.imtui.unfocus(.{ .dialog = dialog.impl });
     }
 
     var cancel = try dialog.button(20, 24, "Cancel");
     cancel.cancel();
     if (cancel.chosen()) {
         self.display_dialog_visible = false;
-        // self.imtui.focus = .editor;
+        self.imtui.unfocus(.{ .dialog = dialog.impl });
     }
 
     var help = try dialog.button(20, 42, "&Help");
@@ -559,7 +564,7 @@ fn renderDisplayDialog(self: *Adc) !void {
         self.display_dialog_help_dialog_visible = true;
     }
 
-    dialog.end();
+    try dialog.end();
 
     if (self.display_dialog_help_dialog_visible) {
         var help_dialog = try self.imtui.dialog("HELP: Display Dialog", 21, 70);
@@ -572,8 +577,9 @@ fn renderDisplayDialog(self: *Adc) !void {
         if (help_dialog_ok.chosen()) {
             std.log.debug("help OK chosen", .{});
             self.display_dialog_help_dialog_visible = false;
+            self.imtui.unfocus(.{ .dialog = help_dialog.impl });
         }
-        help_dialog.end();
+        try help_dialog.end();
     }
 }
 

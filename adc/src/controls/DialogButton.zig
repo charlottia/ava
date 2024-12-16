@@ -19,8 +19,11 @@ pub const Impl = struct {
     inverted: bool = false,
 
     pub fn deinit(self: *Impl) void {
-        @import("std").log.debug("DialogButton.Impl self is {*}", .{self});
         self.imtui.allocator.destroy(self);
+    }
+
+    pub fn parent(self: *const Impl) Imtui.Control {
+        return .{ .dialog = self.dialog };
     }
 
     pub fn describe(self: *Impl, ix: usize, r: usize, c: usize, label: []const u8) void {
@@ -33,8 +36,10 @@ pub const Impl = struct {
 
     pub fn draw(self: *Impl) void {
         var arrowcolour: u8 =
-            if (self.dialog.focus_ix == self.ix or
-            (self.dialog.default_button == self and self.dialog.controls.items[self.dialog.focus_ix] != .button))
+            if (self.imtui.focused(.{ .dialog_button = self }) or
+            (self.dialog.default_button == self and
+            (self.imtui.focus_stack.getLastOrNull() == null or // XXX <- buttons are drawn on end(), by which case a button may have caused the dialog to unfocus & thus the stack is empty. annoying.
+            self.imtui.focus_stack.getLastOrNull().? != .dialog_button)))
             0x7f
         else
             0x70;
@@ -52,23 +57,27 @@ pub const Impl = struct {
         self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
         self.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
 
-        if (self.dialog.focus_ix == self.ix) {
+        if (self.imtui.focused(.{ .dialog_button = self })) {
             self.imtui.text_mode.cursor_row = self.r;
             self.imtui.text_mode.cursor_col = self.c + 2;
         }
     }
 
-    pub fn accelerate(self: *Impl) void {
-        self.dialog.focus_ix = self.ix;
+    pub fn accelerate(self: *Impl) !void {
+        try self.imtui.focus(.{ .dialog_button = self });
         self.chosen = true;
     }
 
-    pub fn space(self: *Impl) void {
-        self.inverted = true;
+    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        switch (keycode) {
+            .@"return" => self.chosen = true,
+            .space => self.inverted = true,
+            else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
+        }
     }
 
     pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
-        if (keycode == .space and self.inverted and self.dialog.focus_ix == self.ix) {
+        if (keycode == .space and self.inverted and self.imtui.focused(.{ .dialog_button = self })) {
             self.inverted = false;
             self.chosen = true;
         }
@@ -79,18 +88,17 @@ pub const Impl = struct {
     }
 
     pub fn isMouseOver(self: *const Impl) bool {
-        return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
+        return self.imtui.mouse_row == self.r and
+            self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !bool {
         _ = clicks;
 
-        if (!self.isMouseOver())
-            return false;
-
+        if (!self.isMouseOver()) return false; // TODO: delegate to dialog; this delegates to editor/etc.!!!
         if (b != .left or cm) return true;
 
-        self.dialog.focus_ix = self.ix;
+        try self.imtui.focus(.{ .dialog_button = self });
         self.inverted = true;
 
         return true;
@@ -109,7 +117,7 @@ pub const Impl = struct {
 
         if (self.inverted) {
             self.inverted = false;
-            self.accelerate();
+            try self.accelerate();
         }
     }
 };

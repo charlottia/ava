@@ -32,12 +32,12 @@ clickmatic_on: bool = false,
 clickmatic_tick: ?u64 = null, // Only set when a mouse_event_target is moused down on.
 
 alt_held: bool = false,
-focus_stack: std.ArrayListUnmanaged(Control) = .{},
+focus_stack: std.ArrayListUnmanaged(Control) = .{}, // XXX: probably a lot easier if we stuff the editor in here so it's never empty
 focus_editor: usize = 0,
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
-const Control = union(enum) {
+pub const Control = union(enum) {
     button: *Controls.Button.Impl,
     shortcut: *Controls.Shortcut.Impl,
     menubar: *Controls.Menubar.Impl,
@@ -50,6 +50,15 @@ const Control = union(enum) {
     dialog_button: *Controls.DialogButton.Impl,
 
     // Consider a real vtable for these (Zig has examples).
+
+    fn parent(self: Control) ?Control {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "parent")) {
+                return c.parent();
+            },
+        }
+        return null;
+    }
 
     fn same(self: Control, other: Control) bool {
         return switch (self) {
@@ -66,6 +75,20 @@ const Control = union(enum) {
         return switch (self) {
             inline else => |c| c.generation,
         };
+    }
+
+    pub fn accel(self: Control) ?u8 {
+        return switch (self) {
+            inline else => |c| if (@hasField(@TypeOf(c.*), "accel")) c.accel else unreachable,
+        };
+    }
+
+    pub fn accelerate(self: Control) !void {
+        switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "accelerate")) {
+                try c.accelerate();
+            },
+        }
     }
 
     fn setGeneration(self: Control, n: usize) void {
@@ -244,7 +267,6 @@ pub fn newFrame(self: *Imtui) !void {
     var cit = self.controls.iterator();
     while (cit.next()) |c| {
         if (c.value_ptr.generation() != self.generation) {
-            std.log.debug("newFrame: {s} has aged out", .{@tagName(c.value_ptr.*)});
             self.allocator.free(c.key_ptr.*);
             c.value_ptr.deinit();
             self.controls.removeByPtr(c.key_ptr);
@@ -305,6 +327,14 @@ pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
 
 pub fn focus(self: *Imtui, control: Control) !void {
     // TODO: will this ever be called with an Editor?
+    if (self.focus_stack.getLastOrNull()) |curr| {
+        // First unfocus when we're focusing something with the same parent.
+        const curr_parent = curr.parent();
+        const new_parent = control.parent();
+        if (curr_parent != null and new_parent != null and
+            curr_parent.?.same(new_parent.?))
+            _ = self.focus_stack.pop();
+    }
     if (!self.focused(control))
         try self.focus_stack.append(self.allocator, control);
 }
@@ -315,8 +345,19 @@ pub fn focused(self: *Imtui, control: Control) bool {
 }
 
 pub fn unfocus(self: *Imtui, control: Control) void {
-    std.debug.assert(self.focused(control));
-    _ = self.focus_stack.pop();
+    switch (control) {
+        .dialog => {
+            // Myth: Cats can only have a little salami as a treat
+            // Fact: Cats can have a lot of salami as a treat
+            const focus_parent = self.focus_stack.getLast().parent();
+            std.debug.assert(focus_parent != null and focus_parent.?.same(control));
+            _ = self.focus_stack.pop();
+        },
+        else => {
+            std.debug.assert(self.focused(control));
+            _ = self.focus_stack.pop();
+        },
+    }
 }
 
 pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
@@ -381,17 +422,13 @@ pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier)
 }
 
 pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !Controls.Dialog {
-    // self.focus = .dialog;
-
     switch (try self.getOrPutControl(.dialog, "{s}", .{title})) {
         .present => |d| {
-            // self.focus_dialog = d;
             d.describe(height, width);
             return .{ .impl = d };
         },
         .absent => |dp| {
             const d = try Controls.Dialog.create(self, title, height, width);
-            // self.focus_dialog = d.impl;
             dp.* = d.impl;
             return d;
         },
@@ -409,7 +446,7 @@ pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: us
         .absent => |bp| {
             const b = try Imtui.Controls.DialogButton.create(parent, parent.controls_at, r, c, label);
             bp.* = b.impl;
-            try parent.controls.append(self.allocator, .{ .button = b.impl });
+            try parent.controls.append(self.allocator, .{ .dialog_button = b.impl });
             return b;
         },
     }
@@ -439,14 +476,10 @@ fn getOrPutControl(self: *Imtui, comptime tag: std.meta.Tag(Control), comptime f
         e.key_ptr.* = try self.allocator.dupe(u8, id);
 
     e.value_ptr.* = @unionInit(Control, @tagName(tag), undefined);
-    std.log.debug("creating {s}, id \"{s}\", &e.value_ptr.*.tag {*}", .{ @tagName(tag), id, &@field(e.value_ptr.*, @tagName(tag)) });
     return .{ .absent = &@field(e.value_ptr.*, @tagName(tag)) };
 }
 
 fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-    // if (self.focus == .dialog)
-    //     return try self.focus_dialog.handleKeyPress(keycode, modifiers);
-
     if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held)
         self.alt_held = true;
 
@@ -459,18 +492,15 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
-    // if (self.focus == .dialog)
-    //     return try self.focus_dialog.handleKeyUp(keycode);
-
-    if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
-        self.alt_held = false;
-
     if (self.focus_stack.getLastOrNull()) |c| {
         try c.handleKeyUp(keycode);
     } else {
         const e = try self.focusedEditor();
         try e.handleKeyUp(keycode);
     }
+
+    if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
+        self.alt_held = false;
 }
 
 fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {
@@ -499,11 +529,6 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
             _ = try c.handleMouseDown(b, clicks, cm);
             return c.*;
         };
-
-    // if (self.focus == .dialog) {
-    //     try self.focus_dialog.handleMouseDown(b, clicks, cm);
-    //     return .{ .dialog = self.focus_dialog };
-    // }
 
     return null;
 }

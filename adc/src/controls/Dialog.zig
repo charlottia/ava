@@ -14,9 +14,9 @@ pub const Impl = struct {
     r1: usize = undefined,
     c1: usize = undefined,
 
-    controls: std.ArrayListUnmanaged(DialogControl) = .{},
+    applied_initial_focus: bool = false,
+    controls: std.ArrayListUnmanaged(Imtui.Control) = .{},
     controls_at: usize = undefined,
-    focus_ix: usize = 0,
     show_acc: bool = false,
     default_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
     cancel_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
@@ -43,184 +43,53 @@ pub const Impl = struct {
             self.imtui.text_mode.shadow(self.r1 + height, self.c1 + c);
     }
 
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-        // XXX this return/handled thing is *really* ugly and commits the sin of
-        // high cognitive load.
-
+    pub fn commonKeyPress(self: *Impl, ix: usize, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         switch (keycode) {
-            .left_alt, .right_alt => {
-                self.show_acc = true;
-                return;
-            },
+            .left_alt, .right_alt => self.show_acc = true,
             .tab => {
                 const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
-                try self.controls.items[self.focus_ix].blur();
-                // if (self.controls.items[self.focus_ix] == .radio) {
-                //     const rg = self.controls.items[self.focus_ix].radio.group_id;
-                //     while (self.controls.items[self.focus_ix] == .radio and
-                //         self.controls.items[self.focus_ix].radio.group_id == rg)
-                //         self.focus_ix = (self.focus_ix + inc) % self.controls.items.len;
+
+                // XXX XXX
+                switch (self.controls.items[ix]) {
+                    inline else => |c| if (@hasDecl(@TypeOf(c.*), "blur")) {
+                        try c.blur();
+                    },
+                }
+
+                var nix = ix;
+                // if (self.controls.items[nix] == .radio) {
+                //     const rg = self.controls.items[nix].radio.group_id;
+                //     while (self.controls.items[nix] == .radio and
+                //         self.controls.items[nix].radio.group_id == rg)
+                //         nix = (nix + inc) % self.controls.items.len;
                 // } else {
-                self.focus_ix = (self.focus_ix + inc) % self.controls.items.len;
-                // if (reverse and self.controls.items[self.focus_ix] == .radio)
-                //     while (!self.controls.items[self.focus_ix].radio.selected) {
-                //         self.focus_ix -= 1;
+                nix = (nix + inc) % self.controls.items.len;
+                // if (reverse and self.controls.items[nix] == .radio)
+                //     while (!self.controls.items[nix].radio.selected) {
+                //         nix -= 1;
                 //     };
                 // }
-                return;
-            },
-            .up, .left => {
-                if (self.controls.items[self.focus_ix].up())
-                    return;
-            },
-            .down, .right => {
-                if (self.controls.items[self.focus_ix].down())
-                    return;
-            },
-            .space => {
-                if (self.controls.items[self.focus_ix].space())
-                    return;
-            },
-            .@"return" => {
-                switch (self.controls.items[self.focus_ix]) {
-                    .button => |b| b.chosen = true,
-                    // else => if (self.default_button) |db| {
-                    //     db.chosen = true;
-                    // },
-                }
-                return;
-            },
-            .escape => {
-                if (self.cancel_button) |cb|
-                    cb.chosen = true;
-                return;
-            },
-            else => if (self.imtui.alt_held) {
-                self.handleAccelerator(keycode);
-                return;
-            } else switch (self.controls.items[self.focus_ix]) {
-                // select box, input box need text input delivered to them
-                // otherwise it might be an accelerator
-                // .select, .input => {
-                //     // fall through
-                // },
-                else => {
-                    self.handleAccelerator(keycode);
-                    return;
-                },
-            },
-        }
 
-        // The above nonsense is entirely so non-"overridden" up()/down()/space()
-        // correctly make their way to select/input.  Do better.
-        switch (self.controls.items[self.focus_ix]) {
-            // inline .select, .input => |s| try s.handleKeyPress(keycode, modifiers),
-            else => {},
+                try self.imtui.focus(self.controls.items[nix]);
+            },
+            .@"return" => if (self.default_button) |db| {
+                db.chosen = true;
+            },
+            .escape => if (self.cancel_button) |cb| {
+                cb.chosen = true;
+            },
+            else => try self.handleAccelerator(keycode),
         }
     }
 
-    fn handleAccelerator(self: *Impl, keycode: SDL.Keycode) void {
+    fn handleAccelerator(self: *Impl, keycode: SDL.Keycode) !void {
         for (self.controls.items) |c|
             if (c.accel()) |a| {
                 if (std.ascii.toLower(a) == @intFromEnum(keycode))
-                    c.accelerate();
+                    try c.accelerate();
             };
     }
-
-    const DialogControl = union(enum) {
-        // radio: *Imtui.Controls.DialogRadio.Impl,
-        // select: *Imtui.Controls.DialogSelect.Impl,
-        // checkbox: *Imtui.Controls.DialogCheckbox.Impl,
-        // input: *Imtui.Controls.DialogInput.Impl,
-        button: *Imtui.Controls.DialogButton.Impl,
-
-        fn deinit(self: DialogControl) void {
-            switch (self) {
-                inline else => |c| c.deinit(),
-            }
-        }
-
-        fn up(self: DialogControl) bool {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "up")) {
-                    c.up();
-                    return true;
-                },
-            }
-            return false;
-        }
-
-        fn down(self: DialogControl) bool {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "down")) {
-                    c.down();
-                    return true;
-                },
-            }
-            return false;
-        }
-
-        fn space(self: DialogControl) bool {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "space")) {
-                    c.space();
-                    return true;
-                },
-            }
-            return false;
-        }
-
-        fn handleKeyUp(self: DialogControl, keycode: SDL.Keycode) !void {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyUp")) {
-                    return c.handleKeyUp(keycode);
-                },
-            }
-        }
-
-        fn accel(self: DialogControl) ?u8 {
-            return switch (self) {
-                inline else => |c| c.accel,
-            };
-        }
-
-        fn accelerate(self: DialogControl) void {
-            switch (self) {
-                inline else => |c| c.accelerate(),
-            }
-        }
-
-        fn blur(self: DialogControl) !void {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "blur")) {
-                    return c.blur();
-                },
-            }
-        }
-
-        fn handleMouseDown(self: DialogControl, b: SDL.MouseButton, clicks: u8, cm: bool) !void {
-            switch (self) {
-                inline else => |c| return c.handleMouseDown(b, clicks, cm),
-            }
-        }
-
-        fn handleMouseDrag(self: DialogControl, b: SDL.MouseButton) !void {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDrag")) {
-                    return c.handleMouseDrag(b);
-                },
-            }
-        }
-
-        fn handleMouseUp(self: DialogControl, b: SDL.MouseButton, clicks: u8) !void {
-            switch (self) {
-                inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseUp")) {
-                    return c.handleMouseUp(b, clicks);
-                },
-            }
-        }
-    };
 };
 
 impl: *Impl,
@@ -236,14 +105,20 @@ pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !Di
     return .{ .impl = d };
 }
 
-pub fn end(self: Dialog) void {
-    for (self.impl.controls.items) |i|
+pub fn end(self: Dialog) !void {
+    const impl = self.impl;
+    if (!impl.applied_initial_focus) {
+        try impl.imtui.focus(impl.controls.items[0]);
+        impl.applied_initial_focus = true;
+    }
+
+    for (impl.controls.items) |i|
         switch (i) {
-            .button => |b| b.draw(),
-            // else => {},
+            .dialog_button => |b| b.draw(),
+            else => {},
         };
 
-    self.impl.imtui.text_mode.cursor_inhibit = false;
+    // impl.imtui.text_mode.cursor_inhibit = false; // XXX
 }
 
 pub fn groupbox(self: Dialog, title: []const u8, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {

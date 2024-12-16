@@ -22,7 +22,7 @@ pub const Impl = struct {
     const Focus = union(enum) {
         pre,
         menubar: struct { index: usize, open: bool },
-        menu: struct { index: usize, item: usize },
+        menu: Imtui.Controls.MenuItemReference,
     };
 
     pub fn deinit(self: *Impl) void {
@@ -62,7 +62,6 @@ pub const Impl = struct {
         if (self.imtui.mouse_down != null) return;
 
         switch (self.focus.?) {
-            // Bit sussydog about the .pre bit here; check against QB.
             .pre => if (self.imtui.alt_held and Imtui.keycodeAlphanum(keycode)) {
                 for (self.menus.items, 0..) |m, mix|
                     if (Imtui.acceleratorMatch(m.label, keycode)) {
@@ -80,6 +79,7 @@ pub const Impl = struct {
                 else => if (Imtui.keycodeAlphanum(keycode)) {
                     for (self.menus.items, 0..) |m, mix|
                         if (Imtui.acceleratorMatch(m.label, keycode)) {
+                            self.imtui.alt_held = false;
                             self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
                             return;
                         };
@@ -131,16 +131,16 @@ pub const Impl = struct {
 
     pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
         switch (self.focus.?) {
-            .pre => if (keycode == .left_alt or keycode == .right_alt) {
+            .pre => if (self.imtui.alt_held and (keycode == .left_alt or keycode == .right_alt)) {
                 self.focus = .{ .menubar = .{ .index = 0, .open = false } };
             },
-            .menubar => |*d| if (keycode == .left_alt or keycode == .right_alt) {
+            .menubar => |*d| if (self.imtui.alt_held and (keycode == .left_alt or keycode == .right_alt)) {
                 if (d.open)
                     d.open = false
                 else
                     self.unfocus();
             },
-            .menu => |d| if (keycode == .left_alt or keycode == .right_alt) {
+            .menu => |d| if (self.imtui.alt_held and (keycode == .left_alt or keycode == .right_alt)) {
                 self.focus = .{ .menubar = .{ .index = d.index, .open = false } };
             },
         }
