@@ -235,8 +235,6 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
 }
 
 pub fn render(self: *Imtui) !void {
-    // XXX: Menu and Menubar need to wonk this one out themselves.
-    // self.text_mode.cursor_inhibit = self.text_mode.cursor_inhibit or self.focus == .menu or self.focus == .menubar;
     try self.text_mode.present(self.delta_tick);
 }
 
@@ -296,10 +294,7 @@ pub fn newFrame(self: *Imtui) !void {
 // the following calls are kinda internal-external
 
 pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
-    switch (try self.getOrPutControl(.menubar, "", .{})) {
-        .present => |mb| return mb,
-        .absent => unreachable,
-    }
+    return (try self.getOrPutControl(.menubar, "", .{})).present;
 }
 
 pub fn openMenu(self: *Imtui) !?*Controls.Menu.Impl {
@@ -329,10 +324,7 @@ pub fn unfocus(self: *Imtui, control: Control) void {
 pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
     // TODO: but it may not be _focused_.
     // XXX: this is ridiculous and i cant take it seriously
-    switch (try self.getOrPutControl(.editor, "{d}", .{self.focus_editor})) {
-        .present => |e| return e,
-        .absent => unreachable,
-    }
+    return (try self.getOrPutControl(.editor, "{d}", .{self.focus_editor})).present;
 }
 
 // 100% public
@@ -418,8 +410,6 @@ pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: us
         },
         .absent => |bp| {
             const b = try Imtui.Controls.DialogButton.create(parent, parent.controls_at, r, c, label);
-            std.log.debug("setting bp.* {*} to {*}", .{ bp, b.impl });
-            // @compileLog("bp is ", bp);
             bp.* = b.impl;
             try parent.controls.append(self.allocator, .{ .button = b.impl });
             return b;
@@ -468,86 +458,6 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
         const e = try self.focusedEditor();
         try e.handleKeyPress(keycode, modifiers);
     }
-
-    // XXX move into menubar/menu
-
-    // if (self.alt_held and keycodeAlphanum(keycode)) {
-    //     for ((try self.getMenubar()).menus.items, 0..) |m, mix|
-    //         if (acceleratorMatch(m.label, keycode)) {
-    //             self.alt_held = false;
-    //             self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
-    //             return;
-    //         };
-    // }
-
-    // switch (self.focus) {
-    // TODO NEXT
-    //        //     .menu => |*m| switch (keycode) {
-    //         .left => {
-    //             m.item = 0;
-    //             if (m.index == 0)
-    //                 m.index = (try self.getMenubar()).menus.items.len - 1
-    //             else
-    //                 m.index -= 1;
-    //             return;
-    //         },
-    //         .right => {
-    //             m.item = 0;
-    //             m.index = (m.index + 1) % (try self.getMenubar()).menus.items.len;
-    //             return;
-    //         },
-    //         .up => while (true) {
-    //             if (m.item == 0)
-    //                 m.item = (try self.getMenubar()).menus.items[m.index].menu_items.items.len - 1
-    //             else
-    //                 m.item -= 1;
-    //             if ((try self.getMenubar()).menus.items[m.index].menu_items.items[m.item] == null)
-    //                 continue;
-    //             return;
-    //         },
-    //         .down => while (true) {
-    //             m.item = (m.item + 1) % (try self.getMenubar()).menus.items[m.index].menu_items.items.len;
-    //             if ((try self.getMenubar()).menus.items[m.index].menu_items.items[m.item] == null)
-    //                 continue;
-    //             return;
-    //         },
-    //         .escape => {
-    //             self.focus = .editor;
-    //             return;
-    //         },
-    //         .@"return" => {
-    //             (try self.getMenubar()).menus.items[m.index].menu_items.items[m.item].?.chosen = true;
-    //             self.focus = .editor;
-    //             return;
-    //         },
-    //         else => if (keycodeAlphanum(keycode)) {
-    //             for ((try self.getMenubar()).menus.items[m.index].menu_items.items) |mi|
-    //                 if (mi != null and acceleratorMatch(mi.?.label, keycode)) {
-    //                     mi.?.chosen = true;
-    //                     self.focus = .editor;
-    //                     return;
-    //                 };
-    //         },
-    //     },
-    // }
-
-    // for ((try self.getMenubar()).menus.items) |m|
-    //     for (m.menu_items.items) |mi| {
-    //         if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
-    //             mi.?.chosen = true;
-    //             return;
-    //         };
-    //     };
-
-    // var cit = self.controls.valueIterator();
-    // while (cit.next()) |c|
-    //     switch (c.*) {
-    //         .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
-    //             s.*.chosen = true;
-    //             return;
-    //         },
-    //         else => {},
-    //     };
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
@@ -563,19 +473,6 @@ fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
         const e = try self.focusedEditor();
         try e.handleKeyUp(keycode);
     }
-
-    // if (self.focus == .menu) {
-    //     self.focus = .{ .menubar = .{ .index = self.focus.menu.index, .open = false } };
-    // } else if (self.focus != .menubar) {
-    //     self.focus = .{ .menubar = .{ .index = 0, .open = false } };
-    // } else {
-    //     self.focus = .editor;
-    // }
-
-    // if (self.focus == .editor) {
-    //     const e = try self.focusedEditor();
-    //     try e.handleKeyUp(keycode);
-    // }
 }
 
 fn handleMouseAt(self: *Imtui, row: usize, col: usize) bool {

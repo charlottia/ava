@@ -22,7 +22,6 @@ pub const Impl = struct {
     menu_items_at: usize = 0,
 
     pub fn deinit(self: *Impl) void {
-        // std.log.debug("Menu.Impl deinit self is {*}", .{self});
         for (self.menu_items.items) |mit|
             if (mit) |it|
                 it.deinit();
@@ -62,14 +61,15 @@ pub const Impl = struct {
     }
 
     pub fn isMouseOver(self: *const Impl) bool {
-        return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+        return self.imtui.mouse_row == self.r and
+            self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
     }
 
     pub fn isMouseOverItem(self: *Impl) bool {
         return self.imtui.mouse_row >= self.r + 2 and
             self.imtui.mouse_row <= self.r + 2 + self.menu_items.items.len - 1 and
             self.imtui.mouse_col >= self.menu_c1 and
-            self.imtui.mouse_col <= self.menu_c2;
+            self.imtui.mouse_col <= self.menu_c2; // TODO: this should be < self.menu_c2 for consistency
     }
 
     pub fn mousedOverItem(self: *Impl) ?*Imtui.Controls.MenuItem.Impl {
@@ -80,7 +80,14 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(menubar: *Imtui.Controls.Menubar.Impl, r: usize, c: usize, label: []const u8, index: usize, width: usize) !Menu {
+pub fn create(
+    menubar: *Imtui.Controls.Menubar.Impl,
+    r: usize,
+    c: usize,
+    label: []const u8,
+    index: usize,
+    width: usize,
+) !Menu {
     var m = try menubar.imtui.allocator.create(Impl);
     m.* = .{
         .imtui = menubar.imtui,
@@ -142,9 +149,8 @@ pub fn end(self: Menu) void {
     var row = impl.r + 2;
     for (impl.menu_items.items, 0..) |mit, ix| {
         if (mit) |it| {
-            // const selected = impl.imtui.focus == .menu and impl.imtui.focus.menu.item == ix;
-            const selected = false;
-            _ = ix;
+            const selected = impl.imtui.focused(.{ .menubar = self.impl.menubar }) and
+                self.impl.menubar.focus.? == .menu and self.impl.menubar.focus.?.menu.item == ix;
             const colour: u8 = if (selected)
                 0x07
             else if (!it.enabled)

@@ -146,6 +146,24 @@ pub const Impl = struct {
                     try line.appendNTimes(src.allocator, ' ', self.cursor_col - line.items.len);
                 try line.insert(src.allocator, self.cursor_col, getCharacter(keycode, modifiers));
                 self.cursor_col += 1;
+            } else {
+                for ((try self.imtui.getMenubar()).menus.items) |m|
+                    for (m.menu_items.items) |mi| {
+                        if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
+                            mi.?.chosen = true;
+                            return;
+                        };
+                    };
+
+                var cit = self.imtui.controls.valueIterator();
+                while (cit.next()) |c|
+                    switch (c.*) {
+                        .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
+                            s.*.chosen = true;
+                            return;
+                        },
+                        else => {},
+                    };
             },
         }
     }

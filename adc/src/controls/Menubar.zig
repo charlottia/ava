@@ -63,11 +63,10 @@ pub const Impl = struct {
         if (self.imtui.mouse_down != null) return;
 
         switch (self.focus.?) {
-            // Bit sussy dog about the .pre bit here; check against QB.
+            // Bit sussydog about the .pre bit here; check against QB.
             .pre => if (self.imtui.alt_held and Imtui.keycodeAlphanum(keycode)) {
                 for (self.menus.items, 0..) |m, mix|
                     if (Imtui.acceleratorMatch(m.label, keycode)) {
-                        std.log.debug("setting focus to {d}", .{mix});
                         self.imtui.alt_held = false;
                         self.focus = .{ .menu = .{ .index = mix, .item = 0 } };
                         return;
@@ -90,12 +89,56 @@ pub const Impl = struct {
                         };
                 },
             },
-            else => {},
+            .menu => |*d| switch (keycode) {
+                .left => {
+                    d.item = 0;
+                    if (d.index == 0)
+                        d.index = self.menus.items.len - 1
+                    else
+                        d.index -= 1;
+                },
+                .right => {
+                    d.item = 0;
+                    d.index = (d.index + 1) % self.menus.items.len;
+                },
+                .up => while (true) {
+                    if (d.item == 0)
+                        d.item = self.menus.items[d.index].menu_items.items.len - 1
+                    else
+                        d.item -= 1;
+                    if (self.menus.items[d.index].menu_items.items[d.item] == null)
+                        continue;
+                    break;
+                },
+                .down => while (true) {
+                    d.item = (d.item + 1) % self.menus.items[d.index].menu_items.items.len;
+                    if (self.menus.items[d.index].menu_items.items[d.item] == null)
+                        continue;
+                    break;
+                },
+                .escape => {
+                    self.focus = null;
+                    self.imtui.unfocus(.{ .menubar = self });
+                },
+                .@"return" => {
+                    self.menus.items[d.index].menu_items.items[d.item].?.chosen = true;
+                    self.focus = null;
+                    self.imtui.unfocus(.{ .menubar = self });
+                },
+                else => if (Imtui.keycodeAlphanum(keycode)) {
+                    for (self.menus.items[d.index].menu_items.items) |mi|
+                        if (mi != null and Imtui.acceleratorMatch(mi.?.label, keycode)) {
+                            mi.?.chosen = true;
+                            self.focus = null;
+                            self.imtui.unfocus(.{ .menubar = self });
+                            return;
+                        };
+                },
+            },
         }
     }
 
     pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
-        // std.log.debug("Menubar handleKeyUp: keycode {any} self.focus {any}", .{ keycode, self.focus });
         switch (self.focus.?) {
             .pre => if (keycode == .left_alt or keycode == .right_alt) {
                 self.focus = .{ .menubar = .{ .index = 0, .open = false } };
@@ -231,4 +274,7 @@ pub fn end(self: Menubar) void {
             m.deinit();
         impl.menus.replaceRangeAssumeCapacity(impl.menus_at, impl.menus.items.len - impl.menus_at, &.{});
     }
+
+    if (impl.focus != null and impl.focus.? != .pre)
+        self.impl.imtui.text_mode.cursor_inhibit = true;
 }
