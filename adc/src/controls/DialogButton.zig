@@ -72,6 +72,10 @@ pub const Impl = struct {
         switch (keycode) {
             .@"return" => self.chosen = true,
             .space => self.inverted = true,
+            .tab => {
+                self.inverted = false;
+                try self.dialog.commonKeyPress(self.ix, keycode, modifiers);
+            },
             else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
         }
     }
@@ -81,10 +85,6 @@ pub const Impl = struct {
             self.inverted = false;
             self.chosen = true;
         }
-    }
-
-    pub fn blur(self: *Impl) !void {
-        self.inverted = false;
     }
 
     pub fn isMouseOver(self: *const Impl) bool {

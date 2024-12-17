@@ -50,14 +50,6 @@ pub const Impl = struct {
                 const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
-                // XXX XXX extended vtable for dialog controls?
-                // XXX: ORRRRRRR. Just handle this in `tab` in DialogButton!!
-                switch (self.controls.items[ix]) {
-                    inline else => |c| if (@hasDecl(@TypeOf(c.*), "blur")) {
-                        try c.blur();
-                    },
-                }
-
                 var nix = ix;
                 if (self.controls.items[nix] == .dialog_radio) {
                     const rg = self.controls.items[nix].dialog_radio.group_id;
