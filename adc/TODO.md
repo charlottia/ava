@@ -1,7 +1,7 @@
 2024-12-16: refactor done, now what
 
 * [x] fix 'blur'
-* [-] investigate vtable instead of comptime wonk
+* [x] investigate vtable instead of comptime wonk
 * [ ] centralise editing between Editor/DialogInput/DialogTextarea
   * last one doesn't exist yet, but think of the &Help dialog
 * [ ] consider if we care to look into ctm stuff per below

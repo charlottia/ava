@@ -15,6 +15,8 @@ pub const Impl = struct {
     chosen: bool = false,
     inverted: bool = false,
 
+    comptime orphan: void = {},
+
     pub fn describe(self: *Impl, r: usize, c: usize, colour: u8) void {
         self.r = r;
         self.c = c;

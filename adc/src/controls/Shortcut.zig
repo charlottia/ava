@@ -11,6 +11,9 @@ pub const Impl = struct {
 
     chosen: bool = false,
 
+    comptime orphan: void = {},
+    comptime no_mouse: void = {},
+
     pub fn deinit(self: *Impl) void {
         self.imtui.allocator.destroy(self);
     }

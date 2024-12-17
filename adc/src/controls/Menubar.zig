@@ -19,6 +19,8 @@ pub const Impl = struct {
     focus: ?Focus = null,
     op_closable: bool = false,
 
+    comptime orphan: void = {},
+
     const Focus = union(enum) {
         pre,
         menubar: struct { index: usize, open: bool },

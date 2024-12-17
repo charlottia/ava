@@ -45,6 +45,8 @@ pub const Impl = struct {
     dragged_header_to: ?usize = null,
     cmt: ?Imtui.TextMode.ScrollbarTarget = null,
 
+    comptime orphan: void = {},
+
     pub fn describe(self: *Impl, r1: usize, c1: usize, r2: usize, c2: usize) void {
         self.r1 = r1;
         self.c1 = c1;

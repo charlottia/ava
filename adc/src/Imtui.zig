@@ -49,8 +49,6 @@ pub const Control = union(enum) {
     dialog_input: *Controls.DialogInput.Impl,
     dialog_button: *Controls.DialogButton.Impl,
 
-    // Consider a real vtable for these (Zig has examples).
-
     fn fromImpl(impl: anytype) Control {
         if (@TypeOf(impl) == Control) return impl;
 
@@ -65,27 +63,47 @@ pub const Control = union(enum) {
     fn parent(self: Control) ?Control {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "parent")) {
+                std.debug.assert(!@hasField(@TypeOf(c.*), "orphan"));
                 return c.parent();
+            } else if (@hasField(@TypeOf(c.*), "orphan")) {
+                return null;
+            } else {
+                @compileError(@typeName(@TypeOf(c.*)) ++ " doesn't implement parent or assert orphan");
             },
         }
-        return null;
     }
 
     fn same(self: Control, other: Control) bool {
         return switch (self) {
             inline else => |lhs| switch (other) {
-                inline else => |rhs| {
-                    if (@TypeOf(lhs) != @TypeOf(rhs)) return false;
-                    return lhs == rhs;
-                },
+                inline else => |rhs| @TypeOf(lhs) == @TypeOf(rhs) and lhs == rhs,
             },
         };
+    }
+
+    // Pure forwarded methods follow.
+
+    fn deinit(self: Control) void {
+        switch (self) {
+            inline else => |c| c.deinit(),
+        }
     }
 
     fn generation(self: Control) usize {
         return switch (self) {
             inline else => |c| c.generation,
         };
+    }
+
+    fn lives(self: Control, n: usize) bool {
+        switch (self) {
+            inline else => |c| {
+                if (c.generation < n - 1)
+                    return false;
+                c.generation = n;
+                return true;
+            },
+        }
     }
 
     pub fn accel(self: Control) ?u8 {
@@ -96,71 +114,57 @@ pub const Control = union(enum) {
 
     pub fn accelerate(self: Control) !void {
         switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "accelerate")) {
-                try c.accelerate();
-            },
-        }
-    }
-
-    fn setGeneration(self: Control, n: usize) void {
-        switch (self) {
-            inline else => |c| c.generation = n,
-        }
-    }
-
-    fn deinit(self: Control) void {
-        switch (self) {
-            inline else => |c| c.deinit(),
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "accelerate")) try c.accelerate(),
         }
     }
 
     pub fn isMouseOver(self: Control) bool {
-        switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "isMouseOver")) {
-                return c.isMouseOver();
-            },
-        }
-        return false;
+        return switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "isMouseOver"))
+                c.isMouseOver()
+            else if (@hasField(@TypeOf(c.*), "no_mouse"))
+                false
+            else
+                @compileError(@typeName(@TypeOf(c.*)) ++ " doesn't implement isMouseOver or assert no_mouse"),
+        };
     }
 
     fn handleKeyPress(self: Control, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyPress")) {
-                try c.handleKeyPress(keycode, modifiers);
-            },
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyPress"))
+                try c.handleKeyPress(keycode, modifiers),
         }
     }
 
     fn handleKeyUp(self: Control, keycode: SDL.Keycode) !void {
         switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyUp")) {
-                try c.handleKeyUp(keycode);
-            },
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleKeyUp"))
+                try c.handleKeyUp(keycode),
         }
     }
 
     pub fn handleMouseDown(self: Control, b: SDL.MouseButton, clicks: u8, cm: bool) Allocator.Error!?Control {
-        switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDown")) {
-                return c.handleMouseDown(b, clicks, cm);
-            },
-        }
-        return null;
+        return switch (self) {
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDown"))
+                c.handleMouseDown(b, clicks, cm)
+            else if (@hasField(@TypeOf(c.*), "no_mouse"))
+                null
+            else
+                @compileError(@typeName(@TypeOf(c.*)) ++ " doesn't implement handleMouseDown or assert no_mouse"),
+        };
     }
 
     fn handleMouseDrag(self: Control, b: SDL.MouseButton) !void {
         switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDrag")) {
-                try c.handleMouseDrag(b);
-            },
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseDrag"))
+                try c.handleMouseDrag(b),
         }
     }
 
     fn handleMouseUp(self: Control, b: SDL.MouseButton, clicks: u8) !void {
         switch (self) {
-            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseUp")) {
-                try c.handleMouseUp(b, clicks);
-            },
+            inline else => |c| if (@hasDecl(@TypeOf(c.*), "handleMouseUp"))
+                try c.handleMouseUp(b, clicks),
         }
     }
 };
@@ -544,13 +548,11 @@ fn getOrPutControl(self: *Imtui, comptime tag: std.meta.Tag(Control), comptime f
 
     var e = try self.controls.getOrPut(self.allocator, id);
 
-    if (e.found_existing and e.value_ptr.generation() >= self.generation - 1) {
-        e.value_ptr.setGeneration(self.generation);
+    if (e.found_existing and e.value_ptr.lives(self.generation))
         return switch (e.value_ptr.*) {
             tag => |p| .{ .present = p },
             else => unreachable,
         };
-    }
 
     if (e.found_existing)
         e.value_ptr.deinit()

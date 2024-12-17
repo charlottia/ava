@@ -21,6 +21,9 @@ pub const Impl = struct {
     default_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
     cancel_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
 
+    comptime orphan: void = {},
+    comptime no_mouse: void = {},
+
     pub fn deinit(self: *Impl) void {
         // Controls deallocate themselves, this is just for safekeeping.
         self.controls.deinit(self.imtui.allocator);
