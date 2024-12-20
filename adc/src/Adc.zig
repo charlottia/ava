@@ -54,7 +54,7 @@ pub fn init(imtui: *Imtui, prefs: Prefs, primary_source: *Imtui.Controls.Source)
     errdefer sources.deinit(imtui.allocator);
     try sources.append(imtui.allocator, primary_source);
 
-    var immediate_source = try Imtui.Controls.Source.createImmediate(imtui.allocator);
+    var immediate_source = try Imtui.Controls.Source.createImmediateDocument(imtui.allocator);
     errdefer immediate_source.release();
 
     return .{

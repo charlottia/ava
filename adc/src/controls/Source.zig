@@ -5,33 +5,35 @@ const Source = @This();
 
 allocator: Allocator,
 ref_count: usize,
+single_mode: bool = false,
 title: []const u8,
+lines: std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)),
 
-lines: std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)) = .{},
-
-pub fn createUntitled(allocator: Allocator) !*Source {
+pub fn createUntitledDocument(allocator: Allocator) !*Source {
     const s = try allocator.create(Source);
     errdefer allocator.destroy(s);
     s.* = .{
         .allocator = allocator,
         .ref_count = 1,
         .title = try allocator.dupe(u8, "Untitled"),
+        .lines = .{},
     };
     return s;
 }
 
-pub fn createImmediate(allocator: Allocator) !*Source {
+pub fn createImmediateDocument(allocator: Allocator) !*Source {
     const s = try allocator.create(Source);
     errdefer allocator.destroy(s);
     s.* = .{
         .allocator = allocator,
         .ref_count = 1,
         .title = try allocator.dupe(u8, "Immediate"),
+        .lines = .{},
     };
     return s;
 }
 
-pub fn createFromFile(allocator: Allocator, filename: []const u8) !*Source {
+pub fn createDocumentFromFile(allocator: Allocator, filename: []const u8) !*Source {
     const s = try allocator.create(Source);
     errdefer allocator.destroy(s);
 
@@ -56,6 +58,23 @@ pub fn createFromFile(allocator: Allocator, filename: []const u8) !*Source {
             allocator,
             if (index) |ix| filename[ix + 1 ..] else filename,
         ),
+        .lines = lines,
+    };
+    return s;
+}
+
+pub fn createSingleLine(allocator: Allocator) !*Source {
+    const s = try allocator.create(Source);
+    errdefer allocator.destroy(s);
+
+    var lines = std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)){};
+    try lines.append(allocator, std.ArrayListUnmanaged(u8){});
+
+    s.* = .{
+        .allocator = allocator,
+        .ref_count = 1,
+        .single_mode = true,
+        .title = "",
         .lines = lines,
     };
     return s;

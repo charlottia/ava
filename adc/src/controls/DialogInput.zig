@@ -3,6 +3,7 @@ const SDL = @import("sdl2");
 
 const Dialog = @import("./Dialog.zig");
 const Editor = @import("./Editor.zig");
+const Source = @import("./Source.zig");
 const Imtui = @import("../Imtui.zig");
 
 const DialogInput = @This();
@@ -21,9 +22,9 @@ pub const Impl = struct {
     c2: usize = undefined,
     accel: ?u8 = undefined,
 
-    value: std.ArrayListUnmanaged(u8) = .{},
-
     // state
+    source: *Source,
+    value: *std.ArrayListUnmanaged(u8), // points straight into `source.lines`
     initted: bool = false,
     changed: bool = false,
 
@@ -31,7 +32,7 @@ pub const Impl = struct {
     scroll_col: usize = 0,
 
     pub fn deinit(self: *Impl) void {
-        self.value.deinit(self.imtui.allocator);
+        self.source.release();
         self.imtui.allocator.destroy(self);
     }
 
@@ -143,7 +144,10 @@ pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c1: usize, c2: usize) !
         .dialog = dialog,
         .generation = dialog.imtui.generation,
         .ix = ix,
+        .source = try Source.createSingleLine(dialog.imtui.allocator),
+        .value = undefined,
     };
+    b.value = &b.source.lines.items[0];
     b.describe(r, c1, c2);
     return .{ .impl = b };
 }
@@ -155,7 +159,7 @@ pub fn accel(self: DialogInput, key: u8) void {
 pub fn initial(self: DialogInput) ?*std.ArrayListUnmanaged(u8) {
     if (self.impl.initted) return null;
     self.impl.initted = true;
-    return &self.impl.value;
+    return self.impl.value;
 }
 
 pub fn changed(self: DialogInput) ?[]const u8 {

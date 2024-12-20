@@ -161,9 +161,9 @@ pub fn main() !void {
     defer imtui.deinit();
 
     const primary_source = if (filename) |f|
-        try Imtui.Controls.Source.createFromFile(allocator, f)
+        try Imtui.Controls.Source.createDocumentFromFile(allocator, f)
     else
-        try Imtui.Controls.Source.createUntitled(allocator);
+        try Imtui.Controls.Source.createUntitledDocument(allocator);
 
     var adc = try Adc.init(imtui, prefs, primary_source);
     defer adc.deinit();
