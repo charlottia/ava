@@ -37,17 +37,14 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-        // These don't discriminate on mouse button.
         _ = b;
         _ = clicks;
 
-        if (cm) // Do nothing in response to clickmatic.
-            return .{ .button = self };
-
-        if (!self.isMouseOver())
-            return null;
+        if (cm) return null;
+        if (!self.isMouseOver()) return null;
 
         self.inverted = true;
+
         return .{ .button = self };
     }
 

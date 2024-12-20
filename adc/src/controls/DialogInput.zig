@@ -2,7 +2,7 @@ const std = @import("std");
 const SDL = @import("sdl2");
 
 const Dialog = @import("./Dialog.zig");
-const Editor = @import("./Editor.zig");
+const EditorLike = @import("./EditorLike.zig");
 const Source = @import("./Source.zig");
 const Imtui = @import("../Imtui.zig");
 
@@ -80,10 +80,10 @@ pub const Impl = struct {
             .end => self.cursor_col = self.value.items.len,
             .backspace => try self.deleteAt(.backspace),
             .delete => try self.deleteAt(.delete),
-            else => if (!self.imtui.alt_held and Editor.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
+            else => if (!self.imtui.alt_held and EditorLike.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
                 if (self.value.items.len < self.cursor_col)
                     try self.value.appendNTimes(self.imtui.allocator, ' ', self.cursor_col - self.value.items.len);
-                try self.value.insert(self.imtui.allocator, self.cursor_col, Editor.getCharacter(keycode, modifiers));
+                try self.value.insert(self.imtui.allocator, self.cursor_col, EditorLike.getCharacter(keycode, modifiers));
                 self.cursor_col += 1;
                 self.changed = true;
             } else try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
@@ -118,10 +118,10 @@ pub const Impl = struct {
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         if (cm)
             // XXX ignore clickmatic for now.
-            return .{ .dialog_input = self };
-
+            return null;
         if (!self.isMouseOver())
-            return self.dialog.commonMouseDown(b, clicks, cm); // <- pretty sure this is wrong cf `cm`; check XXX
+            return self.dialog.commonMouseDown(b, clicks, cm);
+        if (b != .left) return null;
 
         if (!self.imtui.focused(self)) {
             try self.imtui.focus(self);

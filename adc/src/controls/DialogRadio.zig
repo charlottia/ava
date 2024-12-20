@@ -115,10 +115,9 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-        if (!self.isMouseOver())
-            return self.dialog.commonMouseDown(b, clicks, cm);
-
-        if (b != .left or cm) return .{ .dialog_radio = self };
+        if (cm) return null;
+        if (!self.isMouseOver()) return self.dialog.commonMouseDown(b, clicks, cm);
+        if (b != .left) return null;
 
         try self.imtui.focus(self);
         self.targeted = true;
@@ -127,15 +126,14 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
-        if (b != .left) return;
+        _ = b;
 
         self.targeted = self.isMouseOver();
     }
 
     pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+        _ = b;
         _ = clicks;
-
-        if (b != .left) return;
 
         if (self.targeted) {
             self.targeted = false;

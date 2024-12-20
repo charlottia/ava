@@ -152,7 +152,7 @@ pub const Impl = struct {
         _ = b;
         _ = clicks;
 
-        if (cm) return null; // XXX ?
+        if (cm) return null;
 
         self.op_closable = false;
 

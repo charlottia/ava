@@ -96,7 +96,7 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-        if (b != .left) return .{ .dialog_select = self };
+        if (b != .left) return null;
 
         if (!cm) {
             if (!self.isMouseOver())
@@ -140,7 +140,8 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
-        if (b != .left) return;
+        _ = b;
+
         if (self.cmt != null) return;
 
         // - If click is on top row, or left column before the bottom row, we just

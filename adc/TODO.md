@@ -16,13 +16,15 @@ controls and the source which holds the 'editor-like' state and handles relevant
 events!
 
 * [x] use Source in DialogInput
-* [ ] extract editor UI interface
+* [-] extract editor UI interface
 
 Putting off for now, it'll be more fun once we've had some time away from Imtui
 internals:
 
 * [ ] scour remaining XXX/TODO and just do a bunch (h.a.d)
-* [ ] consider if we care to look into ctm stuff per below
+* [x] consider if we care to look into ctm stuff per below
+  * I think I ended up fixing this to a good enough state.
+* [ ] text selection in EditorLike could use a real fixer upper.
 
 ---
 

@@ -417,7 +417,7 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
         if (builtin.mode == .Debug and self.imtui.keydown_mod.get(.left_shift))
             _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ self.imtui.mouse_row, self.imtui.mouse_col })
         else
-            _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ e.cursor_row + 1, e.cursor_col + 1 });
+            _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ e.el.cursor_row + 1, e.el.cursor_col + 1 });
         self.imtui.text_mode.write(24, 70, &buf);
     }
 }
