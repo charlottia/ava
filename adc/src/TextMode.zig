@@ -28,7 +28,8 @@ pub fn TextMode(H: usize, W: usize) type {
         };
 
         // https://retrocomputing.stackexchange.com/a/27805/20624
-        const FLIP_MS = 266;
+        // 4.380 Hz period.
+        const FLIP_MS = @as(i16, @intFromFloat(@divFloor(1000, 4.380 * 2)));
 
         comptime H: usize = H,
         comptime W: usize = W,
@@ -39,7 +40,7 @@ pub fn TextMode(H: usize, W: usize) type {
         font_rendered: Font.Rendered,
         mouse_row: usize = H - 1,
         mouse_col: usize = W - 1,
-        flip_timer: i16 = FLIP_MS, // XXX? imelik tunne
+        flip_timer: i16 = FLIP_MS,
 
         cursor_on: bool = true,
         cursor_inhibit: bool = false,

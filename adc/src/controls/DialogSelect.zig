@@ -9,8 +9,12 @@ const DialogSelect = @This();
 pub const Impl = struct {
     imtui: *Imtui,
     dialog: *Dialog.Impl,
-    ix: usize = undefined,
     generation: usize,
+
+    // id
+    ix: usize,
+
+    // config
     r1: usize = undefined,
     c1: usize = undefined,
     r2: usize = undefined,
@@ -18,6 +22,8 @@ pub const Impl = struct {
     colour: u8 = undefined,
     items: []const []const u8 = undefined,
     accel: ?u8 = undefined,
+
+    // state
     selected_ix: usize,
     scroll_row: usize = 0,
     vscrollbar: Imtui.TextMode.Vscrollbar = .{},
@@ -31,8 +37,7 @@ pub const Impl = struct {
         return .{ .dialog = self.dialog };
     }
 
-    pub fn describe(self: *Impl, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
-        self.ix = ix;
+    pub fn describe(self: *Impl, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
         self.r1 = self.dialog.r1 + r1;
         self.c1 = self.dialog.c1 + c1;
         self.r2 = self.dialog.r1 + r2;
@@ -171,9 +176,10 @@ pub fn create(dialog: *Dialog.Impl, ix: usize, r1: usize, c1: usize, r2: usize, 
         .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
+        .ix = ix,
         .selected_ix = selected,
     };
-    b.describe(ix, r1, c1, r2, c2, colour);
+    b.describe(r1, c1, r2, c2, colour);
     return .{ .impl = b };
 }
 

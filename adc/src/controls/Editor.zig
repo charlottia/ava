@@ -12,37 +12,47 @@ pub const MAX_LINE = 255;
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
+    // id
     id: usize,
+
+    // config
     r1: usize = undefined,
     c1: usize = undefined,
     r2: usize = undefined,
     c2: usize = undefined,
+    hidden: bool = undefined,
+    immediate: bool = undefined,
     colours: struct {
         normal: u8,
         current: u8,
         breakpoint: u8,
     } = undefined,
+
     scroll_bars: bool = undefined,
     tab_stops: u8 = undefined,
     last_source: ?*Source = undefined,
     source: ?*Source = null,
-    hidden: bool = undefined,
-    immediate: bool = undefined,
 
+    // user events
+    toggled_fullscreen: bool = false,
+    dragged_header_to: ?usize = null,
+
+    // state
     cursor_row: usize = 0,
     cursor_col: usize = 0,
+    scroll_row: usize = 0,
+    scroll_col: usize = 0,
+
     shift_down: bool = false,
     selection_start: ?struct {
         cursor_row: usize,
         cursor_col: usize,
     } = null,
-    scroll_row: usize = 0,
-    scroll_col: usize = 0,
+
     hscrollbar: Imtui.TextMode.Hscrollbar = .{},
     vscrollbar: Imtui.TextMode.Vscrollbar = .{},
-    toggled_fullscreen: bool = false,
     dragging: ?enum { header, text } = null,
-    dragged_header_to: ?usize = null,
     cmt: ?Imtui.TextMode.ScrollbarTarget = null,
 
     comptime orphan: void = {},
@@ -52,13 +62,13 @@ pub const Impl = struct {
         self.c1 = c1;
         self.r2 = r2;
         self.c2 = c2;
+        self.hidden = false;
+        self.immediate = false;
         self.colours = .{ .normal = 0x17, .current = 0x1f, .breakpoint = 0x47 };
         self.scroll_bars = false;
         self.tab_stops = 8;
         self.last_source = self.source;
         self.source = null;
-        self.hidden = false;
-        self.immediate = false;
     }
 
     pub fn deinit(self: *Impl) void {
@@ -198,7 +208,7 @@ pub const Impl = struct {
                 return null;
         }
 
-        if (cm and self.imtui.focus_editor == self.id and self.dragging == .text) {
+        if (cm and self.imtui.focusedEditor() == self and self.dragging == .text) {
             // Transform clickmatic events to drag events when dragging text so you
             // can drag to an edge and continue selecting.
             try self.handleMouseDrag(button);
@@ -208,7 +218,7 @@ pub const Impl = struct {
         if (r == self.r1) {
             if (!cm) {
                 // Fullscreen triggers on MouseUp, not here.
-                self.imtui.focus_editor = self.id;
+                self.imtui.focusEditor(self);
                 self.dragging = .header;
             }
             return .{ .editor = self };
@@ -217,7 +227,7 @@ pub const Impl = struct {
         if (c > self.c1 and c < self.c2 - 1) {
             const hscroll = self.showHScrollWhenActive() and (r == self.hscrollbar.r or
                 (cm and self.cmt != null and self.cmt.?.isHscr()));
-            if (self.imtui.focus_editor == self.id and hscroll) {
+            if (self.imtui.focusedEditor() == self and hscroll) {
                 if (self.hscrollbar.hit(c, cm, self.cmt)) |hit|
                     switch (hit) {
                         .left => {
@@ -263,8 +273,8 @@ pub const Impl = struct {
                 // Implication: either we're focussing this window for the first
                 // time, or it's already focused (and we didn't click in the
                 // hscroll).
-                if (self.imtui.focus_editor != self.id) {
-                    self.imtui.focus_editor = self.id;
+                if (self.imtui.focusedEditor() != self) {
+                    self.imtui.focusEditor(self);
                     // Remove any other editors' selections.
                     var cit = self.imtui.controls.valueIterator();
                     while (cit.next()) |control| {
@@ -295,7 +305,7 @@ pub const Impl = struct {
         if (r > self.r1 and r < self.r2 - 1) {
             const vscroll = self.showVScrollWhenActive() and (c == self.vscrollbar.c or
                 (cm and self.cmt != null and self.cmt.?.isVscr()));
-            if (self.imtui.focus_editor == self.id and vscroll) {
+            if (self.imtui.focusedEditor() == self and vscroll) {
                 if (self.vscrollbar.hit(r, cm, self.cmt)) |hit|
                     switch (hit) {
                         .up => {
@@ -605,7 +615,7 @@ pub fn end(self: Editor) void {
 
     const src = impl.source.?;
 
-    const active = impl.imtui.focus_editor == impl.id;
+    const active = impl.imtui.focusedEditor() == impl;
 
     // XXX: r1==1 checks here are iffy.
 
@@ -681,7 +691,7 @@ pub fn end(self: Editor) void {
         impl.vscrollbar = impl.imtui.text_mode.vscrollbar(impl.c2 - 1, impl.r1 + 1, impl.r2 - 1, impl.cursor_row, impl.source.?.lines.items.len);
     }
 
-    if (active and impl.imtui.focus_stack.items.len == 0) { // ... XXX?
+    if (active and impl.imtui.focus_stack.items.len == 1) {
         impl.imtui.text_mode.cursor_inhibit = impl.imtui.text_mode.cursor_inhibit or (impl.r2 - impl.r1 == 1);
         impl.imtui.text_mode.cursor_row = impl.cursor_row + 1 - impl.scroll_row + impl.r1;
         impl.imtui.text_mode.cursor_col = impl.cursor_col + 1 - impl.scroll_col;

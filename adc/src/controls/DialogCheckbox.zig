@@ -9,12 +9,17 @@ pub const Impl = struct {
     imtui: *Imtui,
     dialog: *Dialog.Impl,
     generation: usize,
-    ix: usize = undefined,
+
+    // id
+    ix: usize,
+
+    // config
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
     accel: ?u8 = undefined,
 
+    // state
     selected: bool,
     changed: bool = false,
     targeted: bool = false,
@@ -27,8 +32,7 @@ pub const Impl = struct {
         return .{ .dialog = self.dialog };
     }
 
-    pub fn describe(self: *Impl, ix: usize, r: usize, c: usize, label: []const u8) void {
-        self.ix = ix;
+    pub fn describe(self: *Impl, r: usize, c: usize, label: []const u8) void {
         self.r = self.dialog.r1 + r;
         self.c = self.dialog.c1 + c;
         self.label = label;
@@ -112,8 +116,9 @@ pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []cons
         .dialog = dialog,
         .generation = dialog.imtui.generation,
         .selected = selected,
+        .ix = ix,
     };
-    b.describe(ix, r, c, label);
+    b.describe(r, c, label);
     return .{ .impl = b };
 }
 

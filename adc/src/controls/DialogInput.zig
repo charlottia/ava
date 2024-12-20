@@ -11,13 +11,19 @@ pub const Impl = struct {
     imtui: *Imtui,
     dialog: *Dialog.Impl,
     generation: usize,
-    ix: usize = undefined,
+
+    // id
+    ix: usize,
+
+    // config
     r: usize = undefined,
     c1: usize = undefined,
     c2: usize = undefined,
     accel: ?u8 = undefined,
 
     value: std.ArrayListUnmanaged(u8) = .{},
+
+    // state
     initted: bool = false,
     changed: bool = false,
 
@@ -33,8 +39,7 @@ pub const Impl = struct {
         return .{ .dialog = self.dialog };
     }
 
-    pub fn describe(self: *Impl, ix: usize, r: usize, c1: usize, c2: usize) void {
-        self.ix = ix;
+    pub fn describe(self: *Impl, r: usize, c1: usize, c2: usize) void {
         self.r = self.dialog.r1 + r;
         self.c1 = self.dialog.c1 + c1;
         self.c2 = self.dialog.c1 + c2;
@@ -137,8 +142,9 @@ pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c1: usize, c2: usize) !
         .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
+        .ix = ix,
     };
-    b.describe(ix, r, c1, c2);
+    b.describe(r, c1, c2);
     return .{ .impl = b };
 }
 

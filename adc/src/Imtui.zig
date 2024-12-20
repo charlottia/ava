@@ -32,8 +32,7 @@ clickmatic_on: bool = false,
 clickmatic_tick: ?u64 = null, // Only set when a mouse_event_target is moused down on.
 
 alt_held: bool = false,
-focus_stack: std.ArrayListUnmanaged(Control) = .{}, // XXX: probably a lot easier if we stuff the editor in here so it's never empty
-focus_editor: usize = 0,
+focus_stack: std.ArrayListUnmanaged(Control) = .{}, // Always has an Editor at the bottom; never empty.
 
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
@@ -381,10 +380,12 @@ pub fn unfocus(self: *Imtui, impl: anytype) void {
     }
 }
 
-pub fn focusedEditor(self: *Imtui) !*Controls.Editor.Impl {
-    // TODO: but it may not be _focused_.
-    // XXX: this is ridiculous and i cant take it seriously
-    return (try self.getOrPutControl(.editor, "{d}", .{self.focus_editor})).present;
+pub fn focusedEditor(self: *Imtui) *Controls.Editor.Impl {
+    return self.focus_stack.items[0].editor;
+}
+
+pub fn focusEditor(self: *Imtui, e: *Controls.Editor.Impl) void {
+    self.focus_stack.items[0] = .{ .editor = e };
 }
 
 // 100% public
@@ -458,7 +459,7 @@ pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize) !Con
 
 pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
     defer parent.controls_at += 1;
-    switch (try self.getOrPutControl(.dialog_radio, "{s}.{d}.{d}", .{ parent.title, group_id, item_id })) {
+    switch (try self.getOrPutControl(.dialog_radio, "{s}.{d}", .{ parent.title, parent.controls_at })) {
         .absent => |bp| {
             const b = try Imtui.Controls.DialogRadio.create(parent, parent.controls_at, group_id, item_id, r, c, label);
             bp.* = b.impl;
@@ -466,7 +467,7 @@ pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, group_id: usize,
             return b;
         },
         .present => |b| {
-            b.describe(parent.controls_at, group_id, item_id, r, c, label);
+            b.describe(group_id, item_id, r, c, label);
             return .{ .impl = b };
         },
     }
@@ -474,8 +475,7 @@ pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, group_id: usize,
 
 pub fn dialogselect(self: *Imtui, parent: *Controls.Dialog.Impl, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
     defer parent.controls_at += 1;
-    // this id makes no sense but Good Enough XXX
-    switch (try self.getOrPutControl(.dialog_select, "{s}.{d}.{d}", .{ parent.title, r1, c1 })) {
+    switch (try self.getOrPutControl(.dialog_select, "{s}.{d}", .{ parent.title, parent.controls_at })) {
         .absent => |bp| {
             const b = try Imtui.Controls.DialogSelect.create(parent, parent.controls_at, r1, c1, r2, c2, colour, selected);
             bp.* = b.impl;
@@ -483,7 +483,7 @@ pub fn dialogselect(self: *Imtui, parent: *Controls.Dialog.Impl, r1: usize, c1: 
             return b;
         },
         .present => |b| {
-            b.describe(parent.controls_at, r1, c1, r2, c2, colour);
+            b.describe(r1, c1, r2, c2, colour);
             return .{ .impl = b };
         },
     }
@@ -491,7 +491,7 @@ pub fn dialogselect(self: *Imtui, parent: *Controls.Dialog.Impl, r1: usize, c1: 
 
 pub fn dialogcheckbox(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
     defer parent.controls_at += 1;
-    switch (try self.getOrPutControl(.dialog_checkbox, "{s}.{s}", .{ parent.title, label })) {
+    switch (try self.getOrPutControl(.dialog_checkbox, "{s}.{d}", .{ parent.title, parent.controls_at })) {
         .absent => |bp| {
             const b = try Imtui.Controls.DialogCheckbox.create(parent, parent.controls_at, r, c, label, selected);
             bp.* = b.impl;
@@ -499,7 +499,7 @@ pub fn dialogcheckbox(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: 
             return b;
         },
         .present => |b| {
-            b.describe(parent.controls_at, r, c, label);
+            b.describe(r, c, label);
             return .{ .impl = b };
         },
     }
@@ -507,7 +507,7 @@ pub fn dialogcheckbox(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: 
 
 pub fn dialoginput(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c1: usize, c2: usize) !Imtui.Controls.DialogInput {
     defer parent.controls_at += 1;
-    switch (try self.getOrPutControl(.dialog_input, "{s}.{d}.{d}", .{ parent.title, r, c1 })) {
+    switch (try self.getOrPutControl(.dialog_input, "{s}.{d}", .{ parent.title, parent.controls_at })) {
         .absent => |bp| {
             const b = try Imtui.Controls.DialogInput.create(parent, parent.controls_at, r, c1, c2);
             bp.* = b.impl;
@@ -515,16 +515,15 @@ pub fn dialoginput(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c1: us
             return b;
         },
         .present => |b| {
-            b.describe(parent.controls_at, r, c1, c2);
+            b.describe(r, c1, c2);
             return .{ .impl = b };
         },
     }
 }
 
 pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogButton {
-    // We don't actually have a proper ID descendent thing going on here. Get to it XXX
     defer parent.controls_at += 1;
-    switch (try self.getOrPutControl(.dialog_button, "{s}.{s}", .{ parent.title, label })) {
+    switch (try self.getOrPutControl(.dialog_button, "{s}.{d}", .{ parent.title, parent.controls_at })) {
         .absent => |bp| {
             const b = try Imtui.Controls.DialogButton.create(parent, parent.controls_at, r, c, label);
             bp.* = b.impl;
@@ -532,7 +531,7 @@ pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: us
             return b;
         },
         .present => |b| {
-            b.describe(parent.controls_at, r, c, label);
+            b.describe(r, c, label);
             return .{ .impl = b };
         },
     }
@@ -567,21 +566,17 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held)
         self.alt_held = true;
 
-    if (self.focus_stack.getLastOrNull()) |c| {
-        try c.handleKeyPress(keycode, modifiers);
-    } else {
-        const e = try self.focusedEditor();
-        try e.handleKeyPress(keycode, modifiers);
-    }
+    if (self.focus_stack.getLastOrNull()) |c|
+        try c.handleKeyPress(keycode, modifiers)
+    else
+        try self.focusedEditor().handleKeyPress(keycode, modifiers);
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
-    if (self.focus_stack.getLastOrNull()) |c| {
-        try c.handleKeyUp(keycode);
-    } else {
-        const e = try self.focusedEditor();
-        try e.handleKeyUp(keycode);
-    }
+    if (self.focus_stack.getLastOrNull()) |c|
+        try c.handleKeyUp(keycode)
+    else
+        try self.focusedEditor().handleKeyUp(keycode);
 
     if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
         self.alt_held = false;
@@ -608,8 +603,7 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
         if (try c.handleMouseDown(b, clicks, cm)) |t|
             return t;
     } else {
-        const e = try self.focusedEditor();
-        if (try e.handleMouseDown(b, clicks, cm)) |t|
+        if (try self.focusedEditor().handleMouseDown(b, clicks, cm)) |t|
             return t;
     }
 

@@ -123,8 +123,6 @@ pub fn end(self: Dialog) !void {
             .dialog_button => |b| b.draw(),
             else => {},
         };
-
-    // impl.imtui.text_mode.cursor_inhibit = false; // XXX
 }
 
 pub fn groupbox(self: Dialog, title: []const u8, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {

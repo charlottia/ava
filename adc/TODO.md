@@ -2,10 +2,11 @@
 
 * [x] fix 'blur'
 * [x] investigate vtable instead of comptime wonk
-* [ ] centralise editing between Editor/DialogInput/DialogTextarea
+* [-] centralise editing between Editor/DialogInput/DialogTextarea
   * last one doesn't exist yet, but think of the &Help dialog
+* [x] materialise Editor in the focus stack
 * [ ] consider if we care to look into ctm stuff per below
-* [ ] what ids _should_ we use for dialog stuff? buncha XXX there
+* [x] what ids _should_ we use for dialog stuff? buncha XXX there
 * [ ] scour remaining XXX/TODO and just do a bunch (h.a.d)
 * [ ] do the dialog designer. HACE LA COSA VERDADERA.
 * [ ] consider interaction tests -- can test against TextArea w/o backing, no

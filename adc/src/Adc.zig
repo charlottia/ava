@@ -28,6 +28,10 @@ secondary_source: *Imtui.Controls.Source,
 // immediate belongs to Adc.
 immediate_source: *Imtui.Controls.Source,
 
+primary_editor: ?*Imtui.Controls.Editor.Impl = null,
+secondary_editor: ?*Imtui.Controls.Editor.Impl = null,
+immediate_editor: ?*Imtui.Controls.Editor.Impl = null,
+
 view: union(enum) {
     two: [2]usize,
     three: [3]usize,
@@ -91,8 +95,8 @@ fn renderEditors(self: *Adc) !void {
     // Fullscreen shows only one editor on all 23 lines, including immediate.
 
     // XXX ??? estupendo
-    const editor_height: usize = if (self.fullscreen)
-        if (self.imtui.focus_editor == 0)
+    const primary_editor_height: usize = if (self.fullscreen)
+        if (self.imtui.focusedEditor().id == 0)
             23
         else
             0
@@ -100,7 +104,7 @@ fn renderEditors(self: *Adc) !void {
         inline .two, .three => |a| a[0],
     };
     const secondary_editor_height: usize = if (self.fullscreen)
-        if (self.imtui.focus_editor == 1)
+        if (self.imtui.focusedEditor().id == 1)
             23
         else
             0
@@ -108,8 +112,8 @@ fn renderEditors(self: *Adc) !void {
         .two => |_| 0,
         .three => |a| a[1],
     };
-    const imm_editor_height: usize = if (self.fullscreen)
-        if (self.imtui.focus_editor == 2)
+    const immediate_editor_height: usize = if (self.fullscreen)
+        if (self.imtui.focusedEditor().id == 2)
             23
         else
             0
@@ -118,30 +122,35 @@ fn renderEditors(self: *Adc) !void {
         .three => |a| a[2],
     };
 
-    const editor_top = 1;
-    const editor_bottom = editor_top + editor_height;
+    const primary_editor_top = 1;
+    const primary_editor_bottom = primary_editor_top + primary_editor_height;
 
-    const secondary_editor_top = editor_bottom;
+    const secondary_editor_top = primary_editor_bottom;
     const secondary_editor_bottom = secondary_editor_top + secondary_editor_height;
 
-    const imm_editor_top = secondary_editor_bottom;
-    const imm_editor_bottom = imm_editor_top + imm_editor_height;
-    std.debug.assert(imm_editor_bottom == 24);
+    const immediate_editor_top = secondary_editor_bottom;
+    const immediate_editor_bottom = immediate_editor_top + immediate_editor_height;
+    std.debug.assert(immediate_editor_bottom == 24);
 
-    var editor = try self.imtui.editor(0, editor_top, 0, editor_bottom, 80);
-    editor.colours(
+    var primary_editor = try self.imtui.editor(0, primary_editor_top, 0, primary_editor_bottom, 80);
+    self.primary_editor = primary_editor.impl;
+    if (self.imtui.focus_stack.items.len == 0)
+        try self.imtui.focus_stack.append(self.imtui.allocator, .{ .editor = primary_editor.impl });
+    const focused_editor = self.imtui.focusedEditor();
+    primary_editor.colours(
         self.prefs.settings.colours_normal,
         self.prefs.settings.colours_current,
         self.prefs.settings.colours_breakpoint,
     );
-    editor.scroll_bars(self.prefs.settings.scroll_bars);
-    editor.tab_stops(self.prefs.settings.tab_stops);
-    editor.source(self.primary_source);
-    if (self.fullscreen and self.imtui.focus_editor != 0)
-        editor.hidden();
-    editor.end();
+    primary_editor.scroll_bars(self.prefs.settings.scroll_bars);
+    primary_editor.tab_stops(self.prefs.settings.tab_stops);
+    primary_editor.source(self.primary_source);
+    if (self.fullscreen and focused_editor.id != 0)
+        primary_editor.hidden();
+    primary_editor.end();
 
     var secondary_editor = try self.imtui.editor(1, secondary_editor_top, 0, secondary_editor_bottom, 80);
+    self.secondary_editor = secondary_editor.impl;
     secondary_editor.colours(
         self.prefs.settings.colours_normal,
         self.prefs.settings.colours_current,
@@ -150,7 +159,7 @@ fn renderEditors(self: *Adc) !void {
     secondary_editor.scroll_bars(self.prefs.settings.scroll_bars);
     secondary_editor.tab_stops(self.prefs.settings.tab_stops);
     secondary_editor.source(self.secondary_source);
-    if (self.view == .two or (self.fullscreen and self.imtui.focus_editor != 1))
+    if (self.view == .two or (self.fullscreen and focused_editor.id != 1))
         secondary_editor.hidden()
     else if (secondary_editor.headerDraggedTo()) |row| if (row >= 2 and row <= 22) {
         const a = &self.view.three;
@@ -164,36 +173,37 @@ fn renderEditors(self: *Adc) !void {
     };
     secondary_editor.end();
 
-    var imm_editor = try self.imtui.editor(2, imm_editor_top, 0, imm_editor_bottom, 80);
-    imm_editor.colours(
+    var immediate_editor = try self.imtui.editor(2, immediate_editor_top, 0, immediate_editor_bottom, 80);
+    self.immediate_editor = immediate_editor.impl;
+    immediate_editor.colours(
         self.prefs.settings.colours_normal,
         self.prefs.settings.colours_current,
         self.prefs.settings.colours_breakpoint,
     );
-    imm_editor.tab_stops(self.prefs.settings.tab_stops);
-    if (self.fullscreen and self.imtui.focus_editor != 2)
-        imm_editor.hidden()
+    immediate_editor.tab_stops(self.prefs.settings.tab_stops);
+    if (self.fullscreen and focused_editor.id != 2)
+        immediate_editor.hidden()
     else if (!self.fullscreen)
-        if (imm_editor.headerDraggedTo()) |row| if (row >= 13 and row <= 23) {
-            const new_imm_h = 24 - row;
+        if (immediate_editor.headerDraggedTo()) |row| if (row >= 13 and row <= 23) {
+            const new_immediate_h = 24 - row;
             switch (self.view) {
-                .two => |_| self.view = .{ .two = [2]usize{ 23 - new_imm_h, new_imm_h } },
+                .two => |_| self.view = .{ .two = [2]usize{ 23 - new_immediate_h, new_immediate_h } },
                 .three => |*a| {
-                    if (new_imm_h < a[2]) {
-                        for (0..a[2] - new_imm_h) |_|
+                    if (new_immediate_h < a[2]) {
+                        for (0..a[2] - new_immediate_h) |_|
                             immDown(a);
-                    } else if (new_imm_h > a[2]) {
-                        for (0..new_imm_h - a[2]) |_|
+                    } else if (new_immediate_h > a[2]) {
+                        for (0..new_immediate_h - a[2]) |_|
                             immUp(a);
                     }
                 },
             }
         };
-    imm_editor.immediate();
-    imm_editor.source(self.immediate_source);
-    imm_editor.end();
+    immediate_editor.immediate();
+    immediate_editor.source(self.immediate_source);
+    immediate_editor.end();
 
-    if (editor.toggledFullscreen() or secondary_editor.toggledFullscreen() or imm_editor.toggledFullscreen())
+    if (primary_editor.toggledFullscreen() or secondary_editor.toggledFullscreen() or immediate_editor.toggledFullscreen())
         self.fullscreen = !self.fullscreen;
 }
 
@@ -402,7 +412,7 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
     if (show_ruler) {
         self.imtui.text_mode.draw(24, 62, 0x30, .Vertical);
         self.imtui.text_mode.paint(24, 63, 25, 80, 0x30, .Blank);
-        const e = try self.imtui.focusedEditor();
+        const e = self.imtui.focusedEditor();
         var buf: [9]u8 = undefined;
         if (builtin.mode == .Debug and self.imtui.keydown_mod.get(.left_shift))
             _ = try std.fmt.bufPrint(&buf, "{d:0>5}:{d:0>3}", .{ self.imtui.mouse_row, self.imtui.mouse_col })
@@ -585,15 +595,19 @@ fn renderDisplayDialog(self: *Adc) !void {
 
 fn windowFunction(self: *Adc) void {
     if (self.view == .two) {
-        self.imtui.focus_editor = if (self.imtui.focus_editor == 0) 2 else 0;
-    } else {
-        self.imtui.focus_editor = (self.imtui.focus_editor + 1) % 3;
+        self.imtui.focusEditor(if (self.imtui.focusedEditor().id == 0) self.immediate_editor.? else self.primary_editor.?);
+    } else if (self.imtui.focusedEditor().id == 0) {
+        self.imtui.focusEditor(self.secondary_editor.?);
+    } else if (self.imtui.focusedEditor().id == 1) {
+        self.imtui.focusEditor(self.immediate_editor.?);
+    } else if (self.imtui.focusedEditor().id == 2) {
+        self.imtui.focusEditor(self.primary_editor.?);
     }
 }
 
 fn toggleSplit(self: *Adc) void {
     self.fullscreen = false;
-    self.imtui.focus_editor = 0;
+    self.imtui.focusEditor(self.primary_editor.?);
 
     switch (self.view) {
         .two => |a| {

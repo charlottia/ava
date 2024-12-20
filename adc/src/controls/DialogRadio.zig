@@ -9,14 +9,20 @@ const DialogRadio = @This();
 pub const Impl = struct {
     imtui: *Imtui,
     dialog: *Dialog.Impl,
-    ix: usize = undefined,
     generation: usize,
+
+    // id
+    ix: usize,
+
+    // config
     group_id: usize = undefined,
     item_id: usize = undefined,
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
     accel: ?u8 = undefined,
+
+    // state
     selected: bool,
     selected_read: bool = false,
     targeted: bool = false,
@@ -29,8 +35,7 @@ pub const Impl = struct {
         return .{ .dialog = self.dialog };
     }
 
-    pub fn describe(self: *Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
-        self.ix = ix;
+    pub fn describe(self: *Impl, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
         self.group_id = group_id;
         self.item_id = item_id;
         self.r = self.dialog.r1 + r;
@@ -147,9 +152,10 @@ pub fn create(dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, 
         .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
+        .ix = ix,
         .selected = item_id == 0,
     };
-    b.describe(ix, group_id, item_id, r, c, label);
+    b.describe(group_id, item_id, r, c, label);
     return .{ .impl = b };
 }
 
