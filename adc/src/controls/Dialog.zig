@@ -50,6 +50,12 @@ pub const Impl = struct {
         switch (keycode) {
             .left_alt, .right_alt => self.show_acc = true,
             .tab => {
+                switch (self.controls.items[ix]) {
+                    // HACK but one-off for now:
+                    .dialog_input => |di| di.blur(),
+                    else => {},
+                }
+
                 const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
@@ -67,7 +73,11 @@ pub const Impl = struct {
                         };
                 }
 
-                try self.imtui.focus(self.controls.items[nix]);
+                switch (self.controls.items[nix]) {
+                    // HACK but one-off for now:
+                    .dialog_input => |di| try di.focusAndSelectAll(),
+                    else => try self.imtui.focus(self.controls.items[nix]),
+                }
             },
             .@"return" => if (self.default_button) |db| {
                 db.chosen = true;
@@ -85,7 +95,7 @@ pub const Impl = struct {
                 return try c.handleMouseDown(b, clicks, cm);
             };
 
-        return .{ .dialog = self }; // nothing matched. eat the events.
+        return .{ .dialog = self }; // stop the Editor from getting these
     }
 
     fn handleAccelerator(self: *Impl, keycode: SDL.Keycode) !void {

@@ -535,7 +535,7 @@ fn renderDisplayDialog(self: *Adc) !void {
     if (tab_stops.initial()) |buf| {
         try buf.writer(self.imtui.allocator).print("{d}", .{self.display_dialog_tab_stops});
         // TODO: the value should start selected
-        tab_stops.impl.cursor_col = buf.items.len; // XXX
+        tab_stops.impl.el.cursor_col = buf.items.len; // XXX
     }
     if (tab_stops.changed()) |v| {
         if (std.fmt.parseInt(u8, v, 10)) |n| {

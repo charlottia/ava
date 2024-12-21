@@ -8,8 +8,6 @@ const EditorLike = @import("./EditorLike.zig");
 
 const Editor = @This();
 
-pub const MAX_LINE = 255;
-
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
@@ -30,6 +28,9 @@ pub const Impl = struct {
         breakpoint: u8,
     } = undefined,
 
+    last_source: ?*Source = undefined,
+    source: ?*Source = null,
+
     // user events
     toggled_fullscreen: bool = false,
     dragged_header_to: ?usize = null,
@@ -48,12 +49,17 @@ pub const Impl = struct {
         self.hidden = false;
         self.immediate = false;
         self.colours = .{ .normal = 0x17, .current = 0x1f, .breakpoint = 0x47 };
+        self.last_source = self.source;
+        self.source = null;
 
         self.el.describe(r1 + 1, c1 + 1, r2, c2 - 1);
     }
 
     pub fn deinit(self: *Impl) void {
-        self.el.deinit();
+        if (self.last_source != self.source) {
+            if (self.last_source) |ls| ls.release();
+        }
+        if (self.source) |s| s.release();
         self.imtui.allocator.destroy(self);
     }
 
@@ -68,6 +74,10 @@ pub const Impl = struct {
             try self.imtui.focus(mb);
             return;
         }
+
+        const no_cursor = self.r2 - self.r1 <= 1;
+        if (no_cursor)
+            return;
 
         if (!try self.el.handleKeyPress(keycode, modifiers)) {
             for ((try self.imtui.getMenubar()).menus.items) |m|
@@ -199,11 +209,13 @@ pub fn source(self: Editor, s: *Source) void {
     // XXX no support for multiple calls in one frame.
     // Want to avoid repeatedly rel/acq if we end up needing to do so, already
     // have one field being written every frame.
-    if (self.impl.el.source != null) unreachable;
+    if (self.impl.source != null) unreachable;
+
+    self.impl.source = s;
+    if (self.impl.last_source != self.impl.source)
+        s.acquire();
 
     self.impl.el.source = s;
-    if (self.impl.el.last_source != self.impl.el.source)
-        s.acquire();
 }
 
 pub fn hidden(self: Editor) void {
@@ -217,10 +229,10 @@ pub fn immediate(self: Editor) void {
 pub fn end(self: Editor) void {
     const impl = self.impl;
 
-    if (impl.el.last_source != impl.el.source)
-        if (impl.el.last_source) |ls| {
+    if (impl.last_source != impl.source)
+        if (impl.last_source) |ls| {
             ls.release();
-            impl.el.last_source = null;
+            impl.last_source = null;
         };
 
     if (impl.hidden or impl.r1 == impl.r2)

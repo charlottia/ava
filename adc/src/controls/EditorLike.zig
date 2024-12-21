@@ -19,8 +19,6 @@ c2: usize = undefined,
 
 scroll_bars: bool = undefined,
 tab_stops: u8 = undefined,
-last_source: ?*Source = undefined,
-source: ?*Source = null,
 
 // state
 cursor_row: usize = 0,
@@ -34,6 +32,7 @@ selection_start: ?struct {
     cursor_col: usize,
 } = null,
 
+source: ?*Source = null,
 hscrollbar: Imtui.TextMode.Hscrollbar = .{},
 vscrollbar: Imtui.TextMode.Vscrollbar = .{},
 dragging_text: bool = false,
@@ -46,32 +45,21 @@ pub fn describe(self: *EditorLike, r1: usize, c1: usize, r2: usize, c2: usize) v
     self.c2 = c2;
     self.scroll_bars = false;
     self.tab_stops = 8;
-    self.last_source = self.source;
-    self.source = null;
 }
 
-pub fn deinit(self: *EditorLike) void {
-    if (self.last_source != self.source)
-        if (self.last_source) |ls| {
-            ls.release();
-        };
-
-    if (self.source) |s| s.release();
-}
-
-pub fn showHScrollWhenActive(self: *const EditorLike) bool {
+fn showHScrollWhenActive(self: *const EditorLike) bool {
     return self.scroll_bars and self.r2 - self.r1 > 1;
 }
 
-pub fn showVScrollWhenActive(self: *const EditorLike) bool {
+fn showVScrollWhenActive(self: *const EditorLike) bool {
     return self.scroll_bars and self.r2 - self.r1 > 3;
 }
 
 pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !bool {
     const src = self.source.?;
 
-    const no_cursor = self.r2 - self.r1 <= 1;
-    if (no_cursor)
+    if (modifiers.get(.left_alt) or modifiers.get(.right_alt) or
+        keycode == .left_alt or keycode == .right_alt)
         return false;
 
     if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
@@ -91,7 +79,7 @@ pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.Ke
             };
     }
 
-    const single_mode = self.source.?.single_mode;
+    const single_mode = src.single_mode;
 
     switch (keycode) {
         .up => if (!single_mode) {
@@ -127,7 +115,9 @@ pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.Ke
                     break;
             }
         },
-        .@"return" => if (!single_mode) {
+        .@"return" => {
+            if (single_mode)
+                return false;
             try self.splitLine();
         },
         .backspace => try self.deleteAt(.backspace),
@@ -330,6 +320,7 @@ fn hscrRight(self: *EditorLike) void {
 }
 
 fn vscrUp(self: *EditorLike) void {
+    if (self.source.?.single_mode) return;
     if (self.scroll_row > 0) {
         if (self.cursor_row == self.scroll_row + self.r2 - self.r1 - 2)
             self.cursor_row -= 1;
@@ -338,6 +329,7 @@ fn vscrUp(self: *EditorLike) void {
 }
 
 fn vscrDown(self: *EditorLike) void {
+    if (self.source.?.single_mode) return;
     // Ask me about the pages in my diary required to work this condition out!
     if (self.scroll_row < self.source.?.lines.items.len -| (self.r2 - self.r1 - 1 - 1)) {
         if (self.cursor_row == self.scroll_row)
@@ -360,7 +352,7 @@ fn maybeCurrentLine(self: *EditorLike) ?*std.ArrayListUnmanaged(u8) {
     return &src.lines.items[self.cursor_row];
 }
 
-pub fn splitLine(self: *EditorLike) !void {
+fn splitLine(self: *EditorLike) !void {
     const src = self.source.?;
 
     var line = try self.currentLine();
@@ -378,7 +370,7 @@ pub fn splitLine(self: *EditorLike) !void {
     self.cursor_row += 1;
 }
 
-pub fn deleteAt(self: *EditorLike, mode: enum { backspace, delete }) !void {
+fn deleteAt(self: *EditorLike, mode: enum { backspace, delete }) !void {
     const src = self.source.?;
 
     if (mode == .backspace and self.cursor_col == 0) {
@@ -437,7 +429,7 @@ pub fn deleteAt(self: *EditorLike, mode: enum { backspace, delete }) !void {
     }
 }
 
-pub fn pageUp(self: *EditorLike) void {
+fn pageUp(self: *EditorLike) void {
     const decrement = self.r2 - self.r1 - 1;
     if (self.scroll_row == 0)
         return;
@@ -446,7 +438,7 @@ pub fn pageUp(self: *EditorLike) void {
     self.cursor_row -|= decrement;
 }
 
-pub fn pageDown(self: *EditorLike) void {
+fn pageDown(self: *EditorLike) void {
     const increment = self.r2 - self.r1 - 1;
     if (self.scroll_row + increment >= self.source.?.lines.items.len)
         return;

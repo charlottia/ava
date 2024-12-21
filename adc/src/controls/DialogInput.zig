@@ -23,13 +23,11 @@ pub const Impl = struct {
     accel: ?u8 = undefined,
 
     // state
+    el: EditorLike,
     source: *Source,
     value: *std.ArrayListUnmanaged(u8), // points straight into `source.lines`
     initted: bool = false,
     changed: bool = false,
-
-    cursor_col: usize = 0,
-    scroll_col: usize = 0,
 
     pub fn deinit(self: *Impl) void {
         self.source.release();
@@ -46,68 +44,43 @@ pub const Impl = struct {
         self.c2 = self.dialog.c1 + c2;
         self.accel = null;
 
-        if (self.cursor_col < self.scroll_col)
-            self.scroll_col = self.cursor_col
-        else if (self.cursor_col > self.scroll_col + (c2 - c1 - 1))
-            self.scroll_col = self.cursor_col - (c2 - c1 - 1);
+        self.el.describe(self.r, self.c1, self.r + 1, self.c2);
 
-        const clipped = if (self.scroll_col < self.value.items.len) self.value.items[self.scroll_col..] else "";
-        self.dialog.imtui.text_mode.write(self.r, self.c1, clipped[0..@min(self.c2 - self.c1, clipped.len)]);
-
-        if (self.imtui.focused(self)) {
-            self.dialog.imtui.text_mode.cursor_row = self.r;
-            self.dialog.imtui.text_mode.cursor_col = self.c1 + self.cursor_col - self.scroll_col;
-        }
+        self.el.draw(self.imtui.focused(self), 0x07); // XXX
     }
 
     pub fn accelerate(self: *Impl) !void {
+        if (!self.imtui.focused(self))
+            try self.focusAndSelectAll();
+    }
+
+    pub fn blur(self: *Impl) void {
+        self.el.cursor_col = 0;
+        self.el.selection_start = null;
+    }
+
+    pub fn focusAndSelectAll(self: *Impl) !void {
         try self.imtui.focus(self);
+        self.el.cursor_col = self.value.items.len;
+        self.el.selection_start = .{
+            .cursor_row = 0,
+            .cursor_col = 0,
+        };
     }
 
     pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         // XXX is this all dialog inputs, or just Display's Tab Stops?
         // Note this is the default MAX_LINE for full-screen editors, less Tab
         // Stops' exact c1 (255 - 48 = 207). Hah.
-        const MAX_LINE = 207;
+        // const MAX_LINE = 207; // XXX: unused; fit into EditorLike.
 
-        // TODO: shift for select, ctrl-(everything), etc. -- harmonise with Editor
-        switch (keycode) {
-            .left => self.cursor_col -|= 1,
-            .right => if (self.cursor_col < MAX_LINE) {
-                self.cursor_col += 1;
-            },
-            .home => self.cursor_col = 0,
-            .end => self.cursor_col = self.value.items.len,
-            .backspace => try self.deleteAt(.backspace),
-            .delete => try self.deleteAt(.delete),
-            else => if (!self.imtui.alt_held and EditorLike.isPrintableKey(keycode) and self.value.items.len < MAX_LINE) {
-                if (self.value.items.len < self.cursor_col)
-                    try self.value.appendNTimes(self.imtui.allocator, ' ', self.cursor_col - self.value.items.len);
-                try self.value.insert(self.imtui.allocator, self.cursor_col, EditorLike.getCharacter(keycode, modifiers));
-                self.cursor_col += 1;
+        if (keycode != .tab)
+            if (try self.el.handleKeyPress(keycode, modifiers)) {
                 self.changed = true;
-            } else try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
-        }
-    }
+                return;
+            };
 
-    fn deleteAt(self: *Impl, mode: enum { backspace, delete }) !void {
-        if (mode == .backspace and self.cursor_col == 0) {
-            // can't backspace at 0
-        } else if (mode == .backspace) {
-            // self.cursor_col > 0
-            if (self.cursor_col - 1 < self.value.items.len) {
-                _ = self.value.orderedRemove(self.cursor_col - 1);
-                self.changed = true;
-            }
-            self.cursor_col -= 1;
-        } else if (self.cursor_col >= self.value.items.len) {
-            // mode == .delete
-            // can't delete at/past EOL
-        } else {
-            // model == .delete, self.cursor_col < self.value.items.len
-            _ = self.value.orderedRemove(self.cursor_col);
-            self.changed = true;
-        }
+        try self.dialog.commonKeyPress(self.ix, keycode, modifiers);
     }
 
     pub fn isMouseOver(self: *const Impl) bool {
@@ -116,38 +89,57 @@ pub const Impl = struct {
     }
 
     pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-        if (cm)
-            // XXX ignore clickmatic for now.
-            return null;
-        if (!self.isMouseOver())
-            return self.dialog.commonMouseDown(b, clicks, cm);
-        if (b != .left) return null;
+        const active = self.imtui.focused(self);
 
-        if (!self.imtui.focused(self)) {
-            try self.imtui.focus(self);
-            // TODO: select all by default, but we currently don't support selections
+        if (!cm) {
+            if (!self.isMouseOver()) {
+                const new = try self.dialog.commonMouseDown(b, clicks, cm);
+                if (new != null and new.? != .dialog)
+                    self.blur();
+                return new;
+            }
         } else {
-            // clicking on already selected; set cursor where clicked.
-            self.cursor_col = self.scroll_col + self.dialog.imtui.mouse_col - self.c1;
+            // cm
+            if (try self.el.handleMouseDown(active, b, clicks, cm))
+                return .{ .dialog_input = self };
+            return null;
         }
 
-        return .{ .dialog_input = self };
+        if (try self.el.handleMouseDown(active, b, clicks, cm)) {
+            if (!active)
+                try self.focusAndSelectAll()
+            else
+                // clicking on already selected; set cursor where clicked.
+                self.el.cursor_col = self.el.scroll_col + self.dialog.imtui.mouse_col - self.c1;
+
+            return .{ .dialog_input = self };
+        }
+
+        return null;
+    }
+
+    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+        return self.el.handleMouseDrag(b);
     }
 };
 
 impl: *Impl,
 
 pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c1: usize, c2: usize) !DialogInput {
+    var source = try Source.createSingleLine(dialog.imtui.allocator);
     var b = try dialog.imtui.allocator.create(Impl);
     b.* = .{
         .imtui = dialog.imtui,
         .dialog = dialog,
         .generation = dialog.imtui.generation,
         .ix = ix,
-        .source = try Source.createSingleLine(dialog.imtui.allocator),
-        .value = undefined,
+        .el = .{
+            .imtui = dialog.imtui,
+            .source = source,
+        },
+        .source = source,
+        .value = &source.lines.items[0],
     };
-    b.value = &b.source.lines.items[0];
     b.describe(r, c1, c2);
     return .{ .impl = b };
 }
