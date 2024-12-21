@@ -59,7 +59,7 @@ pub const Control = union(enum) {
         @compileError("couldn't resolve Control for " ++ @typeName(@TypeOf(impl)));
     }
 
-    fn parent(self: Control) ?Control {
+    pub fn parent(self: Control) ?Control {
         switch (self) {
             inline else => |c| if (@hasDecl(@TypeOf(c.*), "parent")) {
                 std.debug.assert(!@hasField(@TypeOf(c.*), "orphan"));
@@ -332,35 +332,33 @@ pub fn getMenubar(self: *Imtui) !*Controls.Menubar.Impl {
 }
 
 pub fn openMenu(self: *Imtui) ?*Controls.Menu.Impl {
-    if (self.focus_stack.getLastOrNull()) |f| switch (f) {
-        .menubar => |mb| return mb.openMenu(),
-        else => {},
+    return switch (self.focus_stack.getLast()) {
+        .menubar => |mb| mb.openMenu(),
+        else => null,
     };
-    return null;
 }
 
 pub fn focus(self: *Imtui, impl: anytype) !void {
     const control = Control.fromImpl(impl);
 
-    // TODO: will this ever be called with an Editor?
+    std.debug.assert(@TypeOf(impl) != *Controls.Editor.Impl);
     if (self.focused(impl)) return;
 
-    if (self.focus_stack.getLastOrNull()) |curr| {
-        // First unfocus when we're focusing something with the same parent.
-        const curr_parent = curr.parent();
-        const new_parent = control.parent();
-        if (curr_parent != null and new_parent != null and
-            curr_parent.?.same(new_parent.?))
-            _ = self.focus_stack.pop();
-    }
+    const curr = self.focus_stack.getLast();
+    // First unfocus when we're focusing something with the same parent.
+    const curr_parent = curr.parent();
+    const new_parent = control.parent();
+    if (curr_parent != null and new_parent != null and
+        curr_parent.?.same(new_parent.?))
+        _ = self.focus_stack.pop();
 
     try self.focus_stack.append(self.allocator, control);
 }
 
 pub fn focused(self: *Imtui, impl: anytype) bool {
-    // TODO: will this ever be called with an Editor?
+    std.debug.assert(@TypeOf(impl) != *Controls.Editor.Impl);
     const control = Control.fromImpl(impl);
-    return (self.focus_stack.getLastOrNull() orelse return false).same(control);
+    return self.focus_stack.getLast().same(control);
 }
 
 pub fn unfocus(self: *Imtui, impl: anytype) void {
@@ -566,17 +564,11 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     if ((keycode == .left_alt or keycode == .right_alt) and !self.alt_held)
         self.alt_held = true;
 
-    if (self.focus_stack.getLastOrNull()) |c|
-        try c.handleKeyPress(keycode, modifiers)
-    else
-        try self.focusedEditor().handleKeyPress(keycode, modifiers);
+    try self.focus_stack.getLast().handleKeyPress(keycode, modifiers);
 }
 
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
-    if (self.focus_stack.getLastOrNull()) |c|
-        try c.handleKeyUp(keycode)
-    else
-        try self.focusedEditor().handleKeyUp(keycode);
+    try self.focus_stack.getLast().handleKeyUp(keycode);
 
     if ((keycode == .left_alt or keycode == .right_alt) and self.alt_held)
         self.alt_held = false;
@@ -599,13 +591,8 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     // (If one doesn't, the dialog takes it for itself, and swallows them fro
     // now.)
 
-    if (self.focus_stack.getLastOrNull()) |c| {
-        if (try c.handleMouseDown(b, clicks, cm)) |t|
-            return t;
-    } else {
-        if (try self.focusedEditor().handleMouseDown(b, clicks, cm)) |t|
-            return t;
-    }
+    if (try self.focus_stack.getLast().handleMouseDown(b, clicks, cm)) |t|
+        return t;
 
     // This fallback is rather awkward. It takes care of the menu and help-line
     // shortcuts for us, but we have to explicitly avoid it whenever we're not

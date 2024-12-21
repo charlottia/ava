@@ -360,7 +360,9 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
 
     var show_ruler = true;
     var handled = false;
-    if (self.imtui.focus_stack.getLastOrNull()) |c| switch (c) {
+
+    const focused = self.imtui.focus_stack.getLast();
+    switch (focused) {
         .menubar => |mb| {
             if (mb.focus != null and mb.focus.? == .menu) {
                 const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
@@ -374,13 +376,14 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
                 handled = true;
             }
         },
-        .dialog => {
-            self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
-            show_ruler = false;
-            handled = true;
+        else => if (focused.parent()) |p| {
+            if (p == .dialog) {
+                self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
+                show_ruler = false;
+                handled = true;
+            }
         },
-        else => {},
-    };
+    }
 
     if (!handled) {
         var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
@@ -391,18 +394,18 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
         if (window_button.chosen())
             self.windowFunction();
 
-        _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
-        if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
-            std.debug.print("run!\n", .{});
+        if (self.imtui.focusedEditor().immediate) {
+            _ = try self.imtui.button(24, 29, help_line_colour, "<Enter=Execute Line>");
+        } else {
+            _ = try self.imtui.button(24, 29, help_line_colour, "<F2=Subs>");
+            if ((try self.imtui.button(24, 39, help_line_colour, "<F5=Run>")).chosen()) {
+                std.debug.print("run!\n", .{});
+            }
+            _ = try self.imtui.button(24, 48, help_line_colour, "<F8=Step>");
         }
-        _ = try self.imtui.button(24, 48, help_line_colour, "<F8=Step>");
 
         // TODO During active execution, these change to:
         // <Shift+F1=Help> <F5=Continue> <F9=Toggle Bkpt> <F8=Step>
-
-        // TODO: When the Immediate window is focused (regardless of
-        // active execution), these change to:
-        // <Shift+F1=Help> <F6=Window> <Enter=Execute Line>
     }
 
     var f6 = try self.imtui.shortcut(.f6, null);
@@ -462,9 +465,9 @@ fn renderDisplayDialog(self: *Adc) !void {
     //     [ ] should be able to drag "between" the {checkbox,radio,button}
     //         class of items
     //     [x] select
-    //     [-] input
+    //     [x] input
     // [-] help sub-dialog
-    // [-] whole-of-Imtui refactor to capture more commonality; ideally we
+    // [x] whole-of-Imtui refactor to capture more commonality; ideally we
     //     wouldn't have Imtui having to dispatch to Editor, which sometimes
     //     does its scrollbar stuff; and then Imtui dispatching to Dialog,
     //     which dispatches to its controls, with all this repeated code.
@@ -532,11 +535,8 @@ fn renderDisplayDialog(self: *Adc) !void {
     self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 17, dialog.impl.c1 + 39, "&Tab Stops:", dialog.impl.show_acc);
     var tab_stops = try dialog.input(17, 50, 54);
     tab_stops.accel('t');
-    if (tab_stops.initial()) |buf| {
+    if (tab_stops.initial()) |buf|
         try buf.writer(self.imtui.allocator).print("{d}", .{self.display_dialog_tab_stops});
-        // TODO: the value should start selected
-        tab_stops.impl.el.cursor_col = buf.items.len; // XXX
-    }
     if (tab_stops.changed()) |v| {
         if (std.fmt.parseInt(u8, v, 10)) |n| {
             if (n > 0 and n < 100)

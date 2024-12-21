@@ -45,8 +45,7 @@ pub const Impl = struct {
         self.accel = null;
 
         self.el.describe(self.r, self.c1, self.r + 1, self.c2);
-
-        self.el.draw(self.imtui.focused(self), 0x07); // XXX
+        self.el.draw(self.imtui.focused(self), 0x07);
     }
 
     pub fn accelerate(self: *Impl) !void {

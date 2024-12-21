@@ -41,9 +41,7 @@ pub const Impl = struct {
     pub fn draw(self: *Impl) void {
         var arrowcolour: u8 =
             if (self.imtui.focused(self) or
-            (self.dialog.default_button == self and
-            (self.imtui.focus_stack.getLastOrNull() == null or // XXX <- buttons are drawn on end(), by which case a button may have caused the dialog to unfocus & thus the stack is empty. annoying.
-            self.imtui.focus_stack.getLastOrNull().? != .dialog_button)))
+            (self.dialog.default_button == self and self.imtui.focus_stack.getLast() != .dialog_button))
             0x7f
         else
             0x70;
