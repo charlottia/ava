@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) void {
     imtui.linkLibCpp();
     sdlsdk.link(imtui, .dynamic);
     imtui.root_module.addImport("sdl2", sdlsdk.getWrapperModule());
+    imtui.linkSystemLibrary("sdl2_image");
 
     const adc = b.addExecutable(.{
         .name = "adc",
@@ -60,4 +61,24 @@ pub fn build(b: *std.Build) void {
 
     const run_adc_step = b.step("run", "Run the ADC");
     run_adc_step.dependOn(&run_adc_cmd.step);
+
+    const designer = b.addExecutable(.{
+        .name = "designer",
+        .root_source_file = b.path("designer/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    designer.linkLibCpp();
+    designer.root_module.addImport("imtui", &imtui.root_module);
+
+    b.installArtifact(designer);
+
+    const run_designer_cmd = b.addRunArtifact(designer);
+    run_designer_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_designer_cmd.addArgs(args);
+    }
+
+    const run_designer_step = b.step("designer", "Run the designer");
+    run_designer_step.dependOn(&run_designer_cmd.step);
 }

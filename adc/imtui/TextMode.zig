@@ -105,8 +105,6 @@ pub fn TextMode(H: usize, W: usize) type {
                     .height = 2,
                 });
             }
-
-            self.renderer.present();
         }
 
         pub fn clear(self: *Self, colour: u8) void {

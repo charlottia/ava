@@ -109,6 +109,7 @@
           # adc
           pkgs.libiconv
           pkgs.SDL2
+          pkgs.SDL2_image
           pkgs.pkg-config # See shellHook.
         ];
 

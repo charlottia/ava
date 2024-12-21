@@ -174,10 +174,9 @@ pub fn main() !void {
             try imtui.processEvent(ev);
 
         try imtui.newFrame();
-
         try adc.render();
-
         try imtui.render();
+        renderer.present();
 
         // std.debug.print("> ", .{});
         // const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
