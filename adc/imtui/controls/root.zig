@@ -1,20 +1,20 @@
 const std = @import("std");
 
-const Imtui = @import("./Imtui.zig");
+const Imtui = @import("../Imtui.zig");
 
-pub const Button = @import("./controls/Button.zig");
-pub const Shortcut = @import("./controls/Shortcut.zig");
-pub const Menubar = @import("./controls/Menubar.zig");
-pub const Menu = @import("./controls/Menu.zig");
-pub const MenuItem = @import("./controls/MenuItem.zig");
-pub const Source = @import("./controls/Source.zig");
-pub const Editor = @import("./controls/Editor.zig");
-pub const Dialog = @import("./controls/Dialog.zig");
-pub const DialogRadio = @import("./controls/DialogRadio.zig");
-pub const DialogSelect = @import("./controls/DialogSelect.zig");
-pub const DialogCheckbox = @import("./controls/DialogCheckbox.zig");
-pub const DialogInput = @import("./controls/DialogInput.zig");
-pub const DialogButton = @import("./controls/DialogButton.zig");
+pub const Button = @import("./Button.zig");
+pub const Shortcut = @import("./Shortcut.zig");
+pub const Menubar = @import("./Menubar.zig");
+pub const Menu = @import("./Menu.zig");
+pub const MenuItem = @import("./MenuItem.zig");
+pub const Source = @import("./Source.zig");
+pub const Editor = @import("./Editor.zig");
+pub const Dialog = @import("./Dialog.zig");
+pub const DialogRadio = @import("./DialogRadio.zig");
+pub const DialogSelect = @import("./DialogSelect.zig");
+pub const DialogCheckbox = @import("./DialogCheckbox.zig");
+pub const DialogInput = @import("./DialogInput.zig");
+pub const DialogButton = @import("./DialogButton.zig");
 
 pub const MenuItemReference = struct { index: usize, item: usize };
 

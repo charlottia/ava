@@ -2,8 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
-pub const TextMode = @import("./TextMode.zig").TextMode(25, 80);
-pub const Controls = @import("./ImtuiControls.zig");
+const TextMode = @import("./root.zig").TextMode(25, 80);
+pub const Controls = @import("./controls/root.zig");
 
 const Font = @import("./Font.zig");
 

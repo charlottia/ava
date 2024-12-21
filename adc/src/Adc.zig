@@ -1,7 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const imtuilib = @import("imtui");
 
-const Imtui = @import("./Imtui.zig");
+const Imtui = imtuilib.Imtui;
 const Preferences = @import("./Preferences.zig").Preferences;
 
 pub const Prefs = Preferences(struct {

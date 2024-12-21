@@ -2,6 +2,7 @@ const std = @import("std");
 const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
+const TextMode = @import("../root.zig").TextMode;
 const Dialog = @import("./Dialog.zig");
 
 const DialogSelect = @This();
@@ -26,8 +27,8 @@ pub const Impl = struct {
     // state
     selected_ix: usize,
     scroll_row: usize = 0,
-    vscrollbar: Imtui.TextMode.Vscrollbar = .{},
-    cmt: ?Imtui.TextMode.ScrollbarTarget = null,
+    vscrollbar: TextMode(25, 80).Vscrollbar = .{},
+    cmt: ?TextMode(25, 80).ScrollbarTarget = null,
 
     pub fn deinit(self: *Impl) void {
         self.imtui.allocator.destroy(self);

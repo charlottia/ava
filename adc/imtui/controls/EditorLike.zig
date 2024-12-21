@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
+const TextMode = @import("../root.zig").TextMode;
 const Source = @import("./Source.zig");
 
 const EditorLike = @This();
@@ -33,10 +34,10 @@ selection_start: ?struct {
 } = null,
 
 source: ?*Source = null,
-hscrollbar: Imtui.TextMode.Hscrollbar = .{},
-vscrollbar: Imtui.TextMode.Vscrollbar = .{},
+hscrollbar: TextMode(25, 80).Hscrollbar = .{},
+vscrollbar: TextMode(25, 80).Vscrollbar = .{},
 dragging_text: bool = false,
-cmt: ?Imtui.TextMode.ScrollbarTarget = null,
+cmt: ?TextMode(25, 80).ScrollbarTarget = null,
 
 pub fn describe(self: *EditorLike, r1: usize, c1: usize, r2: usize, c2: usize) void {
     self.r1 = r1;

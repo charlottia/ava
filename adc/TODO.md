@@ -2,12 +2,12 @@
 
 * [x] fix 'blur'
 * [x] investigate vtable instead of comptime wonk
-* [-] centralise editing between Editor/DialogInput/DialogTextarea
+* [x] centralise editing between Editor/DialogInput/DialogTextarea
   * last one doesn't exist yet, but think of the &Help dialog
 * [x] materialise Editor in the focus stack
 * [x] what ids _should_ we use for dialog stuff? buncha XXX there
-* [ ] do the dialog designer. HACE LA COSA VERDADERA.
-* [ ] consider interaction tests -- can test against TextArea w/o backing, no
+* [-] do the dialog designer. HACE LA COSA VERDADERA.
+* [ ] consider interaction tests -- can test against TextMode w/o backing, no
       graphics required.
 
 Re: centralise editing between Editor/etc.: we'll probably just want to use
@@ -16,7 +16,7 @@ controls and the source which holds the 'editor-like' state and handles relevant
 events!
 
 * [x] use Source in DialogInput
-* [-] extract editor UI interface
+* [x] extract editor UI interface
 
 Putting off for now, it'll be more fun once we've had some time away from Imtui
 internals:

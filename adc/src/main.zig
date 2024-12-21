@@ -1,15 +1,16 @@
 const std = @import("std");
 // const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
-const SDL = @import("sdl2");
+const imtuilib = @import("imtui");
+const SDL = imtuilib.SDL;
 
 // const proto = @import("avacore").proto;
 // const Parser = @import("avabasic").Parser;
 // const Compiler = @import("avabasic").Compiler;
 // const EventThread = @import("./EventThread.zig");
 const Args = @import("./Args.zig");
-const Font = @import("./Font.zig");
-const Imtui = @import("./Imtui.zig");
+const Font = imtuilib.Font;
+const Imtui = imtuilib.Imtui;
 const Adc = @import("./Adc.zig");
 
 extern fn SetProcessDPIAware() bool;
@@ -102,7 +103,7 @@ pub fn main() !void {
     if ((comptime builtin.target.os.tag == .windows) and !SetProcessDPIAware())
         std.log.debug("failed to set process DPI aware", .{});
 
-    var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
+    var font = try Font.fromGlyphTxt(allocator, imtuilib.fonts.@"9x16");
     defer font.deinit();
 
     var hdpi: f32 = -1;
