@@ -1,3 +1,4 @@
+const std = @import("std");
 const SDL = @import("sdl2");
 
 const Dialog = @import("./Dialog.zig");
@@ -23,25 +24,68 @@ pub const Impl = struct {
     chosen: bool = false,
     inverted: bool = false,
 
-    pub fn deinit(self: *Impl) void {
-        self.imtui.allocator.destroy(self);
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .parent = parent,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .accelGet = accelGet,
+                .accelerate = accelerate,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
     }
 
-    pub fn parent(self: *const Impl) Imtui.Control {
-        return .{ .dialog = self.dialog };
-    }
-
-    pub fn describe(self: *Impl, r: usize, c: usize, label: []const u8) void {
+    pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, r: usize, c: usize, label: []const u8) void {
         self.r = self.dialog.r1 + r;
         self.c = self.dialog.c1 + c;
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
     }
 
+    fn parent(ptr: *const anyopaque) ?Imtui.Control {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.dialog.control();
+    }
+
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.imtui.allocator.destroy(self);
+    }
+
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
+    fn accelGet(ptr: *const anyopaque) ?u8 {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.accel;
+    }
+
+    fn accelerate(ptr: *anyopaque) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        try self.imtui.focus(self.control());
+        self.chosen = true;
+    }
+
     pub fn draw(self: *Impl) void {
         var arrowcolour: u8 =
-            if (self.imtui.focused(self) or
-            (self.dialog.default_button == self and self.imtui.focus_stack.getLast() != .dialog_button))
+            if (self.imtui.focused(self.control()) or
+            (self.dialog.default_button == self and self.imtui.focus_stack.getLast().is(Impl) == null))
             0x7f
         else
             0x70;
@@ -59,18 +103,14 @@ pub const Impl = struct {
         self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
         self.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
 
-        if (self.imtui.focused(self)) {
+        if (self.imtui.focused(self.control())) {
             self.imtui.text_mode.cursor_row = self.r;
             self.imtui.text_mode.cursor_col = self.c + 2;
         }
     }
 
-    pub fn accelerate(self: *Impl) !void {
-        try self.imtui.focus(self);
-        self.chosen = true;
-    }
-
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (keycode) {
             .@"return" => self.chosen = true,
             .space => self.inverted = true,
@@ -82,57 +122,67 @@ pub const Impl = struct {
         }
     }
 
-    pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
-        if (keycode == .space and self.inverted and self.imtui.focused(self)) {
+    fn handleKeyUp(ptr: *anyopaque, keycode: SDL.Keycode) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        if (keycode == .space and self.inverted and self.imtui.focused(self.control())) {
             self.inverted = false;
             self.chosen = true;
         }
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
         return self.imtui.mouse_row == self.r and
             self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (cm) return null;
-        if (!self.isMouseOver()) return self.dialog.commonMouseDown(b, clicks, cm);
+        if (!isMouseOver(ptr)) return self.dialog.commonMouseDown(b, clicks, cm);
         if (b != .left) return null;
 
-        try self.imtui.focus(self);
+        try self.imtui.focus(self.control());
         self.inverted = true;
 
-        return .{ .dialog_button = self };
+        return self.control();
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
 
-        self.inverted = self.isMouseOver();
+        self.inverted = isMouseOver(ptr);
     }
 
-    pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
         if (self.inverted) {
             self.inverted = false;
-            try self.accelerate();
+            try accelerate(ptr);
         }
     }
 };
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogButton {
-    var b = try dialog.imtui.allocator.create(Impl);
+pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogButton", dialog.title, ix });
+}
+
+pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogButton {
+    var b = try imtui.allocator.create(Impl);
     b.* = .{
-        .imtui = dialog.imtui,
+        .imtui = imtui,
         .dialog = dialog,
-        .generation = dialog.imtui.generation,
+        .generation = imtui.generation,
         .ix = ix,
     };
-    b.describe(r, c, label);
+    b.describe(dialog, ix, r, c, label);
+    try dialog.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }
 

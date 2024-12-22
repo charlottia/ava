@@ -3,7 +3,6 @@ const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
-const Editor = Imtui.Controls.Editor;
 
 const Dialog = @This();
 
@@ -21,16 +20,21 @@ pub const Impl = struct {
     default_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
     cancel_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
 
-    comptime orphan: void = {},
-    comptime no_mouse: void = {},
-
-    pub fn deinit(self: *Impl) void {
-        // Controls deallocate themselves, this is just for safekeeping.
-        self.controls.deinit(self.imtui.allocator);
-        self.imtui.allocator.destroy(self);
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .orphan = true,
+                .no_mouse = true,
+                .no_key = true,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+            },
+        };
     }
 
-    pub fn describe(self: *Impl, height: usize, width: usize) void {
+    pub fn describe(self: *Impl, _: []const u8, height: usize, width: usize) void {
         self.r1 = (self.imtui.text_mode.H - height) / 2;
         self.c1 = (self.imtui.text_mode.W - width) / 2;
         self.controls_at = 0;
@@ -46,38 +50,54 @@ pub const Impl = struct {
             self.imtui.text_mode.shadow(self.r1 + height, self.c1 + c);
     }
 
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        // Controls deallocate themselves, this is just for safekeeping.
+        self.controls.deinit(self.imtui.allocator);
+        self.imtui.allocator.destroy(self);
+    }
+
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
     pub fn commonKeyPress(self: *Impl, ix: usize, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         switch (keycode) {
             .left_alt, .right_alt => self.show_acc = true,
             .tab => {
-                switch (self.controls.items[ix]) {
-                    // HACK but one-off for now:
-                    .dialog_input => |di| di.blur(),
-                    else => {},
-                }
+                // HACK but one-off for now:
+                if (self.controls.items[ix].is(Imtui.Controls.DialogInput.Impl)) |di|
+                    di.blur();
 
                 const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
                 var nix = ix;
-                if (self.controls.items[nix] == .dialog_radio) {
-                    const rg = self.controls.items[nix].dialog_radio.group_id;
-                    while (self.controls.items[nix] == .dialog_radio and
-                        self.controls.items[nix].dialog_radio.group_id == rg)
+                if (self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl)) |s| {
+                    while (true) {
+                        const r = self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl) orelse break;
+                        if (r.group_id != s.group_id) break;
                         nix = (nix + inc) % self.controls.items.len;
+                    }
                 } else {
                     nix = (nix + inc) % self.controls.items.len;
-                    if (reverse and self.controls.items[nix] == .dialog_radio)
-                        while (!self.controls.items[nix].dialog_radio.selected) {
+                    if (reverse and self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl) != null)
+                        while (!self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl).?.selected) {
                             nix -= 1;
                         };
                 }
 
-                switch (self.controls.items[nix]) {
-                    // HACK but one-off for now:
-                    .dialog_input => |di| try di.focusAndSelectAll(),
-                    else => try self.imtui.focus(self.controls.items[nix]),
-                }
+                // HACK but one-off for now:
+                if (self.controls.items[nix].is(Imtui.Controls.DialogInput.Impl)) |di|
+                    try di.focusAndSelectAll()
+                else
+                    try self.imtui.focus(self.controls.items[nix]);
             },
             .@"return" => if (self.default_button) |db| {
                 db.chosen = true;
@@ -95,12 +115,12 @@ pub const Impl = struct {
                 return try c.handleMouseDown(b, clicks, cm);
             };
 
-        return .{ .dialog = self }; // stop the Editor from getting these
+        return self.control(); // stop the Editor from getting these
     }
 
     fn handleAccelerator(self: *Impl, keycode: SDL.Keycode) !void {
         for (self.controls.items) |c|
-            if (c.accel()) |a|
+            if (c.accelGet()) |a|
                 if (std.ascii.toLower(a) == @intFromEnum(keycode)) {
                     try c.accelerate();
                     return;
@@ -110,6 +130,10 @@ pub const Impl = struct {
 
 impl: *Impl,
 
+pub fn bufPrintImtuiId(buf: []u8, title: []const u8, _: usize, _: usize) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}", .{ "core.Dialog", title });
+}
+
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !Dialog {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
@@ -117,7 +141,7 @@ pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !Di
         .generation = imtui.generation,
         .title = title,
     };
-    d.describe(height, width);
+    d.describe(title, height, width);
     return .{ .impl = d };
 }
 
@@ -129,10 +153,8 @@ pub fn end(self: Dialog) !void {
     }
 
     for (impl.controls.items) |i|
-        switch (i) {
-            .dialog_button => |b| b.draw(),
-            else => {},
-        };
+        if (i.is(Imtui.Controls.DialogButton.Impl)) |b|
+            b.draw();
 }
 
 pub fn groupbox(self: Dialog, title: []const u8, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {

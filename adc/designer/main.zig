@@ -110,7 +110,7 @@ pub fn main() !void {
         }
 
         if (imtui.focus_stack.items.len == 0)
-            try imtui.focus_stack.append(imtui.allocator, .{ .button = button.impl });
+            try imtui.focus_stack.append(imtui.allocator, button.impl.control());
 
         try imtui.render();
 

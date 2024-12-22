@@ -27,15 +27,27 @@ pub const Impl = struct {
     selected_read: bool = false,
     targeted: bool = false,
 
-    pub fn deinit(self: *Impl) void {
-        self.imtui.allocator.destroy(self);
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .parent = parent,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .accelGet = accelGet,
+                .accelerate = accelerate,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
     }
 
-    pub fn parent(self: *const Impl) Imtui.Control {
-        return .{ .dialog = self.dialog };
-    }
-
-    pub fn describe(self: *Impl, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
+    pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
         self.group_id = group_id;
         self.item_id = item_id;
         self.r = self.dialog.r1 + r;
@@ -48,25 +60,48 @@ pub const Impl = struct {
             self.dialog.imtui.text_mode.draw(self.r, self.c + 1, 0x70, .Bullet);
         self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
 
-        if (self.imtui.focused(self)) {
+        if (self.imtui.focused(self.control())) {
             self.dialog.imtui.text_mode.cursor_row = self.r;
             self.dialog.imtui.text_mode.cursor_col = self.c + 1;
         }
     }
 
+    fn parent(ptr: *const anyopaque) ?Imtui.Control {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.dialog.control();
+    }
+
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.imtui.allocator.destroy(self);
+    }
+
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
+    fn accelGet(ptr: *const anyopaque) ?u8 {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.accel;
+    }
+
     fn select(self: *Impl) !void {
         self.selected = true;
         self.selected_read = false;
-        try self.imtui.focus(self);
+        try self.imtui.focus(self.control());
     }
 
-    pub fn accelerate(self: *Impl) !void {
+    fn accelerate(ptr: *anyopaque) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         for (self.dialog.controls.items) |c|
-            switch (c) {
-                .dialog_radio => |b| if (b.group_id == self.group_id) {
-                    b.selected = false;
-                },
-                else => {},
+            if (c.is(Impl)) |b| if (b.group_id == self.group_id) {
+                b.selected = false;
             };
 
         try self.select();
@@ -76,30 +111,23 @@ pub const Impl = struct {
         var zero: ?*Impl = null;
         var high: ?*Impl = null;
         for (self.dialog.controls.items) |c|
-            switch (c) {
-                .dialog_radio => |b| if (b.group_id == self.group_id) {
-                    if (b.item_id == 0)
-                        zero = b
-                    else if (b.item_id == id)
-                        return b
-                    else if (high) |h|
-                        high = if (b.item_id > h.item_id) b else h
-                    else
-                        high = b;
-                },
-                else => {},
+            if (c.is(Impl)) |b| if (b.group_id == self.group_id) {
+                if (b.item_id == 0)
+                    zero = b
+                else if (b.item_id == id)
+                    return b
+                else if (high) |h|
+                    high = if (b.item_id > h.item_id) b else h
+                else
+                    high = b;
             };
         return if (id == std.math.maxInt(usize)) high.? else zero.?;
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
-        return self.dialog.imtui.mouse_row == self.r and
-            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 3;
-    }
-
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (keycode) {
-            .space => try self.accelerate(),
+            .space => try accelerate(ptr),
             .up, .left => {
                 std.debug.assert(self.selected);
                 self.selected = false;
@@ -114,46 +142,62 @@ pub const Impl = struct {
         }
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
+
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.dialog.imtui.mouse_row == self.r and
+            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 3;
+    }
+
+    fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (cm) return null;
-        if (!self.isMouseOver()) return self.dialog.commonMouseDown(b, clicks, cm);
+        if (!isMouseOver(ptr)) return self.dialog.commonMouseDown(b, clicks, cm);
         if (b != .left) return null;
 
-        try self.imtui.focus(self);
+        try self.imtui.focus(self.control());
         self.targeted = true;
 
-        return .{ .dialog_radio = self };
+        return self.control();
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
 
-        self.targeted = self.isMouseOver();
+        self.targeted = isMouseOver(ptr);
     }
 
-    pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
         if (self.targeted) {
             self.targeted = false;
-            try self.accelerate();
+            try accelerate(ptr);
         }
     }
 };
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
-    var b = try dialog.imtui.allocator.create(Impl);
+pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogRadio", dialog.title, ix });
+}
+
+pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
+    var b = try imtui.allocator.create(Impl);
     b.* = .{
-        .imtui = dialog.imtui,
+        .imtui = imtui,
         .dialog = dialog,
-        .generation = dialog.imtui.generation,
+        .generation = imtui.generation,
         .ix = ix,
         .selected = item_id == 0,
     };
-    b.describe(group_id, item_id, r, c, label);
+    b.describe(dialog, ix, group_id, item_id, r, c, label);
+    try dialog.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }
 

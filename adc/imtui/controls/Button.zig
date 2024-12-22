@@ -1,3 +1,4 @@
+const std = @import("std");
 const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
@@ -15,9 +16,24 @@ pub const Impl = struct {
     chosen: bool = false,
     inverted: bool = false,
 
-    comptime orphan: void = {},
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .orphan = true,
+                .no_key = true,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
+    }
 
-    pub fn describe(self: *Impl, r: usize, c: usize, colour: u8) void {
+    pub fn describe(self: *Impl, r: usize, c: usize, colour: u8, _: []const u8) void {
         self.r = r;
         self.c = c;
         self.colour = if (self.inverted)
@@ -28,33 +44,48 @@ pub const Impl = struct {
         self.imtui.text_mode.write(r, c, self.label);
     }
 
-    pub fn deinit(self: *Impl) void {
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         self.imtui.allocator.destroy(self);
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
         return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
         if (cm) return null;
-        if (!self.isMouseOver()) return null;
+        if (!isMouseOver(ptr)) return null;
 
         self.inverted = true;
 
-        return .{ .button = self };
+        return self.control();
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
 
-        self.inverted = self.isMouseOver();
+        self.inverted = isMouseOver(ptr);
     }
 
-    pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
@@ -67,6 +98,10 @@ pub const Impl = struct {
 
 impl: *Impl,
 
+pub fn bufPrintImtuiId(buf: []u8, _: usize, _: usize, _: u8, label: []const u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}", .{ "core.Button", label });
+}
+
 pub fn create(imtui: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) !Button {
     var b = try imtui.allocator.create(Impl);
     b.* = .{
@@ -74,7 +109,7 @@ pub fn create(imtui: *Imtui, r: usize, c: usize, colour: u8, label: []const u8) 
         .generation = imtui.generation,
         .label = label,
     };
-    b.describe(r, c, colour);
+    b.describe(r, c, colour, label);
     return .{ .impl = b };
 }
 

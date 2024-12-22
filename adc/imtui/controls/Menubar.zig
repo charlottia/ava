@@ -19,19 +19,28 @@ pub const Impl = struct {
     focus: ?Focus = null,
     op_closable: bool = false,
 
-    comptime orphan: void = {},
-
     const Focus = union(enum) {
         pre,
         menubar: struct { index: usize, open: bool },
         menu: Imtui.Controls.MenuItemReference,
     };
 
-    pub fn deinit(self: *Impl) void {
-        for (self.menus.items) |m|
-            m.deinit();
-        self.menus.deinit(self.imtui.allocator);
-        self.imtui.allocator.destroy(self);
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .orphan = true,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
     }
 
     pub fn describe(self: *Impl, r: usize, c1: usize, c2: usize) void {
@@ -45,6 +54,24 @@ pub const Impl = struct {
         self.imtui.text_mode.paint(r, c1, r + 1, c2, 0x70, .Blank);
     }
 
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        for (self.menus.items) |m|
+            m.deinit();
+        self.menus.deinit(self.imtui.allocator);
+        self.imtui.allocator.destroy(self);
+    }
+
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
     pub fn openMenu(self: *const Impl) ?*Imtui.Controls.Menu.Impl {
         switch (self.focus orelse return null) {
             .pre => {},
@@ -54,11 +81,8 @@ pub const Impl = struct {
         return null;
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
-        return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
-    }
-
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = modifiers;
 
         if (self.imtui.mouse_down != null) return;
@@ -131,7 +155,8 @@ pub const Impl = struct {
         }
     }
 
-    pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
+    fn handleKeyUp(ptr: *anyopaque, keycode: SDL.Keycode) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (self.focus.?) {
             .pre => if (self.imtui.alt_held and (keycode == .left_alt or keycode == .right_alt)) {
                 self.focus = .{ .menubar = .{ .index = 0, .open = false } };
@@ -148,7 +173,13 @@ pub const Impl = struct {
         }
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.imtui.mouse_row == self.r and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+    }
+
+    fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
@@ -160,9 +191,9 @@ pub const Impl = struct {
             if (m.isMouseOver()) {
                 if (self.openMenu()) |om|
                     self.op_closable = om.index == mix;
-                try self.imtui.focus(self);
+                try self.imtui.focus(self.control());
                 self.focus = .{ .menubar = .{ .index = mix, .open = true } };
-                return .{ .menubar = self };
+                return self.control();
             };
 
         // XXX: in QB you can click down on a separator, and then drag to
@@ -170,19 +201,20 @@ pub const Impl = struct {
         if (self.openMenu()) |m|
             if (m.mousedOverItem()) |i| {
                 self.focus = .{ .menu = .{ .index = m.index, .item = i.index } };
-                return .{ .menubar = self };
+                return self.control();
             };
 
-        if (self.imtui.focused(self)) {
+        if (self.imtui.focused(self.control())) {
             // XXX: this should fallthrough to the editor; it doesn't.
             self.unfocus();
-            return .{ .menubar = self };
+            return self.control();
         }
 
-        return .{ .menubar = self };
+        return self.control();
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
 
         if (self.imtui.mouse_row == self.r) {
@@ -190,12 +222,12 @@ pub const Impl = struct {
                 if (m.isMouseOver()) {
                     if (self.openMenu()) |om|
                         self.op_closable = self.op_closable and om.index == mix;
-                    try self.imtui.focus(self);
+                    try self.imtui.focus(self.control());
                     self.focus = .{ .menubar = .{ .index = mix, .open = true } };
                     return;
                 };
 
-            if (self.imtui.focused(self))
+            if (self.imtui.focused(self.control()))
                 self.unfocus();
 
             return;
@@ -212,7 +244,8 @@ pub const Impl = struct {
         }
     }
 
-    pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
@@ -234,11 +267,15 @@ pub const Impl = struct {
 
     fn unfocus(self: *Impl) void {
         self.focus = null;
-        self.imtui.unfocus(self);
+        self.imtui.unfocus(self.control());
     }
 };
 
 impl: *Impl,
+
+pub fn bufPrintImtuiId(_: []u8, _: usize, _: usize, _: usize) ![]const u8 {
+    return "core.Menubar";
+}
 
 pub fn create(imtui: *Imtui, r: usize, c1: usize, c2: usize) !Menubar {
     var mb = try imtui.allocator.create(Impl);

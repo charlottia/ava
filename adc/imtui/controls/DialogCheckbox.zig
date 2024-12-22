@@ -1,3 +1,4 @@
+const std = @import("std");
 const SDL = @import("sdl2");
 
 const Dialog = @import("./Dialog.zig");
@@ -24,15 +25,27 @@ pub const Impl = struct {
     changed: bool = false,
     targeted: bool = false,
 
-    pub fn deinit(self: *Impl) void {
-        self.imtui.allocator.destroy(self);
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .parent = parent,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .accelGet = accelGet,
+                .accelerate = accelerate,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
     }
 
-    pub fn parent(self: *const Impl) Imtui.Control {
-        return .{ .dialog = self.dialog };
-    }
-
-    pub fn describe(self: *Impl, r: usize, c: usize, label: []const u8) void {
+    pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, r: usize, c: usize, label: []const u8, _: bool) void {
         self.r = self.dialog.r1 + r;
         self.c = self.dialog.c1 + c;
         self.label = label;
@@ -41,10 +54,35 @@ pub const Impl = struct {
         self.dialog.imtui.text_mode.write(self.r, self.c, if (self.selected) "[X] " else "[ ] ");
         self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
 
-        if (self.imtui.focused(self)) {
+        if (self.imtui.focused(self.control())) {
             self.dialog.imtui.text_mode.cursor_row = self.r;
             self.dialog.imtui.text_mode.cursor_col = self.c + 1;
         }
+    }
+
+    fn parent(ptr: *const anyopaque) ?Imtui.Control {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.dialog.control();
+    }
+
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.imtui.allocator.destroy(self);
+    }
+
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
+    fn accelGet(ptr: *const anyopaque) ?u8 {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.accel;
     }
 
     fn space(self: *Impl) void {
@@ -52,12 +90,14 @@ pub const Impl = struct {
         self.selected = !self.selected;
     }
 
-    pub fn accelerate(self: *Impl) !void {
+    fn accelerate(ptr: *anyopaque) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         self.space();
-        try self.imtui.focus(self);
+        try self.imtui.focus(self.control());
     }
 
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (keycode) {
             .up, .left => {
                 self.changed = !self.selected;
@@ -72,51 +112,62 @@ pub const Impl = struct {
         }
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
+    fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
+
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
         return self.dialog.imtui.mouse_row == self.r and
             self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (cm) return null;
-        if (!self.isMouseOver()) return self.dialog.commonMouseDown(b, clicks, cm);
+        if (!isMouseOver(ptr)) return self.dialog.commonMouseDown(b, clicks, cm);
         if (b != .left) return null;
 
-        try self.imtui.focus(self);
+        try self.imtui.focus(self.control());
         self.targeted = true;
 
-        return .{ .dialog_checkbox = self };
+        return self.control();
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
 
-        self.targeted = self.isMouseOver();
+        self.targeted = isMouseOver(ptr);
     }
 
-    pub fn handleMouseUp(self: *Impl, b: SDL.MouseButton, clicks: u8) !void {
+    fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
 
         if (self.targeted) {
             self.targeted = false;
-            try self.accelerate();
+            try accelerate(ptr);
         }
     }
 };
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !DialogCheckbox {
-    var b = try dialog.imtui.allocator.create(Impl);
+pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: []const u8, _: bool) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogCheckbox", dialog.title, ix });
+}
+
+pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8, selected: bool) !DialogCheckbox {
+    var b = try imtui.allocator.create(Impl);
     b.* = .{
-        .imtui = dialog.imtui,
+        .imtui = imtui,
         .dialog = dialog,
-        .generation = dialog.imtui.generation,
+        .generation = imtui.generation,
         .selected = selected,
         .ix = ix,
     };
-    b.describe(r, c, label);
+    b.describe(dialog, ix, r, c, label, selected);
+    try dialog.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }
 

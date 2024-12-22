@@ -136,7 +136,7 @@ fn renderEditors(self: *Adc) !void {
     var primary_editor = try self.imtui.editor(0, primary_editor_top, 0, primary_editor_bottom, 80);
     self.primary_editor = primary_editor.impl;
     if (self.imtui.focus_stack.items.len == 0)
-        try self.imtui.focus_stack.append(self.imtui.allocator, .{ .editor = primary_editor.impl });
+        try self.imtui.focus_stack.append(self.imtui.allocator, primary_editor.impl.control());
     const focused_editor = self.imtui.focusedEditor();
     primary_editor.colours(
         self.prefs.settings.colours_normal,
@@ -363,28 +363,24 @@ fn renderHelpLine(self: *Adc, menubar: Imtui.Controls.Menubar) !void {
     var handled = false;
 
     const focused = self.imtui.focus_stack.getLast();
-    switch (focused) {
-        .menubar => |mb| {
-            if (mb.focus != null and mb.focus.? == .menu) {
-                const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
-                self.imtui.text_mode.write(24, 1, "F1=Help");
-                self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
-                self.imtui.text_mode.write(24, 11, help_text);
-                show_ruler = (11 + help_text.len) <= 62;
-                handled = true;
-            } else if (mb.focus != null and mb.focus.? == .menubar) {
-                self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
-                handled = true;
-            }
-        },
-        else => if (focused.parent()) |p| {
-            if (p == .dialog) {
-                self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
-                show_ruler = false;
-                handled = true;
-            }
-        },
-    }
+    if (focused.is(Imtui.Controls.Menubar.Impl)) |mb| {
+        if (mb.focus != null and mb.focus.? == .menu) {
+            const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
+            self.imtui.text_mode.write(24, 1, "F1=Help");
+            self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
+            self.imtui.text_mode.write(24, 11, help_text);
+            show_ruler = (11 + help_text.len) <= 62;
+            handled = true;
+        } else if (mb.focus != null and mb.focus.? == .menubar) {
+            self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
+            handled = true;
+        }
+    } else if (focused.parent()) |p|
+        if (p.is(Imtui.Controls.Dialog.Impl)) |_| {
+            self.imtui.text_mode.write(24, 1, "F1=Help   Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
+            show_ruler = false;
+            handled = true;
+        };
 
     if (!handled) {
         var help_button = try self.imtui.button(24, 1, help_line_colour, "<Shift+F1=Help>");
@@ -559,14 +555,14 @@ fn renderDisplayDialog(self: *Adc) !void {
         self.prefs.settings.tab_stops = self.display_dialog_tab_stops;
         try self.prefs.save();
         self.display_dialog_visible = false;
-        self.imtui.unfocus(dialog.impl);
+        self.imtui.unfocus(dialog.impl.control());
     }
 
     var cancel = try dialog.button(20, 24, "Cancel");
     cancel.cancel();
     if (cancel.chosen()) {
         self.display_dialog_visible = false;
-        self.imtui.unfocus(dialog.impl);
+        self.imtui.unfocus(dialog.impl.control());
     }
 
     var help = try dialog.button(20, 42, "&Help");
@@ -588,7 +584,7 @@ fn renderDisplayDialog(self: *Adc) !void {
         if (help_dialog_ok.chosen()) {
             std.log.debug("help OK chosen", .{});
             self.display_dialog_help_dialog_visible = false;
-            self.imtui.unfocus(help_dialog.impl);
+            self.imtui.unfocus(help_dialog.impl.control());
         }
         try help_dialog.end();
     }

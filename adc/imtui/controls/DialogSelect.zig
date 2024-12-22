@@ -30,15 +30,27 @@ pub const Impl = struct {
     vscrollbar: TextMode(25, 80).Vscrollbar = .{},
     cmt: ?TextMode(25, 80).ScrollbarTarget = null,
 
-    pub fn deinit(self: *Impl) void {
-        self.imtui.allocator.destroy(self);
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .parent = parent,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .accelGet = accelGet,
+                .accelerate = accelerate,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
     }
 
-    pub fn parent(self: *const Impl) Imtui.Control {
-        return .{ .dialog = self.dialog };
-    }
-
-    pub fn describe(self: *Impl, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
+    pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, _: usize) void {
         self.r1 = self.dialog.r1 + r1;
         self.c1 = self.dialog.c1 + c1;
         self.r2 = self.dialog.r1 + r2;
@@ -49,14 +61,40 @@ pub const Impl = struct {
 
         self.dialog.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, colour);
 
-        if (self.imtui.focused(self)) {
+        if (self.imtui.focused(self.control())) {
             self.dialog.imtui.text_mode.cursor_row = self.r1 + 1 + self.selected_ix - self.scroll_row;
             self.dialog.imtui.text_mode.cursor_col = self.c1 + 2;
         }
     }
 
-    pub fn accelerate(self: *Impl) !void {
-        try self.imtui.focus(self);
+    fn parent(ptr: *const anyopaque) ?Imtui.Control {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.dialog.control();
+    }
+
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.imtui.allocator.destroy(self);
+    }
+
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
+    }
+
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
+    fn accelGet(ptr: *const anyopaque) ?u8 {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.accel;
+    }
+
+    fn accelerate(ptr: *anyopaque) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        try self.imtui.focus(self.control());
     }
 
     pub fn value(self: *Impl, ix: usize) void {
@@ -67,7 +105,8 @@ pub const Impl = struct {
             self.scroll_row = ix + self.r1 + 3 - self.r2;
     }
 
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (!self.imtui.alt_held and
             @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
             @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
@@ -91,16 +130,20 @@ pub const Impl = struct {
         }
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
+    fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
+
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
         return self.dialog.imtui.mouse_row >= self.r1 and self.dialog.imtui.mouse_row < self.r2 and
             self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
     }
 
-    pub fn handleMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (b != .left) return null;
 
         if (!cm) {
-            if (!self.isMouseOver())
+            if (!isMouseOver(ptr))
                 return self.dialog.commonMouseDown(b, clicks, cm);
             self.cmt = null;
         }
@@ -132,15 +175,16 @@ pub const Impl = struct {
                     self.selected_ix = self.scroll_row
                 else if (self.selected_ix > self.scroll_row + (self.r2 - self.r1 - 3))
                     self.selected_ix = self.scroll_row + (self.r2 - self.r1 - 3);
-                return .{ .dialog_select = self };
+                return self.control();
             }
         }
 
-        try self.handleMouseDrag(b);
-        return .{ .dialog_select = self };
+        try handleMouseDrag(ptr, b);
+        return self.control();
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
 
         if (self.cmt != null) return;
@@ -165,23 +209,30 @@ pub const Impl = struct {
             return;
         }
 
-        try self.imtui.focus(self);
+        try self.imtui.focus(self.control());
         self.selected_ix = self.dialog.imtui.mouse_row - self.r1 - 1 + self.scroll_row;
     }
+
+    fn handleMouseUp(_: *anyopaque, _: SDL.MouseButton, _: u8) !void {}
 };
 
 impl: *Impl,
 
-pub fn create(dialog: *Dialog.Impl, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !DialogSelect {
-    var b = try dialog.imtui.allocator.create(Impl);
+pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: usize, _: usize, _: u8, _: usize) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogSelect", dialog.title, ix });
+}
+
+pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !DialogSelect {
+    var b = try imtui.allocator.create(Impl);
     b.* = .{
-        .imtui = dialog.imtui,
+        .imtui = imtui,
         .dialog = dialog,
-        .generation = dialog.imtui.generation,
+        .generation = imtui.generation,
         .ix = ix,
         .selected_ix = selected,
     };
-    b.describe(r1, c1, r2, c2, colour);
+    b.describe(dialog, ix, r1, c1, r2, c2, colour, selected);
+    try dialog.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }
 

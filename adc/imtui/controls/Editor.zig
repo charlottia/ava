@@ -5,6 +5,7 @@ const SDL = @import("sdl2");
 const Imtui = @import("../Imtui.zig");
 const Source = @import("./Source.zig");
 const EditorLike = @import("./EditorLike.zig");
+const Shortcut = @import("./Shortcut.zig");
 
 const Editor = @This();
 
@@ -39,9 +40,25 @@ pub const Impl = struct {
     el: EditorLike,
     dragging_header: bool = false,
 
-    comptime orphan: void = {},
+    pub fn control(self: *Impl) Imtui.Control {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .orphan = true,
+                .deinit = deinit,
+                .generationGet = generationGet,
+                .generationSet = generationSet,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
+                .isMouseOver = isMouseOver,
+                .handleMouseDown = handleMouseDown,
+                .handleMouseDrag = handleMouseDrag,
+                .handleMouseUp = handleMouseUp,
+            },
+        };
+    }
 
-    pub fn describe(self: *Impl, r1: usize, c1: usize, r2: usize, c2: usize) void {
+    pub fn describe(self: *Impl, _: usize, r1: usize, c1: usize, r2: usize, c2: usize) void {
         self.r1 = r1;
         self.c1 = c1;
         self.r2 = r2;
@@ -55,7 +72,9 @@ pub const Impl = struct {
         self.el.describe(r1 + 1, c1 + 1, r2, c2 - 1);
     }
 
-    pub fn deinit(self: *Impl) void {
+    pub fn deinit(ptr: *anyopaque) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+
         if (self.last_source != self.source) {
             if (self.last_source) |ls| ls.release();
         }
@@ -63,15 +82,22 @@ pub const Impl = struct {
         self.imtui.allocator.destroy(self);
     }
 
-    pub fn isMouseOver(self: *const Impl) bool {
-        return self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+    fn generationGet(ptr: *const anyopaque) usize {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.generation;
     }
 
-    pub fn handleKeyPress(self: *Impl, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn generationSet(ptr: *anyopaque, n: usize) void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.generation = n;
+    }
+
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) Allocator.Error!void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (keycode == .left_alt or keycode == .right_alt) {
             var mb = try self.imtui.getMenubar();
             mb.focus = .pre;
-            try self.imtui.focus(mb);
+            try self.imtui.focus(mb.control());
             return;
         }
 
@@ -90,21 +116,26 @@ pub const Impl = struct {
 
             var cit = self.imtui.controls.valueIterator();
             while (cit.next()) |c|
-                switch (c.*) {
-                    .shortcut => |s| if (s.shortcut.matches(keycode, modifiers)) {
+                if (c.is(Shortcut.Impl)) |s|
+                    if (s.shortcut.matches(keycode, modifiers)) {
                         s.*.chosen = true;
                         return;
-                    },
-                    else => {},
-                };
+                    };
         }
     }
 
-    pub fn handleKeyUp(self: *Impl, keycode: SDL.Keycode) !void {
+    fn handleKeyUp(ptr: *anyopaque, keycode: SDL.Keycode) Allocator.Error!void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         try self.el.handleKeyUp(keycode);
     }
 
-    pub fn handleMouseDown(self: *Impl, button: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
+    fn isMouseOver(ptr: *const anyopaque) bool {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
+    }
+
+    fn handleMouseDown(ptr: *anyopaque, button: SDL.MouseButton, clicks: u8, cm: bool) Allocator.Error!?Imtui.Control {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         const r = self.imtui.mouse_row;
         const c = self.imtui.mouse_col;
 
@@ -121,7 +152,7 @@ pub const Impl = struct {
                 return null;
 
             if (try self.el.handleMouseDown(active, button, clicks, cm))
-                return .{ .editor = self };
+                return self.control();
             return null;
         }
 
@@ -129,7 +160,7 @@ pub const Impl = struct {
             // Fullscreen triggers on MouseUp, not here.
             self.imtui.focusEditor(self);
             self.dragging_header = true;
-            return .{ .editor = self };
+            return self.control();
         }
 
         if (try self.el.handleMouseDown(active, button, clicks, cm)) {
@@ -137,22 +168,19 @@ pub const Impl = struct {
             if (!active and !cm) {
                 // Remove any other editors' selections.
                 var cit = self.imtui.controls.valueIterator();
-                while (cit.next()) |control| {
-                    switch (control.*) {
-                        .editor => |e| if (e != self) {
-                            e.el.selection_start = null;
-                        },
-                        else => {},
-                    }
-                }
+                while (cit.next()) |ctrl|
+                    if (ctrl.is(Impl)) |e| if (e != self) {
+                        e.el.selection_start = null;
+                    };
             }
-            return .{ .editor = self };
+            return self.control();
         }
 
         return null;
     }
 
-    pub fn handleMouseDrag(self: *Impl, b: SDL.MouseButton) !void {
+    fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         if (self.dragging_header and self.r1 != self.imtui.mouse_row) {
             self.dragged_header_to = self.imtui.mouse_row;
             return;
@@ -161,7 +189,8 @@ pub const Impl = struct {
         try self.el.handleMouseDrag(b);
     }
 
-    pub fn handleMouseUp(self: *Impl, button: SDL.MouseButton, clicks: u8) !void {
+    fn handleMouseUp(ptr: *anyopaque, button: SDL.MouseButton, clicks: u8) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = button;
 
         const r = self.imtui.mouse_row;
@@ -177,6 +206,10 @@ pub const Impl = struct {
 
 impl: *Impl,
 
+pub fn bufPrintImtuiId(buf: []u8, id: usize, _: usize, _: usize, _: usize, _: usize) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "core.Editor", id });
+}
+
 pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usize) !Editor {
     var e = try imtui.allocator.create(Impl);
     e.* = .{
@@ -185,7 +218,7 @@ pub fn create(imtui: *Imtui, id: usize, r1: usize, c1: usize, r2: usize, c2: usi
         .id = id,
         .el = .{ .imtui = imtui },
     };
-    e.describe(r1, c1, r2, c2);
+    e.describe(id, r1, c1, r2, c2);
     return .{ .impl = e };
 }
 
