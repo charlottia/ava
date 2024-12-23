@@ -8,6 +8,8 @@ const Args = @import("./Args.zig");
 const Font = imtuilib.Font;
 const Imtui = imtuilib.Imtui;
 
+const DesignDialog = @import("./DesignDialog.zig");
+
 extern fn SetProcessDPIAware() bool;
 
 pub fn main() !void {
@@ -114,7 +116,7 @@ pub fn main() !void {
 
         try imtui.newFrame();
 
-        var dd = try imtui.getOrPutControl(DesignDialog, .{ 5, 5, 20, 60 });
+        var dd = try imtui.getOrPutControl(DesignDialog, .{ 5, 5, 20, 60, "Untitled Dialog" });
 
         if (imtui.focus_stack.items.len == 0)
             try imtui.focus_stack.append(imtui.allocator, dd.impl.control());
@@ -128,111 +130,3 @@ pub fn main() !void {
         renderer.present();
     }
 }
-
-const DesignDialog = struct {
-    pub const Impl = struct {
-        imtui: *Imtui,
-        generation: usize,
-
-        r1: usize = undefined,
-        c1: usize = undefined,
-        r2: usize = undefined,
-        c2: usize = undefined,
-
-        pub fn control(self: *Impl) Imtui.Control {
-            return .{
-                .ptr = self,
-                .vtable = &.{
-                    .orphan = true,
-                    .no_key = true,
-                    .deinit = deinit,
-                    .generationGet = generationGet,
-                    .generationSet = generationSet,
-                    .isMouseOver = isMouseOver,
-                    .handleMouseDown = handleMouseDown,
-                    .handleMouseDrag = handleMouseDrag,
-                    .handleMouseUp = handleMouseUp,
-                },
-            };
-        }
-
-        pub fn describe(self: *Impl, r1: usize, c1: usize, r2: usize, c2: usize) void {
-            self.r1 = r1;
-            self.c1 = c1;
-            self.r2 = r2;
-            self.c2 = c2;
-
-            self.imtui.text_mode.box(r1, c1, r2, c2, 0x70);
-
-            const title = "untitled";
-            const start = c1 + (c2 - c1 - title.len) / 2;
-            self.imtui.text_mode.paint(r1, start - 1, r1 + 1, start + title.len + 1, 0x70, 0);
-            self.imtui.text_mode.write(r1, start, title);
-        }
-
-        pub fn deinit(ptr: *anyopaque) void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
-            self.imtui.allocator.destroy(self);
-        }
-
-        fn generationGet(ptr: *const anyopaque) usize {
-            const self: *const Impl = @ptrCast(@alignCast(ptr));
-            return self.generation;
-        }
-
-        fn generationSet(ptr: *anyopaque, n: usize) void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
-            self.generation = n;
-        }
-
-        fn isMouseOver(ptr: *const anyopaque) bool {
-            const self: *const Impl = @ptrCast(@alignCast(ptr));
-            return self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and
-                self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
-        }
-
-        fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
-            _ = clicks;
-
-            if (cm) return null;
-            if (!isMouseOver(ptr)) return null;
-            if (b != .left) return null;
-
-            return self.control();
-        }
-
-        fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
-            _ = b;
-            _ = self;
-        }
-
-        fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
-            _ = b;
-            _ = clicks;
-            _ = self;
-        }
-    };
-
-    impl: *Impl,
-
-    pub fn bufPrintImtuiId(buf: []u8, _: usize, _: usize, _: usize, _: usize) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "{s}", .{"designer.DesignDialog"});
-    }
-
-    pub fn create(imtui: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize) !DesignDialog {
-        var d = try imtui.allocator.create(Impl);
-        d.* = .{
-            .imtui = imtui,
-            .generation = imtui.generation,
-            .r1 = r1,
-            .c1 = c1,
-            .r2 = r2,
-            .c2 = c2,
-        };
-        d.describe(r1, c1, r2, c2);
-        return .{ .impl = d };
-    }
-};

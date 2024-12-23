@@ -37,6 +37,11 @@ focus_stack: std.ArrayListUnmanaged(Control) = .{}, // Always has an Editor at t
 controls: std.StringHashMapUnmanaged(Control) = .{},
 
 pub const Control = struct {
+    pub const Base = struct {
+        imtui: *Imtui,
+        generation: usize,
+    };
+
     pub const VTable = struct {
         orphan: bool = false,
         no_key: bool = false,
@@ -44,8 +49,6 @@ pub const Control = struct {
 
         parent: ?*const fn (self: *const anyopaque) ?Control = null,
         deinit: *const fn (self: *anyopaque) void,
-        generationGet: *const fn (self: *const anyopaque) usize,
-        generationSet: *const fn (self: *anyopaque, n: usize) void,
         accelGet: ?*const fn (self: *const anyopaque) ?u8 = null,
         accelerate: ?*const fn (self: *anyopaque) Allocator.Error!void = null,
         handleKeyPress: ?*const fn (self: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) Allocator.Error!void = null,
@@ -58,6 +61,24 @@ pub const Control = struct {
 
     ptr: *anyopaque,
     vtable: *const VTable,
+
+    fn assertBase(comptime T: type) void {
+        const base_fields = std.meta.fields(Base);
+        const timpl_fields = std.meta.fields(T.Impl);
+
+        inline for (0..base_fields.len) |i| {
+            if (!comptime std.mem.eql(u8, base_fields[i].name, timpl_fields[i].name))
+                @compileError(std.fmt.comptimePrint(
+                    "field {d} of {s}.Impl name does not match Base's: {s} != {s}",
+                    .{ i, @typeName(T), timpl_fields[i].name, base_fields[i].name },
+                ));
+            if (!comptime std.meta.eql(base_fields[i].type, timpl_fields[i].type))
+                @compileError(std.fmt.comptimePrint(
+                    "field {d} of {s}.Impl type does not match Base's: {s} != {s}",
+                    .{ i, @typeName(T), @typeName(timpl_fields[i].type), @typeName(base_fields[i].type) },
+                ));
+        }
+    }
 
     pub fn is(self: Control, comptime T: type) ?*T {
         // HACK
@@ -77,8 +98,18 @@ pub const Control = struct {
     fn lives(self: Control, n: usize) bool {
         if (self.generationGet() < n - 1)
             return false;
-        self.vtable.generationSet(self.ptr, n);
+        self.generationSet(n);
         return true;
+    }
+
+    fn generationGet(self: Control) usize {
+        const base: *const Base = @ptrCast(@alignCast(self.ptr));
+        return base.generation;
+    }
+
+    fn generationSet(self: Control, n: usize) void {
+        const base: *Base = @ptrCast(@alignCast(self.ptr));
+        base.generation = n;
     }
 
     // Pure forwarded methods follow.
@@ -89,10 +120,6 @@ pub const Control = struct {
 
     fn deinit(self: Control) void {
         self.vtable.deinit(self.ptr);
-    }
-
-    fn generationGet(self: Control) usize {
-        return self.vtable.generationGet(self.ptr);
     }
 
     // TODO: merge below two, only used by Dialog itself
@@ -389,6 +416,8 @@ pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: us
 }
 
 pub fn getOrPutControl(self: *Imtui, comptime T: type, args: anytype) !T {
+    Control.assertBase(T);
+
     // Not guaranteed to be large enough ... https://media1.tenor.com/m/ZaxUeXcUtDkAAAAd/shrug-smug.gif
     var buf: [100]u8 = undefined;
     const id = try @call(.auto, T.bufPrintImtuiId, .{&buf} ++ args);

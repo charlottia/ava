@@ -125,6 +125,25 @@ pub fn TextMode(H: usize, W: usize) type {
                 };
         }
 
+        pub fn paintColour(
+            self: *Self,
+            r1: usize,
+            c1: usize,
+            r2: usize,
+            c2: usize,
+            colour: u8,
+            mode: enum { fill, outline },
+        ) void {
+            std.debug.assert(r1 >= 0 and r1 <= H and r2 >= 0 and r2 <= H);
+            std.debug.assert(c1 >= 0 and c1 <= W and c2 >= 0 and c2 <= W);
+            for (r1..r2) |r|
+                for (c1..c2) |c| {
+                    if (mode == .outline and !(r == r1 or r == r2 - 1 or c == c1 or c == c2 - 1)) continue;
+                    self.screen[r * W + c] = @as(u16, colour) << 8 |
+                        (self.screen[r * W + c] & 0xFF);
+                };
+        }
+
         pub fn shadow(self: *Self, r: usize, c: usize) void {
             self.screen[r * W + c] &= 0x00ff;
             self.screen[r * W + c] |= 0x0800;

@@ -46,8 +46,6 @@ pub const Impl = struct {
             .vtable = &.{
                 .orphan = true,
                 .deinit = deinit,
-                .generationGet = generationGet,
-                .generationSet = generationSet,
                 .handleKeyPress = handleKeyPress,
                 .handleKeyUp = handleKeyUp,
                 .isMouseOver = isMouseOver,
@@ -80,16 +78,6 @@ pub const Impl = struct {
         }
         if (self.source) |s| s.release();
         self.imtui.allocator.destroy(self);
-    }
-
-    fn generationGet(ptr: *const anyopaque) usize {
-        const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.generation;
-    }
-
-    fn generationSet(ptr: *anyopaque, n: usize) void {
-        const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.generation = n;
     }
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) Allocator.Error!void {

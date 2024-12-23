@@ -8,6 +8,7 @@ const Menubar = @This();
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
     r: usize = undefined,
     c1: usize = undefined,
     c2: usize = undefined,
@@ -31,8 +32,6 @@ pub const Impl = struct {
             .vtable = &.{
                 .orphan = true,
                 .deinit = deinit,
-                .generationGet = generationGet,
-                .generationSet = generationSet,
                 .handleKeyPress = handleKeyPress,
                 .handleKeyUp = handleKeyUp,
                 .isMouseOver = isMouseOver,
@@ -60,16 +59,6 @@ pub const Impl = struct {
             m.deinit();
         self.menus.deinit(self.imtui.allocator);
         self.imtui.allocator.destroy(self);
-    }
-
-    fn generationGet(ptr: *const anyopaque) usize {
-        const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.generation;
-    }
-
-    fn generationSet(ptr: *anyopaque, n: usize) void {
-        const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.generation = n;
     }
 
     pub fn openMenu(self: *const Impl) ?*Imtui.Controls.Menu.Impl {

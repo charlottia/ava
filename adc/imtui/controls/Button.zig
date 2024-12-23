@@ -8,6 +8,7 @@ const Button = @This();
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
     r: usize = undefined,
     c: usize = undefined,
     colour: u8 = undefined,
@@ -23,8 +24,6 @@ pub const Impl = struct {
                 .orphan = true,
                 .no_key = true,
                 .deinit = deinit,
-                .generationGet = generationGet,
-                .generationSet = generationSet,
                 .isMouseOver = isMouseOver,
                 .handleMouseDown = handleMouseDown,
                 .handleMouseDrag = handleMouseDrag,
@@ -47,16 +46,6 @@ pub const Impl = struct {
     pub fn deinit(ptr: *anyopaque) void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         self.imtui.allocator.destroy(self);
-    }
-
-    fn generationGet(ptr: *const anyopaque) usize {
-        const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.generation;
-    }
-
-    fn generationSet(ptr: *anyopaque, n: usize) void {
-        const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.generation = n;
     }
 
     fn isMouseOver(ptr: *const anyopaque) bool {

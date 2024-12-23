@@ -123,11 +123,11 @@ pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.Ke
         },
         .backspace => try self.deleteAt(.backspace),
         .delete => try self.deleteAt(.delete),
-        else => if (isPrintableKey(keycode) and (try self.currentLine()).items.len < (MAX_LINE - 1)) {
+        else => if (Imtui.Controls.isPrintableKey(keycode) and (try self.currentLine()).items.len < (MAX_LINE - 1)) {
             var line = try self.currentLine();
             if (line.items.len < self.cursor_col)
                 try line.appendNTimes(src.allocator, ' ', self.cursor_col - line.items.len);
-            try line.insert(src.allocator, self.cursor_col, getCharacter(keycode, modifiers));
+            try line.insert(src.allocator, self.cursor_col, Imtui.Controls.getCharacter(keycode, modifiers));
             // XXX
             if (self.shift_down and self.selection_start.?.cursor_col == self.cursor_col and
                 self.selection_start.?.cursor_row == self.cursor_row)
@@ -524,52 +524,3 @@ pub fn draw(self: *EditorLike, active: bool, colnorminv: u8) void {
         self.imtui.text_mode.cursor_col = self.cursor_col - self.scroll_col + self.c1;
     }
 }
-
-pub fn isPrintableKey(keycode: SDL.Keycode) bool {
-    return @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.space) and
-        @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z);
-}
-
-pub fn getCharacter(keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) u8 {
-    if (@intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
-        @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
-    {
-        if (modifiers.get(.left_shift) or modifiers.get(.right_shift) or modifiers.get(.caps_lock)) {
-            return @as(u8, @intCast(@intFromEnum(keycode))) - ('a' - 'A');
-        }
-        return @intCast(@intFromEnum(keycode));
-    }
-
-    if (modifiers.get(.left_shift) or modifiers.get(.right_shift)) {
-        for (ShiftTable) |e| {
-            if (e.@"0" == keycode)
-                return e.@"1";
-        }
-    }
-
-    return @intCast(@intFromEnum(keycode));
-}
-
-const ShiftTable = [_]struct { SDL.Keycode, u8 }{
-    .{ .apostrophe, '"' },
-    .{ .comma, '<' },
-    .{ .minus, '_' },
-    .{ .period, '>' },
-    .{ .slash, '?' },
-    .{ .@"0", ')' },
-    .{ .@"1", '!' },
-    .{ .@"2", '@' },
-    .{ .@"3", '#' },
-    .{ .@"4", '$' },
-    .{ .@"5", '%' },
-    .{ .@"6", '^' },
-    .{ .@"7", '&' },
-    .{ .@"8", '*' },
-    .{ .@"9", '(' },
-    .{ .semicolon, ':' },
-    .{ .left_bracket, '{' },
-    .{ .backslash, '|' },
-    .{ .right_bracket, '}' },
-    .{ .grave, '~' },
-    .{ .equals, '+' },
-};

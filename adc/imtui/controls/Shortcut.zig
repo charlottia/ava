@@ -8,6 +8,7 @@ const Shortcut = @This();
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
     shortcut: Imtui.Shortcut,
 
     chosen: bool = false,
@@ -20,8 +21,6 @@ pub const Impl = struct {
                 .no_mouse = true,
                 .no_key = true,
                 .deinit = deinit,
-                .generationGet = generationGet,
-                .generationSet = generationSet,
             },
         };
     }
@@ -31,16 +30,6 @@ pub const Impl = struct {
     pub fn deinit(ptr: *anyopaque) void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         self.imtui.allocator.destroy(self);
-    }
-
-    fn generationGet(ptr: *const anyopaque) usize {
-        const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.generation;
-    }
-
-    fn generationSet(ptr: *anyopaque, n: usize) void {
-        const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.generation = n;
     }
 };
 

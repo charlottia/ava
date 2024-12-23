@@ -8,8 +8,9 @@ const DialogButton = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
-    dialog: *Dialog.Impl,
     generation: usize,
+
+    dialog: *Dialog.Impl,
 
     // id
     ix: usize,
@@ -30,8 +31,6 @@ pub const Impl = struct {
             .vtable = &.{
                 .parent = parent,
                 .deinit = deinit,
-                .generationGet = generationGet,
-                .generationSet = generationSet,
                 .accelGet = accelGet,
                 .accelerate = accelerate,
                 .handleKeyPress = handleKeyPress,
@@ -59,16 +58,6 @@ pub const Impl = struct {
     pub fn deinit(ptr: *anyopaque) void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         self.imtui.allocator.destroy(self);
-    }
-
-    fn generationGet(ptr: *const anyopaque) usize {
-        const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.generation;
-    }
-
-    fn generationSet(ptr: *anyopaque, n: usize) void {
-        const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.generation = n;
     }
 
     fn accelGet(ptr: *const anyopaque) ?u8 {
@@ -177,8 +166,8 @@ pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c: usize
     var b = try imtui.allocator.create(Impl);
     b.* = .{
         .imtui = imtui,
-        .dialog = dialog,
         .generation = imtui.generation,
+        .dialog = dialog,
         .ix = ix,
     };
     b.describe(dialog, ix, r, c, label);

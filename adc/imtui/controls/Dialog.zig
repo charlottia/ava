@@ -9,6 +9,7 @@ const Dialog = @This();
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
     title: []const u8,
     r1: usize = undefined,
     c1: usize = undefined,
@@ -28,8 +29,6 @@ pub const Impl = struct {
                 .no_mouse = true,
                 .no_key = true,
                 .deinit = deinit,
-                .generationGet = generationGet,
-                .generationSet = generationSet,
             },
         };
     }
@@ -55,16 +54,6 @@ pub const Impl = struct {
         // Controls deallocate themselves, this is just for safekeeping.
         self.controls.deinit(self.imtui.allocator);
         self.imtui.allocator.destroy(self);
-    }
-
-    fn generationGet(ptr: *const anyopaque) usize {
-        const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.generation;
-    }
-
-    fn generationSet(ptr: *anyopaque, n: usize) void {
-        const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.generation = n;
     }
 
     pub fn commonKeyPress(self: *Impl, ix: usize, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
