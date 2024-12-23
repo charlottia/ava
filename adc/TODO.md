@@ -7,6 +7,7 @@
 * [x] materialise Editor in the focus stack
 * [x] what ids _should_ we use for dialog stuff? buncha XXX there
 * [-] do the dialog designer. HACE LA COSA VERDADERA.
+  * [ ] move generationGet/Set into Control itself?
 * [ ] consider interaction tests -- can test against TextMode w/o backing, no
       graphics required.
 

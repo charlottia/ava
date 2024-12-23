@@ -388,7 +388,7 @@ pub fn dialogbutton(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: us
     return self.getOrPutControl(Imtui.Controls.DialogButton, .{ parent, parent.controls_at, r, c, label });
 }
 
-fn getOrPutControl(self: *Imtui, comptime T: type, args: anytype) !T {
+pub fn getOrPutControl(self: *Imtui, comptime T: type, args: anytype) !T {
     // Not guaranteed to be large enough ... https://media1.tenor.com/m/ZaxUeXcUtDkAAAAd/shrug-smug.gif
     var buf: [100]u8 = undefined;
     const id = try @call(.auto, T.bufPrintImtuiId, .{&buf} ++ args);
