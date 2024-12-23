@@ -31,10 +31,9 @@ pub fn Preferences(comptime Schema: type) type {
             const d = self.app_dir.readFileAlloc(self.allocator, "adc.ini", 1048576) catch return;
             defer self.allocator.free(d);
 
-            var p = ini.Parser.init(d, .report);
-            while (try p.next()) |ev| {
+            var parser = ini.Parser.init(d, .report);
+            while (try parser.next()) |ev|
                 try self.setFromIni(ev.pair.key, ev.pair.value);
-            }
         }
 
         pub fn save(self: *const Self) !void {
