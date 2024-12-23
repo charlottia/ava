@@ -100,13 +100,13 @@ pub fn main() !void {
     var imtui = try Imtui.init(allocator, renderer, font, eff_scale);
     defer imtui.deinit();
 
-    var mode: enum { both, design_only } = .both;
+    var display: enum { both, design_only } = .both;
 
     while (imtui.running) {
         while (SDL.pollEvent()) |ev| {
             switch (ev) {
                 .key_down => |key| if (key.keycode == .grave) {
-                    mode = if (mode == .both) .design_only else .both;
+                    display = if (display == .both) .design_only else .both;
                     continue;
                 },
                 else => {},
@@ -123,7 +123,7 @@ pub fn main() !void {
 
         try imtui.render();
 
-        if (mode == .both)
+        if (display == .both)
             if (underlay) |t|
                 try renderer.copy(t, null, null);
 

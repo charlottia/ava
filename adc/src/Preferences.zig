@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const known_folders = @import("known-folders");
+const ini = @import("ini");
 
 const APP_ID = "net.lottia.ava";
 
@@ -27,66 +28,12 @@ pub fn Preferences(comptime Schema: type) type {
         }
 
         pub fn load(self: *Self) !void {
-            const ini = self.app_dir.readFileAlloc(self.allocator, "adc.ini", 1048576) catch return;
-            defer self.allocator.free(ini);
+            const d = self.app_dir.readFileAlloc(self.allocator, "adc.ini", 1048576) catch return;
+            defer self.allocator.free(d);
 
-            var state: enum {
-                idle,
-                comment,
-                key,
-                value,
-            } = .idle;
-            var key_start: usize = undefined;
-            var value_start: usize = undefined;
-            var i: usize = 0;
-            while (i < ini.len) : (i += 1) {
-                const c = ini[i];
-                switch (state) {
-                    .idle => switch (c) {
-                        ';', '#' => state = .comment,
-                        'a'...'z' => {
-                            key_start = i;
-                            state = .key;
-                        },
-                        ' ', '\t', '\r', '\n' => {},
-                        else => std.log.warn("unknown character in adc.ini: '{c}'", .{c}),
-                    },
-                    .comment => switch (c) {
-                        '\r', '\n' => state = .idle,
-                        else => {},
-                    },
-                    .key => switch (c) {
-                        'a'...'z', '_', ' ' => {},
-                        '=' => {
-                            value_start = i + 1;
-                            state = .value;
-                        },
-                        '\r', '\n' => {
-                            std.log.warn("key without value in adc.ini: '{s}'", .{ini[key_start..i]});
-                            state = .idle;
-                        },
-                        else => std.log.warn("unknown character in adc.ini: '{c}'", .{c}),
-                    },
-                    .value => switch (c) {
-                        '\r', '\n' => {
-                            const key = std.mem.trim(u8, ini[key_start .. value_start - 1], "\t ");
-                            const value = std.mem.trim(u8, ini[value_start..i], "\t ");
-                            try self.setFromIni(key, value);
-                            state = .idle;
-                        },
-                        else => {},
-                    },
-                }
-            }
-
-            switch (state) {
-                .idle, .comment => {},
-                .key => std.log.warn("key without value at end of adc.ini: '{s}'", .{ini[key_start..]}),
-                .value => {
-                    const key = std.mem.trim(u8, ini[key_start .. value_start - 1], "\t ");
-                    const value = std.mem.trim(u8, ini[value_start..], "\t ");
-                    try self.setFromIni(key, value);
-                },
+            var p = ini.Parser.init(d, .report);
+            while (try p.next()) |ev| {
+                try self.setFromIni(ev.pair.key, ev.pair.value);
             }
         }
 

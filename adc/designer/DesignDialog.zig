@@ -18,14 +18,14 @@ pub const Impl = struct {
     title: std.ArrayListUnmanaged(u8),
     title_orig: std.ArrayListUnmanaged(u8),
 
-    title_start: usize = undefined,
-
     state: union(enum) {
         idle,
         resize: struct { cix: usize },
         move: struct { origin_row: usize, origin_col: usize },
         title_edit,
     } = .idle,
+
+    title_start: usize = undefined,
 
     pub fn control(self: *Impl) Imtui.Control {
         return .{
@@ -208,6 +208,7 @@ pub const Impl = struct {
                 }
             },
             .move => |*d| {
+                // TODO: out of bounds = crash
                 const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
                 const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
                 self.r1 = @intCast(@as(isize, @intCast(self.r1)) + dr);

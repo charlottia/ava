@@ -7,6 +7,23 @@ pub fn build(b: *std.Build) void {
 
     const sdlsdk = SDL.init(b, null);
 
+    const test_step = b.step("test", "Run unit tests");
+
+    const ini = b.addStaticLibrary(.{
+        .name = "ini",
+        .root_source_file = b.path("ini/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const ini_unit_tests = b.addTest(.{
+        .name = "ini",
+        .root_source_file = b.path("ini/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    test_step.dependOn(&b.addRunArtifact(ini_unit_tests).step);
+
     const imtui = b.addStaticLibrary(.{
         .name = "imtui",
         .root_source_file = b.path("imtui/root.zig"),
@@ -26,6 +43,7 @@ pub fn build(b: *std.Build) void {
     });
     adc.linkLibCpp();
     adc.root_module.addImport("imtui", &imtui.root_module);
+    adc.root_module.addImport("ini", &ini.root_module);
 
     const avabasic_mod = b.dependency("avabasic", .{
         .target = target,
