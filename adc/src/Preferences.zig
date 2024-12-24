@@ -27,52 +27,50 @@ pub fn Preferences(comptime Schema: type) type {
             return p;
         }
 
+        const SerDes = ini.SerDes(Schema, struct {
+            pub const DeserializeError = error{ParseError};
+            pub fn deserialize(comptime T: type, key: []const u8, value: []const u8) DeserializeError!T {
+                switch (T) {
+                    bool => if (std.ascii.eqlIgnoreCase(value, "true")) {
+                        return true;
+                    } else if (std.ascii.eqlIgnoreCase(value, "false")) {
+                        return false;
+                    } else {
+                        std.log.warn("unknown boolean value for key '{s}' in adc.ini: '{s}'", .{ key, value });
+                        return error.ParseError;
+                    },
+                    u8 => if (std.fmt.parseUnsigned(u8, value, 0)) |v| {
+                        return v;
+                    } else |_| {
+                        std.log.warn("unknown integer value for key '{s}' in adc.ini: '{s}'", .{ key, value });
+                        return error.ParseError;
+                    },
+                    else => @compileError("unhandled type: " ++ @typeName(T)),
+                }
+            }
+
+            pub fn serialize(comptime T: type, writer: anytype, key: []const u8, value: T) @TypeOf(writer).Error!void {
+                _ = key;
+                switch (T) {
+                    bool => try writer.writeAll(if (value) "true" else "false"),
+                    u8 => try std.fmt.format(writer, "0x{x:0>2}", .{value}),
+                    else => @compileError("unhandled type: " ++ @typeName(T)),
+                }
+            }
+        });
+
         pub fn load(self: *Self) !void {
             const d = self.app_dir.readFileAlloc(self.allocator, "adc.ini", 1048576) catch return;
             defer self.allocator.free(d);
 
-            var parser = ini.Parser.init(d, .report);
-            while (try parser.next()) |ev|
-                try self.setFromIni(ev.pair.key, ev.pair.value);
+            try SerDes.loadInto(d, &self.settings);
         }
 
         pub fn save(self: *const Self) !void {
             var out = try self.app_dir.createFile("adc.ini", .{});
             defer out.close();
 
-            inline for (std.meta.fields(Schema)) |f| {
-                try std.fmt.format(out.writer(), "{s}=", .{f.name});
-                const v = @field(self.settings, f.name);
-                switch (f.type) {
-                    bool => try out.writeAll(if (v) "true" else "false"),
-                    u8 => try std.fmt.format(out.writer(), "0x{x:0>2}", .{v}),
-                    else => @compileError("unhandled type: " ++ @typeName(f.type)),
-                }
-                try out.writeAll("\n");
-            }
-        }
-
-        pub fn setFromIni(self: *Self, key: []const u8, value: []const u8) !void {
-            inline for (std.meta.fields(Schema)) |f|
-                if (std.mem.eql(u8, f.name, key)) {
-                    switch (f.type) {
-                        bool => if (std.ascii.eqlIgnoreCase(value, "true")) {
-                            @field(self.settings, f.name) = true;
-                        } else if (std.ascii.eqlIgnoreCase(value, "false")) {
-                            @field(self.settings, f.name) = false;
-                        } else {
-                            std.log.warn("unknown boolean value for key '{s}' in adc.ini: '{s}'", .{ key, value });
-                        },
-                        u8 => if (std.fmt.parseUnsigned(u8, value, 0)) |v| {
-                            @field(self.settings, f.name) = v;
-                        } else |_| {
-                            std.log.warn("unknown integer value for key '{s}' in adc.ini: '{s}'", .{ key, value });
-                        },
-                        else => @compileError("unhandled type: " ++ @typeName(f.type)),
-                    }
-                    return;
-                };
-            std.log.warn("ini key not found in schema: '{s}'", .{key});
+            try SerDes.save(out.writer(), self.settings);
         }
 
         pub fn deinit(self: *Self) void {

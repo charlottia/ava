@@ -6,39 +6,29 @@ const Parser = @import("./Parser.zig");
 
 pub fn SerDes(comptime Schema: type, comptime Config: type) type {
     return struct {
-        fn load(input: []const u8) (Parser.Error || Config.DeserializeError)!Schema {
-            var s = Schema{};
-            const c = Config.Context{};
+        pub fn loadInto(input: []const u8, dest: *Schema) (Parser.Error || Config.DeserializeError)!void {
             var p = Parser.init(input, .report);
             while (try p.next()) |ev| {
                 inline for (std.meta.fields(Schema)) |f|
                     if (std.mem.eql(u8, ev.pair.key, f.name)) {
-                        @field(s, f.name) = try Config.deserialize(
-                            f.type,
-                            c,
-                            ev.pair.key,
-                            ev.pair.value,
-                        );
+                        if (@hasDecl(Config, "Context"))
+                            @field(dest, f.name) = try Config.deserialize(f.type, Config.Context{}, ev.pair.key, ev.pair.value)
+                        else
+                            @field(dest, f.name) = try Config.deserialize(f.type, ev.pair.key, ev.pair.value);
                     };
             }
-            return s;
         }
 
-        fn saveAlloc(allocator: Allocator, v: Schema) ![]u8 {
-            var buf = std.ArrayListUnmanaged(u8){};
-            defer buf.deinit(allocator);
-
-            const c = Config.Context{};
-            const writer = buf.writer(allocator);
-
+        pub fn save(writer: anytype, v: Schema) @TypeOf(writer).Error!void {
             inline for (std.meta.fields(Schema)) |f| {
                 try std.fmt.format(writer, "{s}=", .{f.name});
                 const value = @field(v, f.name);
-                try Config.serialize(f.type, c, writer, f.name, value);
+                if (@hasDecl(Config, "Context"))
+                    try Config.serialize(f.type, Config.Context{}, writer, f.name, value)
+                else
+                    try Config.serialize(f.type, writer, f.name, value);
                 try writer.writeByte('\n');
             }
-
-            return buf.toOwnedSlice(allocator);
         }
     };
 }
@@ -53,6 +43,18 @@ test SerDes {
     const SchemaSD = SerDes(Schema, struct {
         const Context = struct { allocator: Allocator = testing.allocator };
 
+        const DeserializeError = Allocator.Error || std.fmt.ParseIntError;
+
+        fn deserialize(comptime T: type, context: Context, key: []const u8, value: []const u8) DeserializeError!T {
+            _ = key;
+            return switch (T) {
+                []const u8 => try std.ascii.allocUpperString(context.allocator, value),
+                u32 => try std.fmt.parseUnsigned(u32, value, 0),
+                bool => std.mem.eql(u8, value, "1"),
+                else => unreachable,
+            };
+        }
+
         fn serialize(comptime T: type, context: Context, writer: anytype, key: []const u8, value: T) @TypeOf(writer).Error!void {
             _ = key;
             switch (T) {
@@ -66,25 +68,14 @@ test SerDes {
                 else => unreachable,
             }
         }
-
-        const DeserializeError = Allocator.Error || std.fmt.ParseIntError;
-
-        fn deserialize(comptime T: type, context: Context, key: []const u8, value: []const u8) DeserializeError!T {
-            _ = key;
-            return switch (T) {
-                []const u8 => try std.ascii.allocUpperString(context.allocator, value),
-                u32 => try std.fmt.parseUnsigned(u32, value, 0),
-                bool => std.mem.eql(u8, value, "1"),
-                else => unreachable,
-            };
-        }
     });
 
-    const v = try SchemaSD.load(
+    var v = Schema{};
+    try SchemaSD.loadInto(
         \\integer=0x42
         \\string=Henlo
         \\boolean= 1
-    );
+    , &v);
     defer testing.allocator.free(v.string);
     try testing.expectEqualDeep(Schema{
         .string = "HENLO",
@@ -92,12 +83,13 @@ test SerDes {
         .boolean = true,
     }, v);
 
-    const out = try SchemaSD.saveAlloc(testing.allocator, v);
-    defer testing.allocator.free(out);
+    var out = std.ArrayListUnmanaged(u8){};
+    defer out.deinit(testing.allocator);
+    try SchemaSD.save(out.writer(testing.allocator), v);
     try testing.expectEqualStrings(
         \\string=henlo
         \\integer=0o102
         \\boolean=1
         \\
-    , out);
+    , out.items);
 }
