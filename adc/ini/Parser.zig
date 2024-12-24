@@ -5,6 +5,7 @@ const testing = std.testing;
 const Parser = @This();
 
 pub const Event = union(enum) {
+    group: []const u8,
     pair: struct { key: []const u8, value: []const u8 },
 };
 
@@ -15,14 +16,14 @@ pub const ErrorHandling = enum {
 
 pub const Error = error{
     UnknownCharacter,
-    KeyWithoutValue,
+    Incomplete,
 };
 
 input: []const u8,
 error_handling: ErrorHandling,
 
 i: usize,
-state: enum { idle, comment, key, value },
+state: enum { idle, comment, group, group_after, key, value },
 
 pub fn init(input: []const u8, error_handling: ErrorHandling) Parser {
     return .{
@@ -49,7 +50,31 @@ pub fn next(self: *Parser) Error!?Event {
                     key_start = i;
                     self.state = .key;
                 },
+                '[' => {
+                    key_start = i;
+                    self.state = .group;
+                },
                 ' ', '\t', '\r', '\n' => {},
+                else => {
+                    self.state = .comment; // eat rest of line
+                    try self.err(Error.UnknownCharacter);
+                },
+            },
+            .group => switch (c) {
+                'a'...'z', '_', ' ' => {},
+                ']' => {
+                    i += 1;
+                    self.state = .group_after;
+                    return .{ .group = std.mem.trim(u8, self.input[key_start + 1 .. i - 1], " ") };
+                },
+                else => {
+                    self.state = .comment; // eat rest of line
+                    try self.err(Error.UnknownCharacter);
+                },
+            },
+            .group_after => switch (c) {
+                ' ' => {},
+                '\r', '\n' => self.state = .idle,
                 else => {
                     self.state = .comment; // eat rest of line
                     try self.err(Error.UnknownCharacter);
@@ -67,7 +92,7 @@ pub fn next(self: *Parser) Error!?Event {
                 },
                 '\r', '\n' => {
                     self.state = .idle;
-                    try self.err(Error.KeyWithoutValue);
+                    try self.err(Error.Incomplete);
                 },
                 else => {
                     self.state = .comment; // eat rest of line
@@ -89,7 +114,9 @@ pub fn next(self: *Parser) Error!?Event {
 
     switch (self.state) {
         .idle, .comment => {},
-        .key => try self.err(Error.KeyWithoutValue),
+        .group => try self.err(Error.Incomplete),
+        .group_after => {},
+        .key => try self.err(Error.Incomplete),
         .value => {
             const key = std.mem.trim(u8, self.input[key_start .. value_start - 1], "\t ");
             const value = std.mem.trim(u8, self.input[value_start..], "\t ");
@@ -107,38 +134,40 @@ fn err(self: *const Parser, e: Error) Error!void {
         return e;
 }
 
-fn expectPairsHandling(input: []const u8, pairs: anytype, error_handling: Parser.ErrorHandling) !void {
+fn expectEventsHandling(input: []const u8, events: anytype, error_handling: Parser.ErrorHandling) !void {
     var p = Parser.init(input, error_handling);
 
-    inline for (pairs) |pair| {
-        if (@TypeOf(pair) == Parser.Error) {
+    inline for (events) |ev| {
+        const E = @TypeOf(ev);
+        if (E == Parser.Error) {
             if (error_handling == .report)
-                try testing.expectError(pair, p.next());
-            continue;
+                try testing.expectError(ev, p.next());
+        } else if (@typeInfo(@TypeOf(ev)) == .Pointer) {
+            try testing.expectEqualDeep(Parser.Event{ .group = ev }, p.next());
+        } else {
+            try testing.expectEqualDeep(
+                Parser.Event{ .pair = .{ .key = ev.@"0", .value = ev.@"1" } },
+                p.next(),
+            );
         }
-
-        try testing.expectEqualDeep(
-            Parser.Event{ .pair = .{ .key = pair.@"0", .value = pair.@"1" } },
-            p.next(),
-        );
     }
     try testing.expectEqualDeep(null, p.next());
     try testing.expectEqualDeep(null, p.next());
 }
 
-fn expectPairs(input: []const u8, pairs: anytype) !void {
-    try expectPairsHandling(input, pairs, .report);
-    try expectPairsHandling(input, pairs, .ignore);
+fn expectEvents(input: []const u8, events: anytype) !void {
+    try expectEventsHandling(input, events, .report);
+    try expectEventsHandling(input, events, .ignore);
 }
 
-test Parser {
-    try expectPairs(
+test "base" {
+    try expectEvents(
         \\x=y
     , .{
         .{ "x", "y" },
     });
 
-    try expectPairs(
+    try expectEvents(
         \\abc  = 0x123
         \\  ; nah
         \\# comments ...
@@ -149,18 +178,18 @@ test Parser {
         .{ "not a comment", "isn't # a comment ; at all" },
     });
 
-    try expectPairs(
+    try expectEvents(
         \\
         \\ f = 3
         \\ z
         \\ awa=wa
     , .{
         .{ "f", "3" },
-        Parser.Error.KeyWithoutValue,
+        Parser.Error.Incomplete,
         .{ "awa", "wa" },
     });
 
-    try expectPairs(
+    try expectEvents(
         \\
         \\ f = 3
         \\ lmnop?=8
@@ -171,15 +200,27 @@ test Parser {
         .{ "z", "zz" },
     });
 
-    try expectPairs(
+    try expectEvents(
         \\ m__=9
         \\ fazenda
         \\ h==
         \\ s?=8
     , .{
         .{ "m__", "9" },
-        Parser.Error.KeyWithoutValue,
+        Parser.Error.Incomplete,
         .{ "h", "=" },
         Parser.Error.UnknownCharacter,
+    });
+}
+
+test "group" {
+    try expectEvents(
+        \\a=1
+        \\[b_f_g]
+        \\c=2
+    , .{
+        .{ "a", "1" },
+        "b_f_g",
+        .{ "c", "2" },
     });
 }
