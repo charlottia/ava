@@ -4,18 +4,19 @@ const testing = std.testing;
 
 const Parser = @import("./Parser.zig");
 
+// The following was intended to produce offense in every person whomsoever
+// should read it.  Please accept it in the manner intended.
+
 pub fn SerDes(comptime Schema: type, comptime Config: type) type {
-    comptime var ArrayKeys: []const [:0]const u8 = &.{};
-    comptime var ArrayStateEnumFields: []const std.builtin.Type.EnumField = &.{};
+    comptime var ArrayFieldEnumFields: []const std.builtin.Type.EnumField = &.{};
     comptime var ArrayElemStateFields: []const std.builtin.Type.UnionField = &.{};
     comptime var ArrayStateFields: []const std.builtin.Type.StructField = &.{};
     for (std.meta.fields(Schema)) |f| {
         switch (@typeInfo(f.type)) {
             .Pointer => |p| if (p.size == .Slice and p.child != u8) {
-                ArrayKeys = ArrayKeys ++ [_][:0]const u8{f.name};
-                ArrayStateEnumFields = ArrayStateEnumFields ++ [_]std.builtin.Type.EnumField{.{
+                ArrayFieldEnumFields = ArrayFieldEnumFields ++ [_]std.builtin.Type.EnumField{.{
                     .name = f.name,
-                    .value = ArrayStateEnumFields.len,
+                    .value = ArrayFieldEnumFields.len,
                 }};
                 ArrayElemStateFields = ArrayElemStateFields ++ [_]std.builtin.Type.UnionField{.{
                     .name = f.name,
@@ -35,18 +36,18 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
     }
 
     const Underlying = u8;
-    std.debug.assert(ArrayKeys.len <= std.math.maxInt(Underlying) + 1);
+    std.debug.assert(ArrayStateFields.len <= std.math.maxInt(Underlying) + 1);
 
-    const ArrayStateEnum = @Type(.{ .Enum = .{
+    const ArrayFieldEnum = @Type(.{ .Enum = .{
         .tag_type = Underlying,
-        .fields = ArrayStateEnumFields,
+        .fields = ArrayFieldEnumFields,
         .decls = &.{},
         .is_exhaustive = true,
     } });
 
     const ArrayElemState = @Type(.{ .Union = .{
         .layout = .auto,
-        .tag_type = ArrayStateEnum,
+        .tag_type = ArrayFieldEnum,
         .fields = ArrayElemStateFields,
         .decls = &.{},
     } });
@@ -59,7 +60,9 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
     } });
 
     return struct {
-        pub fn load(allocator: Allocator, input: []const u8) (Parser.Error || Config.DeserializeError)!Schema {
+        pub const Error = error{ UnknownField, UnknownGroup };
+
+        pub fn load(allocator: Allocator, input: []const u8) (Error || Parser.Error || Config.DeserializeError)!Schema {
             var s: Schema = undefined;
             var p = Parser.init(input, .report);
             var array_elem_state: ?ArrayElemState = null;
@@ -69,21 +72,21 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                 switch (ev) {
                     .group => |group| {
                         var found = false;
-                        inline for (ArrayKeys) |k|
-                            if (std.mem.eql(u8, group, k)) {
-                                const ptr = try @field(array_state, k).addOne(allocator);
-                                array_elem_state = @unionInit(ArrayElemState, k, ptr);
+                        inline for (std.meta.fields(ArrayState)) |f|
+                            if (std.mem.eql(u8, group, f.name)) {
+                                const ptr = try @field(array_state, f.name).addOne(allocator);
+                                array_elem_state = @unionInit(ArrayElemState, f.name, ptr);
                                 found = true;
                                 break;
                             };
                         if (!found)
-                            std.debug.print("unknown group '{s}' referenced\n", .{group});
+                            return Error.UnknownGroup;
                     },
                     .pair => |pair| {
                         var found = false;
                         if (array_elem_state) |*aes| {
-                            out: inline for (std.meta.fields(ArrayStateEnum)) |f|
-                                if (aes.* == @as(ArrayStateEnum, @enumFromInt(f.value)))
+                            out: inline for (std.meta.fields(ArrayFieldEnum)) |f|
+                                if (aes.* == @as(ArrayFieldEnum, @enumFromInt(f.value)))
                                     inline for (std.meta.fields(std.meta.Child(std.meta.TagPayloadByName(ArrayElemState, f.name)))) |sf|
                                         if (std.mem.eql(u8, pair.key, sf.name)) {
                                             @field(@field(aes.*, f.name), sf.name) = try Config.deserialize(sf.type, allocator, pair.key, pair.value);
@@ -97,7 +100,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                                 break;
                             };
                         if (!found)
-                            std.debug.print("unknown field '{s}' referenced{s}\n", .{ pair.key, if (array_elem_state != null) " in array" else "" });
+                            return Error.UnknownField;
                     },
                 };
 
@@ -109,9 +112,22 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
 
         pub fn save(writer: anytype, v: Schema) @TypeOf(writer).Error!void {
             inline for (std.meta.fields(Schema)) |f| {
+                switch (@typeInfo(f.type)) {
+                    .Pointer => |p| if (p.size == .Slice and p.child != u8) {
+                        for (@field(v, f.name)) |e| {
+                            try std.fmt.format(writer, "\n[{s}]\n", .{f.name});
+                            inline for (std.meta.fields(@TypeOf(e))) |sf| {
+                                try std.fmt.format(writer, "{s}=", .{sf.name});
+                                try Config.serialize(sf.type, writer, sf.name, @field(e, sf.name));
+                                try writer.writeByte('\n');
+                            }
+                        }
+                        continue;
+                    },
+                    else => {},
+                }
                 try std.fmt.format(writer, "{s}=", .{f.name});
-                const value = @field(v, f.name);
-                try Config.serialize(f.type, writer, f.name, value);
+                try Config.serialize(f.type, writer, f.name, @field(v, f.name));
                 try writer.writeByte('\n');
             }
         }
@@ -128,8 +144,7 @@ test "base" {
     const SchemaSD = SerDes(Schema, struct {
         const DeserializeError = Allocator.Error || std.fmt.ParseIntError;
 
-        fn deserialize(comptime T: type, allocator: Allocator, key: []const u8, value: []const u8) DeserializeError!T {
-            _ = key;
+        fn deserialize(comptime T: type, allocator: Allocator, _: []const u8, value: []const u8) DeserializeError!T {
             return switch (T) {
                 []const u8 => try std.ascii.allocUpperString(allocator, value),
                 u32 => try std.fmt.parseUnsigned(u32, value, 0),
@@ -138,8 +153,7 @@ test "base" {
             };
         }
 
-        fn serialize(comptime T: type, writer: anytype, key: []const u8, value: T) @TypeOf(writer).Error!void {
-            _ = key;
+        fn serialize(comptime T: type, writer: anytype, _: []const u8, value: T) @TypeOf(writer).Error!void {
             switch (T) {
                 []const u8 => {
                     const lowered = try std.ascii.allocLowerString(testing.allocator, value);
@@ -191,9 +205,7 @@ test "array" {
     const SchemaSD = SerDes(Schema, struct {
         const DeserializeError = Allocator.Error || std.fmt.ParseIntError;
 
-        fn deserialize(comptime T: type, allocator: Allocator, key: []const u8, value: []const u8) DeserializeError!T {
-            _ = key;
-            _ = allocator;
+        fn deserialize(comptime T: type, _: Allocator, _: []const u8, value: []const u8) DeserializeError!T {
             return switch (T) {
                 []const u8 => value,
                 usize => try std.fmt.parseUnsigned(usize, value, 0),
@@ -201,16 +213,10 @@ test "array" {
             };
         }
 
-        fn serialize(comptime T: type, writer: anytype, key: []const u8, value: T) @TypeOf(writer).Error!void {
-            _ = key;
+        fn serialize(comptime T: type, writer: anytype, _: []const u8, value: T) @TypeOf(writer).Error!void {
             switch (T) {
-                []const u8 => {
-                    const lowered = try std.ascii.allocLowerString(testing.allocator, value);
-                    defer testing.allocator.free(lowered);
-                    try writer.writeAll(lowered);
-                },
-                u32 => try std.fmt.format(writer, "0o{o}", .{value}),
-                bool => try writer.writeAll(if (value) "1" else "0"),
+                []const u8 => try writer.writeAll(value),
+                usize => try std.fmt.format(writer, "{d}", .{value}),
                 else => unreachable,
             }
         }
@@ -243,4 +249,23 @@ test "array" {
             .{ .n = 42 },
         },
     }, v);
+
+    var out = std.ArrayListUnmanaged(u8){};
+    defer out.deinit(testing.allocator);
+    try SchemaSD.save(out.writer(testing.allocator), v);
+    try testing.expectEqualStrings(
+        \\thingy=yo!
+        \\
+        \\[stuff]
+        \\a=1
+        \\b=2
+        \\
+        \\[stuff]
+        \\a=3
+        \\b=4
+        \\
+        \\[garage]
+        \\n=42
+        \\
+    , out.items);
 }
