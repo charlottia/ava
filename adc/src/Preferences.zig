@@ -29,7 +29,7 @@ pub fn Preferences(comptime Schema: type) type {
 
         const SerDes = ini.SerDes(Schema, struct {
             pub const DeserializeError = error{ParseError};
-            pub fn deserialize(comptime T: type, key: []const u8, value: []const u8) DeserializeError!T {
+            pub fn deserialize(comptime T: type, _: Allocator, key: []const u8, value: []const u8) DeserializeError!T {
                 switch (T) {
                     bool => if (std.ascii.eqlIgnoreCase(value, "true")) {
                         return true;
@@ -63,7 +63,7 @@ pub fn Preferences(comptime Schema: type) type {
             const d = self.app_dir.readFileAlloc(self.allocator, "adc.ini", 1048576) catch return;
             defer self.allocator.free(d);
 
-            try SerDes.loadInto(d, &self.settings);
+            self.settings = try SerDes.load(self.allocator, d);
         }
 
         pub fn save(self: *const Self) !void {
