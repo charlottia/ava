@@ -31,19 +31,23 @@ pub fn Preferences(comptime Schema: type) type {
             pub const DeserializeError = error{ParseError};
             pub fn deserialize(comptime T: type, _: Allocator, key: []const u8, value: []const u8) DeserializeError!T {
                 switch (T) {
-                    bool => if (std.ascii.eqlIgnoreCase(value, "true")) {
-                        return true;
-                    } else if (std.ascii.eqlIgnoreCase(value, "false")) {
-                        return false;
-                    } else {
-                        std.log.warn("unknown boolean value for key '{s}' in adc.ini: '{s}'", .{ key, value });
-                        return error.ParseError;
+                    bool => {
+                        if (std.ascii.eqlIgnoreCase(value, "true"))
+                            return true
+                        else if (std.ascii.eqlIgnoreCase(value, "false"))
+                            return false
+                        else {
+                            std.log.warn("unknown boolean value for key '{s}' in adc.ini: '{s}'", .{ key, value });
+                            return error.ParseError;
+                        }
                     },
-                    u8 => if (std.fmt.parseUnsigned(u8, value, 0)) |v| {
-                        return v;
-                    } else |_| {
-                        std.log.warn("unknown integer value for key '{s}' in adc.ini: '{s}'", .{ key, value });
-                        return error.ParseError;
+                    u8 => {
+                        if (std.fmt.parseUnsigned(u8, value, 0)) |v|
+                            return v
+                        else |_| {
+                            std.log.warn("unknown integer value for key '{s}' in adc.ini: '{s}'", .{ key, value });
+                            return error.ParseError;
+                        }
                     },
                     else => @compileError("unhandled type: " ++ @typeName(T)),
                 }

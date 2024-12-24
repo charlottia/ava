@@ -208,15 +208,25 @@ pub const Impl = struct {
                 }
             },
             .move => |*d| {
-                // TODO: out of bounds = crash
                 const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
                 const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
-                self.r1 = @intCast(@as(isize, @intCast(self.r1)) + dr);
-                self.c1 = @intCast(@as(isize, @intCast(self.c1)) + dc);
-                self.r2 = @intCast(@as(isize, @intCast(self.r2)) + dr);
-                self.c2 = @intCast(@as(isize, @intCast(self.c2)) + dc);
-                d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
-                d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
+                const r1: isize = @as(isize, @intCast(self.r1)) + dr;
+                const c1: isize = @as(isize, @intCast(self.c1)) + dc;
+                const r2: isize = @as(isize, @intCast(self.r2)) + dr;
+                const c2: isize = @as(isize, @intCast(self.c2)) + dc;
+                // Don't allow moving right up to the edge:
+                // (a) why would you need to; and,
+                // (b) the hover outline crashes on render due to OOB. :)
+                if (r1 > 0 and r2 < self.imtui.text_mode.H) {
+                    self.r1 = @intCast(r1);
+                    self.r2 = @intCast(r2);
+                    d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
+                }
+                if (c1 > 0 and c2 < self.imtui.text_mode.W) {
+                    self.c1 = @intCast(c1);
+                    self.c2 = @intCast(c2);
+                    d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
+                }
             },
             else => unreachable,
         }

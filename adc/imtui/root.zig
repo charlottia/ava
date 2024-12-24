@@ -1,4 +1,5 @@
 pub const SDL = @import("sdl2");
+pub const App = @import("./App.zig");
 pub const Imtui = @import("./Imtui.zig");
 pub const Font = @import("./Font.zig");
 pub const TextMode = @import("./TextMode.zig").TextMode;

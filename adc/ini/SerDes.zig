@@ -63,7 +63,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
         pub const Error = error{ UnknownField, UnknownGroup };
 
         pub fn load(allocator: Allocator, input: []const u8) (Error || Parser.Error || Config.DeserializeError)!Schema {
-            var s: Schema = undefined;
+            var s: Schema = .{};
             var p = Parser.init(input, .report);
             var array_elem_state: ?ArrayElemState = null;
             var array_state: ArrayState = .{};
@@ -136,9 +136,9 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
 
 test "base" {
     const Schema = struct {
-        string: []const u8,
-        integer: u32,
-        boolean: bool,
+        string: []const u8 = undefined,
+        integer: u32 = undefined,
+        boolean: bool = undefined,
     };
 
     const SchemaSD = SerDes(Schema, struct {
@@ -192,14 +192,14 @@ test "base" {
 
 test "array" {
     const Schema = struct {
-        thingy: []const u8,
+        thingy: []const u8 = undefined,
         stuff: []const struct {
             a: usize,
             b: usize,
-        },
+        } = undefined,
         garage: []const struct {
             n: usize,
-        },
+        } = undefined,
     };
 
     const SchemaSD = SerDes(Schema, struct {
