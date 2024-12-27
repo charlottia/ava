@@ -29,6 +29,7 @@ controls: std.ArrayListUnmanaged(Control),
 
 inhibit_underlay: bool = false,
 
+display: enum { behind, design_only, in_front } = .behind,
 save_dialog_open: bool = false,
 save_confirm_open: bool = false,
 
@@ -123,7 +124,8 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
 
 pub fn render(self: *Designer) !void {
     try self.renderItems();
-    try self.renderMenus();
+    const menubar = try self.renderMenus();
+    try self.renderHelpLine(menubar);
 
     self.inhibit_underlay = false;
     if (self.save_dialog_open)
@@ -149,7 +151,7 @@ fn renderItems(self: *Designer) !void {
     }
 }
 
-fn renderMenus(self: *Designer) !void {
+fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     var menubar = try self.imtui.menubar(0, 0, 80);
 
     var file_menu = try menubar.menu("&File", 16);
@@ -168,23 +170,76 @@ fn renderMenus(self: *Designer) !void {
             self.save_dialog_open = true;
         }
     }
-    _ = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name and format");
+    _ = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
     try file_menu.separator();
     var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to DOS");
-    if (exit.chosen()) {
-        std.debug.print("yay\n", .{});
+    if (exit.chosen())
         self.imtui.running = false;
-    }
     file_menu.end();
 
     var add_menu = try menubar.menu("&Add", 16);
     var button = (try add_menu.item("&Button")).help("Add new button to dialog");
     if (button.chosen()) {
-        try self.controls.append(self.imtui.allocator, .{ .button = .{ .r = 5, .c = 5, .label = "OK" } });
+        try self.controls.append(self.imtui.allocator, .{ .button = .{ .r = 5, .c = 5, .label = try self.imtui.allocator.dupe(u8, "OK") } });
     }
     add_menu.end();
 
+    var controls_menu = try menubar.menu("&Controls", 16);
+    for (self.controls.items) |c| {
+        switch (c) {
+            .dialog => |_| {
+                _ = (try controls_menu.item("[Dialog] ")).help("Open dialog properties");
+            },
+            .button => |_| {
+                _ = (try controls_menu.item("[Button] ")).help("Open button properties");
+            },
+        }
+    }
+    controls_menu.end();
+
     menubar.end();
+
+    return menubar;
+}
+
+fn renderHelpLine(self: *Designer, menubar: Imtui.Controls.Menubar) !void {
+    const help_line_colour = 0x30;
+    self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
+
+    var show_ruler = true;
+    var handled = false;
+
+    const focused = self.imtui.focus_stack.getLast();
+    if (focused.is(Imtui.Controls.Menubar.Impl)) |mb| {
+        if (mb.focus != null and mb.focus.? == .menu) {
+            const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
+            self.imtui.text_mode.write(24, 1, "F1=Help");
+            self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
+            self.imtui.text_mode.write(24, 11, help_text);
+            show_ruler = (11 + help_text.len) <= 62;
+            handled = true;
+        } else if (mb.focus != null and mb.focus.? == .menubar) {
+            self.imtui.text_mode.write(24, 1, "Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
+            handled = true;
+        }
+    } else if (focused.parent()) |p|
+        if (p.is(Imtui.Controls.Dialog.Impl)) |_| {
+            self.imtui.text_mode.write(24, 1, "Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
+            show_ruler = false;
+            handled = true;
+        };
+
+    if (!handled) {
+        var underlay_button = try self.imtui.button(24, 1, help_line_colour, "<`=Underlay>");
+        var underlay_shortcut = try self.imtui.shortcut(.grave, null);
+        if (underlay_button.chosen() or underlay_shortcut.chosen()) {
+            self.display = switch (self.display) {
+                .behind => .design_only,
+                .design_only => .in_front,
+                .in_front => .behind,
+            };
+        }
+    }
 }
 
 fn dialogPrep(self: *Designer) void {
