@@ -25,6 +25,9 @@ underlay_filename: []const u8,
 underlay_texture: SDL.Texture,
 controls: std.ArrayListUnmanaged(Control),
 
+save_dialog_open: bool = false,
+save_confirm_open: bool = false,
+
 pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: []const u8) !Designer {
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
 
@@ -125,4 +128,89 @@ pub fn render(self: *Designer) !void {
             },
         }
     }
+
+    var save_shortcut = try self.imtui.shortcut(.s, .ctrl);
+    if (save_shortcut.chosen()) {
+        if (self.save_filename) |f| {
+            const h = try std.fs.cwd().createFile(f, .{});
+            defer h.close();
+
+            try self.dump(h.writer());
+
+            self.save_confirm_open = true;
+        } else {
+            self.save_dialog_open = true;
+        }
+    }
+
+    if (self.save_dialog_open)
+        try self.renderSaveDialog();
+    if (self.save_confirm_open)
+        try self.renderSaveConfirm();
+}
+
+fn dialogPrep(self: *Designer) void {
+    self.imtui.text_mode.cursor_inhibit = false;
+    for (0..self.imtui.text_mode.H) |r|
+        for (0..self.imtui.text_mode.W) |c|
+            self.imtui.text_mode.shadow(r, c);
+}
+
+fn renderSaveDialog(self: *Designer) !void {
+    self.dialogPrep();
+
+    var dialog = try self.imtui.dialog("Save As", 10, 60);
+
+    dialog.groupbox("", 1, 1, 4, 30, 0x70);
+
+    var input = try dialog.input(2, 2, 40);
+    if (input.initial()) |init|
+        try init.appendSlice(self.imtui.allocator, "dialog.ini");
+
+    var ok = try dialog.button(4, 4, "OK");
+    ok.default();
+    if (ok.chosen()) {
+        self.save_filename = try self.imtui.allocator.dupe(u8, input.impl.value.items);
+        const h = try std.fs.cwd().createFile(input.impl.value.items, .{});
+        defer h.close();
+
+        try self.dump(h.writer());
+
+        self.save_dialog_open = false;
+        self.imtui.unfocus(dialog.impl.control());
+
+        self.save_confirm_open = true;
+    }
+
+    var cancel = try dialog.button(4, 30, "Cancel");
+    cancel.cancel();
+    if (cancel.chosen()) {
+        self.save_dialog_open = false;
+        self.imtui.unfocus(dialog.impl.control());
+    }
+
+    try dialog.end();
+}
+
+fn renderSaveConfirm(self: *Designer) !void {
+    self.dialogPrep();
+
+    var dialog = try self.imtui.dialog("", 7, 40);
+
+    var buf: [100]u8 = undefined;
+    const msg = try std.fmt.bufPrint(&buf, "Saved to \"{s}\".", .{self.save_filename.?});
+    self.imtui.text_mode.write(dialog.impl.r1 + 2, dialog.impl.c1 + (dialog.impl.c2 - dialog.impl.c1 - msg.len) / 2, msg);
+
+    self.imtui.text_mode.draw(dialog.impl.r1 + 4, dialog.impl.c1, 0x70, .VerticalRight);
+    self.imtui.text_mode.paint(dialog.impl.r1 + 4, dialog.impl.c1 + 1, dialog.impl.r1 + 4 + 1, dialog.impl.c1 + 40 - 1, 0x70, .Horizontal);
+    self.imtui.text_mode.draw(dialog.impl.r1 + 4, dialog.impl.c1 + 40 - 1, 0x70, .VerticalLeft);
+
+    var ok = try dialog.button(5, 17, "OK");
+    ok.default();
+    if (ok.chosen()) {
+        self.save_confirm_open = false;
+        self.imtui.unfocus(dialog.impl.control());
+    }
+
+    try dialog.end();
 }

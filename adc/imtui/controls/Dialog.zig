@@ -13,6 +13,8 @@ pub const Impl = struct {
     title: []const u8,
     r1: usize = undefined,
     c1: usize = undefined,
+    r2: usize = undefined,
+    c2: usize = undefined,
 
     applied_initial_focus: bool = false,
     controls: std.ArrayListUnmanaged(Imtui.Control) = .{},
@@ -36,6 +38,8 @@ pub const Impl = struct {
     pub fn describe(self: *Impl, _: []const u8, height: usize, width: usize) void {
         self.r1 = (self.imtui.text_mode.H - height) / 2;
         self.c1 = (self.imtui.text_mode.W - width) / 2;
+        self.r2 = self.r1 + height;
+        self.c2 = self.c1 + width;
         self.controls_at = 0;
         self.default_button = null;
         self.cancel_button = null;
