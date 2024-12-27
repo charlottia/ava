@@ -6,6 +6,11 @@ const Imtui = @import("../Imtui.zig");
 
 const Dialog = @This();
 
+pub const Position = union(enum) {
+    centred,
+    at: struct { row: usize, col: usize },
+};
+
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
@@ -35,9 +40,17 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(self: *Impl, _: []const u8, height: usize, width: usize) void {
-        self.r1 = (self.imtui.text_mode.H - height) / 2;
-        self.c1 = (self.imtui.text_mode.W - width) / 2;
+    pub fn describe(self: *Impl, _: []const u8, height: usize, width: usize, position: Position) void {
+        switch (position) {
+            .centred => {
+                self.r1 = (self.imtui.text_mode.H - height) / 2;
+                self.c1 = (self.imtui.text_mode.W - width) / 2;
+            },
+            .at => |at| {
+                self.r1 = at.row;
+                self.c1 = at.col;
+            },
+        }
         self.r2 = self.r1 + height;
         self.c2 = self.c1 + width;
         self.controls_at = 0;
@@ -115,18 +128,18 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, title: []const u8, _: usize, _: usize) ![]const u8 {
+pub fn bufPrintImtuiId(buf: []u8, title: []const u8, _: usize, _: usize, _: Position) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{s}/{s}", .{ "core.Dialog", title });
 }
 
-pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize) !Dialog {
+pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize, position: Position) !Dialog {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .title = title,
     };
-    d.describe(title, height, width);
+    d.describe(title, height, width, position);
     return .{ .impl = d };
 }
 

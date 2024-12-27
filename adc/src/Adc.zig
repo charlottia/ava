@@ -473,7 +473,7 @@ fn renderDisplayDialog(self: *Adc) !void {
     // opened (i.e. the text " Options " is inverted at the top). TODO
     // confirm and implement. TODO confirmed, do it
 
-    var dialog = try self.imtui.dialog("Display", 22, 60);
+    var dialog = try self.imtui.dialog("Display", 22, 60, .centred);
 
     dialog.groupbox("Colors", 1, 2, 15, 58, 0x70);
 
@@ -574,7 +574,7 @@ fn renderDisplayDialog(self: *Adc) !void {
     try dialog.end();
 
     if (self.display_dialog_help_dialog_visible) {
-        var help_dialog = try self.imtui.dialog("HELP: Display Dialog", 21, 70);
+        var help_dialog = try self.imtui.dialog("HELP: Display Dialog", 21, 70, .centred);
         self.imtui.text_mode.draw(help_dialog.impl.r1 + 18, help_dialog.impl.c1, 0x70, .VerticalRight);
         self.imtui.text_mode.paint(help_dialog.impl.r1 + 18, help_dialog.impl.c1 + 1, help_dialog.impl.r1 + 18 + 1, help_dialog.impl.c1 + 70 - 1, 0x70, .Horizontal);
         self.imtui.text_mode.draw(help_dialog.impl.r1 + 18, help_dialog.impl.c1 + 70 - 1, 0x70, .VerticalLeft);

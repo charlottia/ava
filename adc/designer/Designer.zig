@@ -7,11 +7,13 @@ const ini = @import("ini");
 const Imtui = imtuilib.Imtui;
 
 const DesignDialog = @import("./DesignDialog.zig");
+const DesignButton = @import("./DesignButton.zig");
 
 const Designer = @This();
 
 const Control = union(enum) {
     dialog: DesignDialog.Schema,
+    button: DesignButton.Schema,
 };
 
 const SaveFile = struct {
@@ -25,8 +27,11 @@ underlay_filename: []const u8,
 underlay_texture: SDL.Texture,
 controls: std.ArrayListUnmanaged(Control),
 
+inhibit_underlay: bool = false,
+
 save_dialog_open: bool = false,
 save_confirm_open: bool = false,
+control_menu_open: ?struct { row: usize, col: usize } = null,
 
 pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: []const u8) !Designer {
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
@@ -118,19 +123,49 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
 }
 
 pub fn render(self: *Designer) !void {
-    for (self.controls.items) |*i| {
+    try self.renderItems();
+    try self.renderMenus();
+
+    self.inhibit_underlay = false;
+    if (self.save_dialog_open)
+        try self.renderSaveDialog();
+    if (self.save_confirm_open)
+        try self.renderSaveConfirm();
+    if (self.control_menu_open) |at|
+        try self.renderControlMenu(at.row, at.col);
+}
+
+fn renderItems(self: *Designer) !void {
+    for (self.controls.items, 0..) |*i, ix| {
         switch (i.*) {
             .dialog => |*s| {
                 const dd = try self.imtui.getOrPutControl(DesignDialog, .{ s.r1, s.c1, s.r2, s.c2, s.title });
                 if (self.imtui.focus_stack.items.len == 0)
                     try self.imtui.focus_stack.append(self.imtui.allocator, dd.impl.control());
                 try dd.sync(self.imtui.allocator, s);
+
+                if (dd.right_clicked())
+                    self.control_menu_open = .{
+                        .row = self.imtui.text_mode.mouse_row,
+                        .col = self.imtui.text_mode.mouse_col,
+                    };
+            },
+            .button => |*s| {
+                const db = try self.imtui.getOrPutControl(DesignButton, .{ ix, s.r, s.c, s.label });
+                _ = db;
             },
         }
     }
+}
 
-    var save_shortcut = try self.imtui.shortcut(.s, .ctrl);
-    if (save_shortcut.chosen()) {
+fn renderMenus(self: *Designer) !void {
+    var menubar = try self.imtui.menubar(0, 0, 80);
+
+    var file_menu = try menubar.menu("&File", 16);
+    _ = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
+    _ = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
+    var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");
+    if (save.chosen()) {
         if (self.save_filename) |f| {
             const h = try std.fs.cwd().createFile(f, .{});
             defer h.close();
@@ -142,14 +177,27 @@ pub fn render(self: *Designer) !void {
             self.save_dialog_open = true;
         }
     }
+    _ = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name and format");
+    try file_menu.separator();
+    var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to DOS");
+    if (exit.chosen()) {
+        std.debug.print("yay\n", .{});
+        self.imtui.running = false;
+    }
+    file_menu.end();
 
-    if (self.save_dialog_open)
-        try self.renderSaveDialog();
-    if (self.save_confirm_open)
-        try self.renderSaveConfirm();
+    var add_menu = try menubar.menu("&Add", 16);
+    var button = (try add_menu.item("&Button")).help("Add new button to dialog");
+    if (button.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .button = .{ .r = 5, .c = 5, .label = "OK" } });
+    }
+    add_menu.end();
+
+    menubar.end();
 }
 
 fn dialogPrep(self: *Designer) void {
+    self.inhibit_underlay = true;
     self.imtui.text_mode.cursor_inhibit = false;
     for (0..self.imtui.text_mode.H) |r|
         for (0..self.imtui.text_mode.W) |c|
@@ -159,7 +207,7 @@ fn dialogPrep(self: *Designer) void {
 fn renderSaveDialog(self: *Designer) !void {
     self.dialogPrep();
 
-    var dialog = try self.imtui.dialog("Save As", 10, 60);
+    var dialog = try self.imtui.dialog("Save As", 10, 60, .centred);
 
     dialog.groupbox("", 1, 1, 4, 30, 0x70);
 
@@ -195,7 +243,7 @@ fn renderSaveDialog(self: *Designer) !void {
 fn renderSaveConfirm(self: *Designer) !void {
     self.dialogPrep();
 
-    var dialog = try self.imtui.dialog("", 7, 40);
+    var dialog = try self.imtui.dialog("", 7, 40, .centred);
 
     var buf: [100]u8 = undefined;
     const msg = try std.fmt.bufPrint(&buf, "Saved to \"{s}\".", .{self.save_filename.?});
@@ -209,6 +257,24 @@ fn renderSaveConfirm(self: *Designer) !void {
     ok.default();
     if (ok.chosen()) {
         self.save_confirm_open = false;
+        self.imtui.unfocus(dialog.impl.control());
+    }
+
+    try dialog.end();
+}
+
+fn renderControlMenu(self: *Designer, r: usize, c: usize) !void {
+    var dialog = try self.imtui.dialog("Add Control", 4, 15, .{ .at = .{ .row = r -| 1, .col = c -| 2 } });
+
+    var label = try dialog.button(1, 3, "Label");
+    if (label.chosen()) {
+        self.control_menu_open = null;
+        self.imtui.unfocus(dialog.impl.control());
+    }
+
+    var button = try dialog.button(2, 2, "Button");
+    if (button.chosen()) {
+        self.control_menu_open = null;
         self.imtui.unfocus(dialog.impl.control());
     }
 

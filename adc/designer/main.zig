@@ -53,7 +53,7 @@ pub fn main() !void {
 
         try imtui.render();
 
-        if (display == .both and imtui.focus_stack.items.len == 1)
+        if (display == .both and !designer.inhibit_underlay)
             try app.renderer.copy(designer.underlay_texture, null, null);
 
         app.renderer.present();

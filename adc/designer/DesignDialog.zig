@@ -20,6 +20,8 @@ pub const Impl = struct {
     title: std.ArrayListUnmanaged(u8),
     title_orig: std.ArrayListUnmanaged(u8),
 
+    right_clicked: bool = false,
+
     state: union(enum) {
         idle,
         resize: struct { cix: usize },
@@ -55,6 +57,11 @@ pub const Impl = struct {
 
         switch (self.state) {
             .idle => {
+                self.imtui.text_mode.cursor_inhibit = true;
+
+                if (self.imtui.focus_stack.items.len > 1)
+                    return;
+
                 var highlighted = false;
                 for (self.corners()) |corner|
                     if (!highlighted and self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
@@ -78,8 +85,6 @@ pub const Impl = struct {
                     self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x20, .outline);
                     highlighted = true;
                 }
-
-                self.imtui.text_mode.cursor_inhibit = true;
             },
             .resize => |d| {
                 const corner = self.corners()[d.cix];
@@ -135,6 +140,21 @@ pub const Impl = struct {
                 return;
             },
             else => {
+                if (keycode == .left_alt or keycode == .right_alt) {
+                    var mb = try self.imtui.getMenubar();
+                    mb.focus = .pre;
+                    try self.imtui.focus(mb.control());
+                    return;
+                }
+
+                for ((try self.imtui.getMenubar()).menus.items) |m|
+                    for (m.menu_items.items) |mi| {
+                        if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
+                            mi.?.chosen = true;
+                            return;
+                        };
+                    };
+
                 var cit = self.imtui.controls.valueIterator();
                 while (cit.next()) |c|
                     if (c.is(Imtui.Controls.Shortcut.Impl)) |s|
@@ -159,6 +179,12 @@ pub const Impl = struct {
         _ = clicks;
 
         if (cm) return null;
+
+        if (b == .right) {
+            self.right_clicked = true;
+            return null;
+        }
+
         if (!isMouseOver(ptr)) return null;
         if (b != .left) return null;
 
@@ -300,4 +326,9 @@ pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
         allocator.free(schema.title);
         schema.title = try allocator.dupe(u8, self.impl.title.items);
     }
+}
+
+pub fn right_clicked(self: DesignDialog) bool {
+    defer self.impl.right_clicked = false;
+    return self.impl.right_clicked;
 }
