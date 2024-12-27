@@ -51,6 +51,9 @@ pub fn main() !void {
             display = if (display == .both) .design_only else .both;
         }
 
+        // TODO: work out a way to transparent only certain things (so we can see through the dialog we've made)
+        // TODO: make DesignButton belong to DesignDialog etc. See if we should be reusing real Dialog architecture.
+
         try app.renderer.setColorRGBA(0, 0, 0, 0);
         try app.renderer.clear();
 
