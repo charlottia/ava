@@ -10,7 +10,7 @@ pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
 
-    dialog: *Dialog.Impl,
+    parent: *Dialog.Impl,
 
     // id
     ix: usize,
@@ -44,15 +44,15 @@ pub const Impl = struct {
     }
 
     pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, r: usize, c: usize, label: []const u8) void {
-        self.r = self.dialog.r1 + r;
-        self.c = self.dialog.c1 + c;
+        self.r = self.parent.r1 + r;
+        self.c = self.parent.c1 + c;
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
     }
 
     fn parent(ptr: *const anyopaque) ?Imtui.Control {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.dialog.control();
+        return self.parent.control();
     }
 
     pub fn deinit(ptr: *anyopaque) void {
@@ -74,7 +74,7 @@ pub const Impl = struct {
     pub fn draw(self: *Impl) void {
         var arrowcolour: u8 =
             if (self.imtui.focused(self.control()) or
-            (self.dialog.default_button == self and self.imtui.focus_stack.getLast().is(Impl) == null))
+            (self.parent.default_button == self and self.imtui.focus_stack.getLast().is(Impl) == null))
             0x7f
         else
             0x70;
@@ -89,7 +89,7 @@ pub const Impl = struct {
         self.imtui.text_mode.paint(self.r, self.c + 1, self.r + 1, ec, textcolour, .Blank);
 
         self.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, arrowcolour, '<');
-        self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
+        self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.parent.show_acc and !self.inverted);
         self.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
 
         if (self.imtui.focused(self.control())) {
@@ -105,9 +105,9 @@ pub const Impl = struct {
             .space => self.inverted = true,
             .tab => {
                 self.inverted = false;
-                try self.dialog.commonKeyPress(self.ix, keycode, modifiers);
+                try self.parent.commonKeyPress(self.ix, keycode, modifiers);
             },
-            else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
+            else => try self.parent.commonKeyPress(self.ix, keycode, modifiers),
         }
     }
 
@@ -128,7 +128,7 @@ pub const Impl = struct {
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         if (cm) return null;
-        if (!isMouseOver(ptr)) return self.dialog.commonMouseDown(b, clicks, cm);
+        if (!isMouseOver(ptr)) return self.parent.commonMouseDown(b, clicks, cm);
         if (b != .left) return null;
 
         try self.imtui.focus(self.control());
@@ -162,25 +162,25 @@ pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: 
     return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogButton", dialog.title, ix });
 }
 
-pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogButton {
+pub fn create(imtui: *Imtui, parent: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogButton {
     var b = try imtui.allocator.create(Impl);
     b.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .dialog = dialog,
+        .parent = parent,
         .ix = ix,
     };
-    b.describe(dialog, ix, r, c, label);
-    try dialog.controls.append(imtui.allocator, b.control());
+    b.describe(parent, ix, r, c, label);
+    try parent.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }
 
 pub fn default(self: DialogButton) void {
-    self.impl.dialog.default_button = self.impl;
+    self.impl.parent.default_button = self.impl;
 }
 
 pub fn cancel(self: DialogButton) void {
-    self.impl.dialog.cancel_button = self.impl;
+    self.impl.parent.cancel_button = self.impl;
 }
 
 pub fn chosen(self: DialogButton) bool {

@@ -135,16 +135,17 @@ pub fn render(self: *Designer) !void {
 }
 
 fn renderItems(self: *Designer) !void {
-    for (self.controls.items, 0..) |*i, ix| {
+    const ds = &self.controls.items[0].dialog;
+    const dd = try self.imtui.getOrPutControl(DesignDialog, .{ ds.r1, ds.c1, ds.r2, ds.c2, ds.title });
+    if (self.imtui.focus_stack.items.len == 0)
+        try self.imtui.focus_stack.append(self.imtui.allocator, dd.impl.control());
+    try dd.sync(self.imtui.allocator, ds);
+
+    for (self.controls.items[1..], 1..) |*i, ix| {
         switch (i.*) {
-            .dialog => |*s| {
-                const dd = try self.imtui.getOrPutControl(DesignDialog, .{ s.r1, s.c1, s.r2, s.c2, s.title });
-                if (self.imtui.focus_stack.items.len == 0)
-                    try self.imtui.focus_stack.append(self.imtui.allocator, dd.impl.control());
-                try dd.sync(self.imtui.allocator, s);
-            },
+            .dialog => unreachable,
             .button => |*s| {
-                const db = try self.imtui.getOrPutControl(DesignButton, .{ ix, s.r, s.c, s.label });
+                const db = try self.imtui.getOrPutControl(DesignButton, .{ dd.impl, ix, s.r1, s.c1, s.label });
                 _ = db;
             },
         }
@@ -180,7 +181,10 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     var add_menu = try menubar.menu("&Add", 16);
     var button = (try add_menu.item("&Button")).help("Add new button to dialog");
     if (button.chosen()) {
-        try self.controls.append(self.imtui.allocator, .{ .button = .{ .r = 5, .c = 5, .label = try self.imtui.allocator.dupe(u8, "OK") } });
+        try self.controls.append(
+            self.imtui.allocator,
+            .{ .button = .{ .r1 = 5, .c1 = 5, .label = try self.imtui.allocator.dupe(u8, "OK") } },
+        );
     }
     add_menu.end();
 

@@ -176,9 +176,7 @@ pub const Shortcut = struct {
         if (keycode != self.keycode) return false;
         return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
             (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
-            // We treat Control and Command as the same.
-            (modifiers.get(.left_control) or modifiers.get(.right_control) or
-            modifiers.get(.left_gui) or modifiers.get(.right_gui)) == (self.modifier == .ctrl);
+            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
     }
 };
 
@@ -218,11 +216,16 @@ pub fn processEvent(self: *Imtui, event: SDL.Event) !void {
     switch (event) {
         .key_down => |key| {
             if (key.is_repeat) return;
-            try self.handleKeyPress(key.keycode, key.modifiers);
             self.keydown_sym = key.keycode;
             self.keydown_mod = key.modifiers;
+            // treat Command as Control for all purposes.
+            if (self.keydown_mod.get(.left_gui))
+                self.keydown_mod.set(.left_control);
+            if (self.keydown_mod.get(.right_gui))
+                self.keydown_mod.set(.right_control);
             self.typematic_on = false;
             self.typematic_tick = SDL.getTicks64();
+            try self.handleKeyPress(self.keydown_sym, self.keydown_mod);
         },
         .key_up => |key| {
             // We don't try to match key down to up.
@@ -497,11 +500,11 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     // shortcuts for us, but we have to explicitly avoid it whenever we're not
     // focusing an editor, i.e. like the dialog case above. Perhaps we should
     // just put it in Editor. XXX
-    var cit = self.controls.valueIterator();
-    while (cit.next()) |c|
-        if (c.isMouseOver()) {
-            return try c.handleMouseDown(b, clicks, cm);
-        };
+    // var cit = self.controls.valueIterator();
+    // while (cit.next()) |c|
+    //     if (c.isMouseOver()) {
+    //         return try c.handleMouseDown(b, clicks, cm);
+    //     };
 
     return null;
 }

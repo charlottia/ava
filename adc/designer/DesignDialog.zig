@@ -18,7 +18,7 @@ pub const Impl = struct {
     r2: usize,
     c2: usize,
     title: std.ArrayListUnmanaged(u8),
-    title_orig: std.ArrayListUnmanaged(u8),
+    title_orig: std.ArrayListUnmanaged(u8) = .{},
 
     right_clicked: bool = false,
 
@@ -121,8 +121,7 @@ pub const Impl = struct {
             .title_edit => {
                 switch (keycode) {
                     .backspace => if (self.title.items.len > 0) {
-                        if (modifiers.get(.left_control) or modifiers.get(.right_control) or
-                            modifiers.get(.left_gui) or modifiers.get(.right_gui))
+                        if (modifiers.get(.left_control) or modifiers.get(.right_control))
                             self.title.items.len = 0
                         else
                             self.title.items.len -= 1;
@@ -169,7 +168,8 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.state == .title_edit or (self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and
+        return self.state == .title_edit or // <- "captures" cursor during edit
+            (self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and
             self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2);
     }
 
@@ -196,7 +196,7 @@ pub const Impl = struct {
                     };
 
                 if (self.imtui.text_mode.mouse_row == self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
+                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
                 {
                     try self.title_orig.replaceRange(self.imtui.allocator, 0, self.title_orig.items.len, self.title.items);
                     self.state = .title_edit;
@@ -217,7 +217,7 @@ pub const Impl = struct {
             },
             .title_edit => {
                 if (!(self.imtui.text_mode.mouse_row == self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1))
+                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1))
                 {
                     self.state = .idle;
                 }
@@ -298,7 +298,6 @@ pub fn create(imtui: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, title: 
         .r2 = r2,
         .c2 = c2,
         .title = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, title)),
-        .title_orig = .{},
     };
     d.describe(r1, c1, r2, c2, title);
     return .{ .impl = d };

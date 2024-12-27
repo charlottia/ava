@@ -12,7 +12,7 @@ pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
 
-    dialog: *Dialog.Impl,
+    parent: *Dialog.Impl,
 
     // id
     ix: usize,
@@ -51,9 +51,9 @@ pub const Impl = struct {
     }
 
     pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, r: usize, c1: usize, c2: usize) void {
-        self.r = self.dialog.r1 + r;
-        self.c1 = self.dialog.c1 + c1;
-        self.c2 = self.dialog.c1 + c2;
+        self.r = self.parent.r1 + r;
+        self.c1 = self.parent.c1 + c1;
+        self.c2 = self.parent.c1 + c2;
         self.accel = null;
 
         self.el.describe(self.r, self.c1, self.r + 1, self.c2);
@@ -62,7 +62,7 @@ pub const Impl = struct {
 
     fn parent(ptr: *const anyopaque) ?Imtui.Control {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.dialog.control();
+        return self.parent.control();
     }
 
     pub fn deinit(ptr: *anyopaque) void {
@@ -109,15 +109,15 @@ pub const Impl = struct {
                 return;
             };
 
-        try self.dialog.commonKeyPress(self.ix, keycode, modifiers);
+        try self.parent.commonKeyPress(self.ix, keycode, modifiers);
     }
 
     fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.dialog.imtui.mouse_row == self.r and
-            self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
+        return self.parent.imtui.mouse_row == self.r and
+            self.parent.imtui.mouse_col >= self.c1 and self.parent.imtui.mouse_col < self.c2;
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
@@ -126,7 +126,7 @@ pub const Impl = struct {
 
         if (!cm) {
             if (!isMouseOver(ptr)) {
-                const new = try self.dialog.commonMouseDown(b, clicks, cm);
+                const new = try self.parent.commonMouseDown(b, clicks, cm);
                 if (new != null and new.?.is(Dialog.Impl) == null)
                     try onBlur(ptr);
                 return new;
@@ -143,7 +143,7 @@ pub const Impl = struct {
                 try self.imtui.focus(self.control())
             else
                 // clicking on already selected; set cursor where clicked.
-                self.el.cursor_col = self.el.scroll_col + self.dialog.imtui.mouse_col - self.c1;
+                self.el.cursor_col = self.el.scroll_col + self.parent.imtui.mouse_col - self.c1;
 
             return self.control();
         }
@@ -171,7 +171,7 @@ pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c1: usiz
     b.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .dialog = dialog,
+        .parent = dialog,
         .ix = ix,
         .el = .{
             .imtui = imtui,
