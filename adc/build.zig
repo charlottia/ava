@@ -88,6 +88,7 @@ pub fn build(b: *std.Build) void {
     });
     designer.linkLibCpp();
     designer.root_module.addImport("imtui", &imtui.root_module);
+    designer.root_module.addImport("ini", &ini.root_module);
 
     b.installArtifact(designer);
 

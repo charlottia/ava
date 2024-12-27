@@ -3,11 +3,13 @@ const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
 const imtuilib = @import("imtui");
 const SDL = imtuilib.SDL;
+const ini = @import("ini");
 
 const Args = @import("./Args.zig");
 const Imtui = imtuilib.Imtui;
 const App = imtuilib.App;
 
+const Designer = @import("./Designer.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 
 pub fn main() !void {
@@ -25,44 +27,43 @@ pub fn main() !void {
     });
     defer app.deinit();
 
-    const underlay = if (args.filename) |f| i: {
-        const d = try std.fs.cwd().readFileAllocOptions(allocator, f, 10485760, null, @alignOf(u8), 0);
-        defer allocator.free(d);
-        const t = try SDL.image.loadTextureMem(app.renderer, d, .png);
-        try t.setAlphaMod(128);
-        try t.setBlendMode(.blend);
-        break :i t;
-    } else null;
-
     var imtui = try Imtui.init(allocator, app.renderer, app.font, app.eff_scale);
     defer imtui.deinit();
 
     var display: enum { both, design_only } = .both;
 
+    var designer: Designer = switch (args.mode) {
+        .new => |f| try Designer.initDefaultWithUnderlay(allocator, app.renderer, f),
+        .load => |f| try Designer.initFromIni(allocator, app.renderer, f),
+    };
+    defer designer.deinit();
+
     while (imtui.running) {
-        while (SDL.pollEvent()) |ev| {
-            switch (ev) {
-                .key_down => |key| if (key.keycode == .grave) {
-                    display = if (display == .both) .design_only else .both;
-                    continue;
-                },
-                else => {},
-            }
+        while (SDL.pollEvent()) |ev|
             try imtui.processEvent(ev);
-        }
 
         try imtui.newFrame();
 
-        var dd = try imtui.getOrPutControl(DesignDialog, .{ 5, 5, 20, 60, "Untitled Dialog" });
+        for (designer.controls.items) |*i| {
+            switch (i.*) {
+                .dialog => |*s| {
+                    const dd = try imtui.getOrPutControl(DesignDialog, .{ s.r1, s.c1, s.r2, s.c2, s.title });
+                    if (imtui.focus_stack.items.len == 0)
+                        try imtui.focus_stack.append(imtui.allocator, dd.impl.control());
+                    try dd.sync(allocator, s);
+                },
+            }
+        }
 
-        if (imtui.focus_stack.items.len == 0)
-            try imtui.focus_stack.append(imtui.allocator, dd.impl.control());
+        var toggle_display_shortcut = try imtui.shortcut(.grave, null);
+        if (toggle_display_shortcut.chosen()) {
+            display = if (display == .both) .design_only else .both;
+        }
 
         try imtui.render();
 
         if (display == .both)
-            if (underlay) |t|
-                try app.renderer.copy(t, null, null);
+            try app.renderer.copy(designer.underlay_texture, null, null);
 
         app.renderer.present();
     }

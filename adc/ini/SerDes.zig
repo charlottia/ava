@@ -7,13 +7,46 @@ const Parser = @import("./Parser.zig");
 // The following was intended to produce offense in every person whomsoever
 // should read it.  Please accept it in the manner intended.
 
+const default_DeserializeError = Allocator.Error || std.fmt.ParseIntError;
+fn default_deserialize(comptime T: type, allocator: Allocator, _: []const u8, value: []const u8) default_DeserializeError!T {
+    return switch (T) {
+        []const u8 => try allocator.dupe(u8, value),
+        usize => try std.fmt.parseUnsigned(usize, value, 0),
+        else => unreachable,
+    };
+}
+
+fn default_serialize(comptime T: type, writer: anytype, _: []const u8, value: T) @TypeOf(writer).Error!void {
+    switch (T) {
+        []const u8 => try writer.writeAll(value),
+        usize => try std.fmt.format(writer, "{d}", .{value}),
+        else => unreachable,
+    }
+}
+
 pub fn SerDes(comptime Schema: type, comptime Config: type) type {
+    const DeserializeError = if (@hasDecl(Config, "deserialize"))
+        Config.DeserializeError
+    else
+        default_DeserializeError;
+    const deserialize = if (@hasDecl(Config, "deserialize"))
+        Config.deserialize
+    else
+        default_deserialize;
+    const serialize = if (@hasDecl(Config, "serialize"))
+        Config.serialize
+    else
+        default_serialize;
+
     comptime var ArrayFieldEnumFields: []const std.builtin.Type.EnumField = &.{};
     comptime var ArrayElemStateFields: []const std.builtin.Type.UnionField = &.{};
     comptime var ArrayStateFields: []const std.builtin.Type.StructField = &.{};
+    comptime var LoadStateFields: []const std.builtin.Type.StructField = &.{};
     for (std.meta.fields(Schema)) |f| {
+        var was_group = false;
         switch (@typeInfo(f.type)) {
             .Pointer => |p| if (p.size == .Slice and p.child != u8) {
+                was_group = true;
                 ArrayFieldEnumFields = ArrayFieldEnumFields ++ [_]std.builtin.Type.EnumField{.{
                     .name = f.name,
                     .value = ArrayFieldEnumFields.len,
@@ -32,6 +65,15 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                 }};
             },
             else => {},
+        }
+        if (!was_group) {
+            LoadStateFields = LoadStateFields ++ [_]std.builtin.Type.StructField{.{
+                .name = f.name,
+                .type = bool,
+                .default_value = &false,
+                .is_comptime = false,
+                .alignment = 0,
+            }};
         }
     }
 
@@ -59,10 +101,17 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
         .is_tuple = false,
     } });
 
-    return struct {
-        pub const Error = error{ UnknownField, UnknownGroup };
+    const LoadState = @Type(.{ .Struct = .{
+        .layout = .@"packed",
+        .fields = LoadStateFields,
+        .decls = &.{},
+        .is_tuple = false,
+    } });
 
-        pub fn load(allocator: Allocator, input: []const u8) (Error || Parser.Error || Config.DeserializeError)!Schema {
+    return struct {
+        pub const Error = error{ MissingField, UnknownField, UnknownGroup };
+
+        pub fn load(allocator: Allocator, input: []const u8) (Error || Parser.Error || DeserializeError)!Schema {
             var s: Schema = .{};
             var p = Parser.init(input, .report);
             var array_elem_state: ?ArrayElemState = null;
@@ -89,13 +138,13 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                                 if (aes.* == @as(ArrayFieldEnum, @enumFromInt(f.value)))
                                     inline for (std.meta.fields(std.meta.Child(std.meta.TagPayloadByName(ArrayElemState, f.name)))) |sf|
                                         if (std.mem.eql(u8, pair.key, sf.name)) {
-                                            @field(@field(aes.*, f.name), sf.name) = try Config.deserialize(sf.type, allocator, pair.key, pair.value);
+                                            @field(@field(aes.*, f.name), sf.name) = try deserialize(sf.type, allocator, pair.key, pair.value);
                                             found = true;
                                             break :out;
                                         };
                         } else inline for (std.meta.fields(Schema)) |f|
                             if (std.mem.eql(u8, pair.key, f.name)) {
-                                @field(s, f.name) = try Config.deserialize(f.type, allocator, pair.key, pair.value);
+                                @field(s, f.name) = try deserialize(f.type, allocator, pair.key, pair.value);
                                 found = true;
                                 break;
                             };
@@ -110,6 +159,40 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
             return s;
         }
 
+        // XXX: for now, only loadGroup asserts all its fields are actually
+        // found. Hence we can use `= undefined' and not require defaults from
+        // the type.
+        pub fn loadGroup(allocator: Allocator, p: *Parser) (Error || Parser.Error || DeserializeError)!Schema {
+            var s: Schema = undefined;
+            var load_state: LoadState = .{};
+
+            while (try p.next()) |ev|
+                switch (ev) {
+                    .group => {
+                        p.unput(ev);
+                        break;
+                    },
+                    .pair => |pair| {
+                        var found = false;
+                        inline for (std.meta.fields(Schema)) |f|
+                            if (std.mem.eql(u8, pair.key, f.name)) {
+                                @field(s, f.name) = try deserialize(f.type, allocator, pair.key, pair.value);
+                                @field(load_state, f.name) = true;
+                                found = true;
+                                break;
+                            };
+                        if (!found)
+                            return Error.UnknownField;
+                    },
+                };
+
+            inline for (std.meta.fields(Schema)) |f|
+                if (!@field(load_state, f.name))
+                    return Error.MissingField;
+
+            return s;
+        }
+
         pub fn save(writer: anytype, v: Schema) @TypeOf(writer).Error!void {
             inline for (std.meta.fields(Schema)) |f| {
                 switch (@typeInfo(f.type)) {
@@ -118,7 +201,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                             try std.fmt.format(writer, "\n[{s}]\n", .{f.name});
                             inline for (std.meta.fields(@TypeOf(e))) |sf| {
                                 try std.fmt.format(writer, "{s}=", .{sf.name});
-                                try Config.serialize(sf.type, writer, sf.name, @field(e, sf.name));
+                                try serialize(sf.type, writer, sf.name, @field(e, sf.name));
                                 try writer.writeByte('\n');
                             }
                         }
@@ -127,7 +210,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                     else => {},
                 }
                 try std.fmt.format(writer, "{s}=", .{f.name});
-                try Config.serialize(f.type, writer, f.name, @field(v, f.name));
+                try serialize(f.type, writer, f.name, @field(v, f.name));
                 try writer.writeByte('\n');
             }
         }

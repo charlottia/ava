@@ -15,7 +15,7 @@ pub const ErrorHandling = enum {
 };
 
 pub const Error = error{
-    UnknownCharacter,
+    InvalidCharacter,
     Incomplete,
 };
 
@@ -24,6 +24,7 @@ error_handling: ErrorHandling,
 
 i: usize,
 state: enum { idle, comment, group, group_after, key, value },
+unputted: ?Event = null,
 
 pub fn init(input: []const u8, error_handling: ErrorHandling) Parser {
     return .{
@@ -35,6 +36,11 @@ pub fn init(input: []const u8, error_handling: ErrorHandling) Parser {
 }
 
 pub fn next(self: *Parser) Error!?Event {
+    if (self.unputted) |ev| {
+        self.unputted = null;
+        return ev;
+    }
+
     var key_start: usize = undefined;
     var value_start: usize = undefined;
 
@@ -46,7 +52,7 @@ pub fn next(self: *Parser) Error!?Event {
         switch (self.state) {
             .idle => switch (c) {
                 ';', '#' => self.state = .comment,
-                'a'...'z' => {
+                'a'...'z', 'A'...'Z' => {
                     key_start = i;
                     self.state = .key;
                 },
@@ -57,11 +63,11 @@ pub fn next(self: *Parser) Error!?Event {
                 ' ', '\t', '\r', '\n' => {},
                 else => {
                     self.state = .comment; // eat rest of line
-                    try self.err(Error.UnknownCharacter);
+                    try self.err(Error.InvalidCharacter);
                 },
             },
             .group => switch (c) {
-                'a'...'z', '_', ' ' => {},
+                'a'...'z', 'A'...'Z', '0'...'9', '_', ' ' => {},
                 ']' => {
                     i += 1;
                     self.state = .group_after;
@@ -69,7 +75,7 @@ pub fn next(self: *Parser) Error!?Event {
                 },
                 else => {
                     self.state = .comment; // eat rest of line
-                    try self.err(Error.UnknownCharacter);
+                    try self.err(Error.InvalidCharacter);
                 },
             },
             .group_after => switch (c) {
@@ -77,7 +83,7 @@ pub fn next(self: *Parser) Error!?Event {
                 '\r', '\n' => self.state = .idle,
                 else => {
                     self.state = .comment; // eat rest of line
-                    try self.err(Error.UnknownCharacter);
+                    try self.err(Error.InvalidCharacter);
                 },
             },
             .comment => switch (c) {
@@ -85,7 +91,7 @@ pub fn next(self: *Parser) Error!?Event {
                 else => {},
             },
             .key => switch (c) {
-                'a'...'z', '_', ' ' => {},
+                'a'...'z', 'A'...'Z', '0'...'9', '_', ' ' => {},
                 '=' => {
                     value_start = i + 1;
                     self.state = .value;
@@ -96,7 +102,7 @@ pub fn next(self: *Parser) Error!?Event {
                 },
                 else => {
                     self.state = .comment; // eat rest of line
-                    try self.err(Error.UnknownCharacter);
+                    try self.err(Error.InvalidCharacter);
                 },
             },
             .value => switch (c) {
@@ -127,6 +133,11 @@ pub fn next(self: *Parser) Error!?Event {
 
     self.state = .idle;
     return null;
+}
+
+pub fn unput(self: *Parser, ev: Event) void {
+    std.debug.assert(self.unputted == null);
+    self.unputted = ev;
 }
 
 fn err(self: *const Parser, e: Error) Error!void {
@@ -196,7 +207,7 @@ test "base" {
         \\ z=zz
     , .{
         .{ "f", "3" },
-        Parser.Error.UnknownCharacter,
+        Parser.Error.InvalidCharacter,
         .{ "z", "zz" },
     });
 
@@ -209,7 +220,7 @@ test "base" {
         .{ "m__", "9" },
         Parser.Error.Incomplete,
         .{ "h", "=" },
-        Parser.Error.UnknownCharacter,
+        Parser.Error.InvalidCharacter,
     });
 }
 

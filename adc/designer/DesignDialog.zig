@@ -1,5 +1,7 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const imtuilib = @import("imtui");
+const ini = @import("ini");
 const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
@@ -112,24 +114,35 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         switch (self.state) {
-            .title_edit => switch (keycode) {
-                .backspace => if (self.title.items.len > 0) {
-                    if (modifiers.get(.left_control) or modifiers.get(.right_control) or
-                        modifiers.get(.left_gui) or modifiers.get(.right_gui))
-                        self.title.items.len = 0
-                    else
-                        self.title.items.len -= 1;
-                },
-                .@"return" => self.state = .idle,
-                .escape => {
-                    self.state = .idle;
-                    try self.title.replaceRange(self.imtui.allocator, 0, self.title.items.len, self.title_orig.items);
-                },
-                else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                    try self.title.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
-                },
+            .title_edit => {
+                switch (keycode) {
+                    .backspace => if (self.title.items.len > 0) {
+                        if (modifiers.get(.left_control) or modifiers.get(.right_control) or
+                            modifiers.get(.left_gui) or modifiers.get(.right_gui))
+                            self.title.items.len = 0
+                        else
+                            self.title.items.len -= 1;
+                    },
+                    .@"return" => self.state = .idle,
+                    .escape => {
+                        self.state = .idle;
+                        try self.title.replaceRange(self.imtui.allocator, 0, self.title.items.len, self.title_orig.items);
+                    },
+                    else => if (Imtui.Controls.isPrintableKey(keycode)) {
+                        try self.title.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                    },
+                }
+                return;
             },
-            else => {},
+            else => {
+                var cit = self.imtui.controls.valueIterator();
+                while (cit.next()) |c|
+                    if (c.is(Imtui.Controls.Shortcut.Impl)) |s|
+                        if (s.shortcut.matches(keycode, modifiers)) {
+                            s.*.chosen = true;
+                            return;
+                        };
+            },
         }
     }
 
@@ -265,3 +278,30 @@ pub fn create(imtui: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, title: 
     d.describe(r1, c1, r2, c2, title);
     return .{ .impl = d };
 }
+
+pub const Schema = struct {
+    r1: usize,
+    c1: usize,
+    r2: usize,
+    c2: usize,
+    title: []const u8,
+
+    pub fn deinit(self: Schema, allocator: Allocator) void {
+        allocator.free(self.title);
+    }
+};
+
+// pub const SerDes = ini.SerDes(Schema, struct {});
+
+pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
+    schema.r1 = self.impl.r1;
+    schema.c1 = self.impl.c1;
+    schema.r2 = self.impl.r2;
+    schema.c2 = self.impl.c2;
+    if (!std.mem.eql(u8, schema.title, self.impl.title.items)) {
+        allocator.free(schema.title);
+        schema.title = try allocator.dupe(u8, self.impl.title.items);
+    }
+}
+
+// pub fn load(imtui: *Imtui,
