@@ -57,6 +57,8 @@ pub const Control = struct {
         handleMouseDown: ?*const fn (self: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) Allocator.Error!?Control = null,
         handleMouseDrag: ?*const fn (self: *anyopaque, b: SDL.MouseButton) Allocator.Error!void = null,
         handleMouseUp: ?*const fn (self: *anyopaque, b: SDL.MouseButton, clicks: u8) Allocator.Error!void = null,
+        onFocus: ?*const fn (self: *anyopaque) Allocator.Error!void = null,
+        onBlur: ?*const fn (self: *anyopaque) Allocator.Error!void = null,
     };
 
     ptr: *anyopaque,
@@ -154,6 +156,14 @@ pub const Control = struct {
     fn handleMouseUp(self: Control, b: SDL.MouseButton, clicks: u8) !void {
         return if (self.vtable.no_mouse) {} else self.vtable.handleMouseUp.?(self.ptr, b, clicks);
     }
+
+    fn onFocus(self: Control) !void {
+        return if (self.vtable.onFocus) |cb| cb(self.ptr) else {};
+    }
+
+    fn onBlur(self: Control) !void {
+        return if (self.vtable.onBlur) |cb| cb(self.ptr) else {};
+    }
 };
 
 pub const ShortcutModifier = enum { shift, alt, ctrl };
@@ -166,7 +176,9 @@ pub const Shortcut = struct {
         if (keycode != self.keycode) return false;
         return (modifiers.get(.left_shift) or modifiers.get(.right_shift)) == (self.modifier == .shift) and
             (modifiers.get(.left_alt) or modifiers.get(.right_alt)) == (self.modifier == .alt) and
-            (modifiers.get(.left_control) or modifiers.get(.right_control)) == (self.modifier == .ctrl);
+            // We treat Control and Command as the same.
+            (modifiers.get(.left_control) or modifiers.get(.right_control) or
+            modifiers.get(.left_gui) or modifiers.get(.right_gui)) == (self.modifier == .ctrl);
     }
 };
 
@@ -337,9 +349,10 @@ pub fn focus(self: *Imtui, control: Control) !void {
     const new_parent = control.parent();
     if (curr_parent != null and new_parent != null and
         curr_parent.?.same(new_parent.?))
-        _ = self.focus_stack.pop();
+        try self.focus_stack.pop().onBlur();
 
     try self.focus_stack.append(self.allocator, control);
+    try control.onFocus();
 }
 
 pub fn focused(self: *Imtui, control: Control) bool {

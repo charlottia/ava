@@ -44,6 +44,8 @@ pub const Impl = struct {
                 .handleMouseDown = handleMouseDown,
                 .handleMouseDrag = handleMouseDrag,
                 .handleMouseUp = handleMouseUp,
+                .onFocus = onFocus,
+                .onBlur = onBlur,
             },
         };
     }
@@ -76,22 +78,22 @@ pub const Impl = struct {
 
     fn accelerate(ptr: *anyopaque) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        if (!self.imtui.focused(self.control()))
-            try self.focusAndSelectAll();
-    }
-
-    pub fn blur(self: *Impl) void {
-        self.el.cursor_col = 0;
-        self.el.selection_start = null;
-    }
-
-    pub fn focusAndSelectAll(self: *Impl) !void {
         try self.imtui.focus(self.control());
+    }
+
+    fn onFocus(ptr: *anyopaque) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
         self.el.cursor_col = self.value.items.len;
         self.el.selection_start = .{
             .cursor_row = 0,
             .cursor_col = 0,
         };
+    }
+
+    fn onBlur(ptr: *anyopaque) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        self.el.cursor_col = 0;
+        self.el.selection_start = null;
     }
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -126,7 +128,7 @@ pub const Impl = struct {
             if (!isMouseOver(ptr)) {
                 const new = try self.dialog.commonMouseDown(b, clicks, cm);
                 if (new != null and new.?.is(Dialog.Impl) == null)
-                    self.blur();
+                    try onBlur(ptr);
                 return new;
             }
         } else {
@@ -138,7 +140,7 @@ pub const Impl = struct {
 
         if (try self.el.handleMouseDown(active, b, clicks, cm)) {
             if (!active)
-                try self.focusAndSelectAll()
+                try self.imtui.focus(self.control())
             else
                 // clicking on already selected; set cursor where clicked.
                 self.el.cursor_col = self.el.scroll_col + self.dialog.imtui.mouse_col - self.c1;

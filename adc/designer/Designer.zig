@@ -4,6 +4,8 @@ const imtuilib = @import("imtui");
 const SDL = imtuilib.SDL;
 const ini = @import("ini");
 
+const Imtui = imtuilib.Imtui;
+
 const DesignDialog = @import("./DesignDialog.zig");
 
 const Designer = @This();
@@ -17,41 +19,41 @@ const SaveFile = struct {
 };
 const SerDes = ini.SerDes(SaveFile, struct {});
 
-allocator: Allocator,
+imtui: *Imtui,
 save_filename: ?[]const u8,
 underlay_filename: []const u8,
 underlay_texture: SDL.Texture,
 controls: std.ArrayListUnmanaged(Control),
 
-pub fn initDefaultWithUnderlay(allocator: Allocator, renderer: SDL.Renderer, underlay: []const u8) !Designer {
-    const texture = try loadTextureFromFile(allocator, renderer, underlay);
+pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: []const u8) !Designer {
+    const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
 
     var controls = std.ArrayListUnmanaged(Control){};
-    try controls.append(allocator, .{ .dialog = .{
+    try controls.append(imtui.allocator, .{ .dialog = .{
         .r1 = 5,
         .c1 = 5,
         .r2 = 20,
         .c2 = 60,
-        .title = try allocator.dupe(u8, "Untitled Dialog"),
+        .title = try imtui.allocator.dupe(u8, "Untitled Dialog"),
     } });
 
     return .{
-        .allocator = allocator,
+        .imtui = imtui,
         .save_filename = null,
-        .underlay_filename = try allocator.dupe(u8, underlay),
+        .underlay_filename = try imtui.allocator.dupe(u8, underlay),
         .underlay_texture = texture,
         .controls = controls,
     };
 }
 
-pub fn initFromIni(allocator: Allocator, renderer: SDL.Renderer, inifile: []const u8) !Designer {
-    const data = try std.fs.cwd().readFileAllocOptions(allocator, inifile, 10485760, null, @alignOf(u8), 0);
-    defer allocator.free(data);
+pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !Designer {
+    const data = try std.fs.cwd().readFileAllocOptions(imtui.allocator, inifile, 10485760, null, @alignOf(u8), 0);
+    defer imtui.allocator.free(data);
 
     var p = ini.Parser.init(data, .report);
-    const save_file = try SerDes.loadGroup(allocator, &p);
+    const save_file = try SerDes.loadGroup(imtui.allocator, &p);
 
-    const texture = try loadTextureFromFile(allocator, renderer, save_file.underlay);
+    const texture = try loadTextureFromFile(imtui.allocator, renderer, save_file.underlay);
     var controls = std.ArrayListUnmanaged(Control){};
 
     while (try p.next()) |ev| {
@@ -59,10 +61,11 @@ pub fn initFromIni(allocator: Allocator, renderer: SDL.Renderer, inifile: []cons
         var found = false;
         inline for (std.meta.fields(Control)) |f| {
             if (std.mem.eql(u8, ev.group, f.name)) {
-                try controls.append(
-                    allocator,
-                    @unionInit(Control, f.name, try ini.SerDes(f.type, struct {}).loadGroup(allocator, &p)),
-                );
+                try controls.append(imtui.allocator, @unionInit(
+                    Control,
+                    f.name,
+                    try ini.SerDes(f.type, struct {}).loadGroup(imtui.allocator, &p),
+                ));
                 found = true;
                 break;
             }
@@ -72,8 +75,8 @@ pub fn initFromIni(allocator: Allocator, renderer: SDL.Renderer, inifile: []cons
     }
 
     return .{
-        .allocator = allocator,
-        .save_filename = try allocator.dupe(u8, inifile),
+        .imtui = imtui,
+        .save_filename = try imtui.allocator.dupe(u8, inifile),
         .underlay_filename = save_file.underlay,
         .underlay_texture = texture,
         .controls = controls,
@@ -83,23 +86,21 @@ pub fn initFromIni(allocator: Allocator, renderer: SDL.Renderer, inifile: []cons
 pub fn deinit(self: *Designer) void {
     for (self.controls.items) |c|
         switch (c) {
-            inline else => |d| d.deinit(self.allocator),
+            inline else => |d| d.deinit(self.imtui.allocator),
         };
-    self.controls.deinit(self.allocator);
+    self.controls.deinit(self.imtui.allocator);
     self.underlay_texture.destroy();
-    self.allocator.free(self.underlay_filename);
-    if (self.save_filename) |f| self.allocator.free(f);
+    self.imtui.allocator.free(self.underlay_filename);
+    if (self.save_filename) |f| self.imtui.allocator.free(f);
 }
 
-pub fn dump(self: *const Designer) !void {
-    const out = std.io.getStdOut().writer();
-
-    try SerDes.save(out, .{ .underlay = self.underlay_filename });
+pub fn dump(self: *const Designer, writer: anytype) !void {
+    try SerDes.save(writer, .{ .underlay = self.underlay_filename });
 
     for (self.controls.items) |c| {
-        try std.fmt.format(out, "\n[{s}]\n", .{@tagName(c)});
+        try std.fmt.format(writer, "\n[{s}]\n", .{@tagName(c)});
         switch (c) {
-            inline else => |d| try ini.SerDes(@TypeOf(d), struct {}).save(out, d),
+            inline else => |d| try ini.SerDes(@TypeOf(d), struct {}).save(writer, d),
         }
     }
 }
@@ -111,4 +112,17 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
     try texture.setAlphaMod(128);
     try texture.setBlendMode(.blend);
     return texture;
+}
+
+pub fn render(self: *Designer) !void {
+    for (self.controls.items) |*i| {
+        switch (i.*) {
+            .dialog => |*s| {
+                const dd = try self.imtui.getOrPutControl(DesignDialog, .{ s.r1, s.c1, s.r2, s.c2, s.title });
+                if (self.imtui.focus_stack.items.len == 0)
+                    try self.imtui.focus_stack.append(self.imtui.allocator, dd.impl.control());
+                try dd.sync(self.imtui.allocator, s);
+            },
+        }
+    }
 }

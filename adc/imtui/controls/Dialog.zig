@@ -60,10 +60,6 @@ pub const Impl = struct {
         switch (keycode) {
             .left_alt, .right_alt => self.show_acc = true,
             .tab => {
-                // HACK but one-off for now:
-                if (self.controls.items[ix].is(Imtui.Controls.DialogInput.Impl)) |di|
-                    di.blur();
-
                 const reverse = modifiers.get(.left_shift) or modifiers.get(.right_shift);
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
@@ -82,11 +78,7 @@ pub const Impl = struct {
                         };
                 }
 
-                // HACK but one-off for now:
-                if (self.controls.items[nix].is(Imtui.Controls.DialogInput.Impl)) |di|
-                    try di.focusAndSelectAll()
-                else
-                    try self.imtui.focus(self.controls.items[nix]);
+                try self.imtui.focus(self.controls.items[nix]);
             },
             .@"return" => if (self.default_button) |db| {
                 db.chosen = true;
@@ -149,9 +141,11 @@ pub fn end(self: Dialog) !void {
 pub fn groupbox(self: Dialog, title: []const u8, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8) void {
     self.impl.imtui.text_mode.box(self.impl.r1 + r1, self.impl.c1 + c1, self.impl.r1 + r2, self.impl.c1 + c2, colour);
 
-    const start = self.impl.c1 + c1 + (c2 - c1 - title.len) / 2;
-    self.impl.imtui.text_mode.paint(self.impl.r1 + r1, start - 1, self.impl.r1 + r1 + 1, start + title.len + 1, colour, 0);
-    self.impl.imtui.text_mode.write(self.impl.r1 + r1, start, title);
+    if (title.len > 0) {
+        const start = self.impl.c1 + c1 + (c2 - c1 - title.len) / 2;
+        self.impl.imtui.text_mode.paint(self.impl.r1 + r1, start - 1, self.impl.r1 + r1 + 1, start + title.len + 1, colour, 0);
+        self.impl.imtui.text_mode.write(self.impl.r1 + r1, start, title);
+    }
 }
 
 pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {

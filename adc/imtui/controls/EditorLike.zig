@@ -63,11 +63,7 @@ pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.Ke
         keycode == .left_alt or keycode == .right_alt)
         return false;
 
-    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
-        // We probably wanna do this in a few more places too (like else{} below).
-        self.selection_start = null;
-        self.shift_down = false;
-    } else {
+    if (modifiers.get(.left_shift) or modifiers.get(.right_shift)) {
         self.shift_down = true;
         if (self.selection_start == null)
             // We probably wanna restrict the cases this is applicable in.
@@ -78,36 +74,64 @@ pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.Ke
                 .cursor_row = self.cursor_row,
                 .cursor_col = self.cursor_col,
             };
-    }
+    } else self.shift_down = false;
 
     const single_mode = src.single_mode;
 
     switch (keycode) {
-        .up => if (!single_mode) {
-            self.cursor_row -|= 1;
+        .up => {
+            if (!single_mode)
+                self.cursor_row -|= 1;
+            if (!self.shift_down)
+                self.selection_start = null;
         },
-        .down => if (!single_mode and self.cursor_row < src.lines.items.len) {
-            self.cursor_row += 1;
+        .down => {
+            if (!single_mode and self.cursor_row < src.lines.items.len)
+                self.cursor_row += 1;
+            if (!self.shift_down)
+                self.selection_start = null;
         },
-        .left => self.cursor_col -|= 1,
-        .right => if (self.cursor_col < MAX_LINE) {
-            self.cursor_col += 1;
+        .left => {
+            self.cursor_col -|= 1;
+            if (!self.shift_down)
+                self.selection_start = null;
         },
-        .home => self.cursor_col = if (self.maybeCurrentLine()) |line|
-            lineFirst(line.items)
-        else
-            0,
-        .end => self.cursor_col = if (self.maybeCurrentLine()) |line|
-            line.items.len
-        else
-            0,
-        .page_up => if (!single_mode) {
-            self.pageUp();
+        .right => {
+            if (self.cursor_col < MAX_LINE)
+                self.cursor_col += 1;
+            if (!self.shift_down)
+                self.selection_start = null;
         },
-        .page_down => if (!single_mode) {
-            self.pageDown();
+        .home => {
+            self.cursor_col = if (self.maybeCurrentLine()) |line|
+                lineFirst(line.items)
+            else
+                0;
+            if (!self.shift_down)
+                self.selection_start = null;
+        },
+        .end => {
+            self.cursor_col = if (self.maybeCurrentLine()) |line|
+                line.items.len
+            else
+                0;
+            if (!self.shift_down)
+                self.selection_start = null;
+        },
+        .page_up => {
+            if (!single_mode)
+                self.pageUp();
+            if (!self.shift_down)
+                self.selection_start = null;
+        },
+        .page_down => {
+            if (!single_mode)
+                self.pageDown();
+            if (!self.shift_down)
+                self.selection_start = null;
         },
         .tab => {
+            // TODO: selection behaviour
             var line = try self.currentLine();
             while (line.items.len < MAX_LINE - 1) {
                 try line.insert(src.allocator, self.cursor_col, ' ');
@@ -119,19 +143,29 @@ pub fn handleKeyPress(self: *EditorLike, keycode: SDL.Keycode, modifiers: SDL.Ke
         .@"return" => {
             if (single_mode)
                 return false;
+            self.selection_start = null;
             try self.splitLine();
         },
-        .backspace => try self.deleteAt(.backspace),
-        .delete => try self.deleteAt(.delete),
+        .backspace => {
+            self.selection_start = null;
+            try self.deleteAt(.backspace);
+        },
+        .delete => {
+            self.selection_start = null;
+            try self.deleteAt(.delete);
+        },
         else => if (Imtui.Controls.isPrintableKey(keycode) and (try self.currentLine()).items.len < (MAX_LINE - 1)) {
+            // XXX: involve selection in the above calculation
+            if (self.selection_start) |*ss| {
+                orderRowCols(&self.cursor_row, &self.cursor_col, &ss.cursor_row, &ss.cursor_col);
+                try self.deleteRange(self.cursor_row, self.cursor_col, ss.cursor_row, ss.cursor_col);
+                self.selection_start = null;
+            }
+
             var line = try self.currentLine();
             if (line.items.len < self.cursor_col)
                 try line.appendNTimes(src.allocator, ' ', self.cursor_col - line.items.len);
             try line.insert(src.allocator, self.cursor_col, Imtui.Controls.getCharacter(keycode, modifiers));
-            // XXX
-            if (self.shift_down and self.selection_start.?.cursor_col == self.cursor_col and
-                self.selection_start.?.cursor_row == self.cursor_row)
-                self.selection_start.?.cursor_col += 1;
             self.cursor_col += 1;
         } else return false,
     }
@@ -428,6 +462,32 @@ fn deleteAt(self: *EditorLike, mode: enum { backspace, delete }) !void {
         // mode == .delete, self.cursor_col < (try self.currentLine()).items.len
         _ = (try self.currentLine()).orderedRemove(self.cursor_col);
     }
+}
+
+fn orderRowCols(rx: *usize, cx: *usize, ry: *usize, cy: *usize) void {
+    if (rx.* < ry.*) {
+        // already ordered.
+    } else if (rx.* > ry.*) {
+        std.mem.swap(usize, rx, ry);
+        std.mem.swap(usize, cx, cy);
+    } else if (cx.* > cy.*) {
+        std.mem.swap(usize, cx, cy);
+    }
+}
+
+fn deleteRange(self: *EditorLike, r1: usize, c1: usize, r2: usize, c2: usize) !void {
+    std.debug.assert(r1 < r2 or (r1 == r2 and c1 <= c2));
+
+    // Let's just do within-lines for now.
+    // TODO: multiline delete.
+    std.debug.assert(r1 == r2);
+
+    var line = try self.currentLine();
+    if (c1 >= line.items.len)
+        // entirely virtual
+        return;
+    const len = @min(line.items.len - c1, c2 - c1);
+    try line.replaceRange(self.imtui.allocator, c1, len, &.{});
 }
 
 fn pageUp(self: *EditorLike) void {

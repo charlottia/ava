@@ -291,8 +291,6 @@ pub const Schema = struct {
     }
 };
 
-// pub const SerDes = ini.SerDes(Schema, struct {});
-
 pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
@@ -303,5 +301,3 @@ pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
         schema.title = try allocator.dupe(u8, self.impl.title.items);
     }
 }
-
-// pub fn load(imtui: *Imtui,
