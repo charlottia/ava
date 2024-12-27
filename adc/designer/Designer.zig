@@ -31,7 +31,6 @@ inhibit_underlay: bool = false,
 
 save_dialog_open: bool = false,
 save_confirm_open: bool = false,
-control_menu_open: ?struct { row: usize, col: usize } = null,
 
 pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: []const u8) !Designer {
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
@@ -131,8 +130,6 @@ pub fn render(self: *Designer) !void {
         try self.renderSaveDialog();
     if (self.save_confirm_open)
         try self.renderSaveConfirm();
-    if (self.control_menu_open) |at|
-        try self.renderControlMenu(at.row, at.col);
 }
 
 fn renderItems(self: *Designer) !void {
@@ -143,12 +140,6 @@ fn renderItems(self: *Designer) !void {
                 if (self.imtui.focus_stack.items.len == 0)
                     try self.imtui.focus_stack.append(self.imtui.allocator, dd.impl.control());
                 try dd.sync(self.imtui.allocator, s);
-
-                if (dd.right_clicked())
-                    self.control_menu_open = .{
-                        .row = self.imtui.text_mode.mouse_row,
-                        .col = self.imtui.text_mode.mouse_col,
-                    };
             },
             .button => |*s| {
                 const db = try self.imtui.getOrPutControl(DesignButton, .{ ix, s.r, s.c, s.label });
@@ -257,24 +248,6 @@ fn renderSaveConfirm(self: *Designer) !void {
     ok.default();
     if (ok.chosen()) {
         self.save_confirm_open = false;
-        self.imtui.unfocus(dialog.impl.control());
-    }
-
-    try dialog.end();
-}
-
-fn renderControlMenu(self: *Designer, r: usize, c: usize) !void {
-    var dialog = try self.imtui.dialog("Add Control", 4, 15, .{ .at = .{ .row = r -| 1, .col = c -| 2 } });
-
-    var label = try dialog.button(1, 3, "Label");
-    if (label.chosen()) {
-        self.control_menu_open = null;
-        self.imtui.unfocus(dialog.impl.control());
-    }
-
-    var button = try dialog.button(2, 2, "Button");
-    if (button.chosen()) {
-        self.control_menu_open = null;
         self.imtui.unfocus(dialog.impl.control());
     }
 

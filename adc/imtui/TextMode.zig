@@ -34,7 +34,7 @@ pub fn TextMode(H: usize, W: usize) type {
         comptime H: usize = H,
         comptime W: usize = W,
 
-        screen: [W * H]u16 = [_]u16{0x0700} ** (W * H),
+        screen: [W * H]u16 = [_]u16{0x0000} ** (W * H),
         renderer: SDL.Renderer,
         font: Font,
         font_rendered: Font.Rendered,
@@ -65,8 +65,6 @@ pub fn TextMode(H: usize, W: usize) type {
         }
 
         pub fn present(self: *Self, delta_tick: u64) !void {
-            try self.renderer.clear();
-
             var r: usize = 0;
             var c: usize = 0;
             for (self.screen) |pair| {

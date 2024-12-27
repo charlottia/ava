@@ -54,11 +54,10 @@ pub const Impl = struct {
         const title_colour: u8 = if (self.state == .title_edit) 0xa0 else 0x70;
         self.imtui.text_mode.paint(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, title_colour, 0);
         self.imtui.text_mode.write(self.r1, self.title_start, self.title.items);
+        self.imtui.text_mode.cursor_inhibit = true;
 
         switch (self.state) {
             .idle => {
-                self.imtui.text_mode.cursor_inhibit = true;
-
                 if (self.imtui.focus_stack.items.len > 1)
                     return;
 

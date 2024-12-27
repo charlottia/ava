@@ -322,7 +322,7 @@ pub fn newFrame(self: *Imtui) !void {
             _ = try target.handleMouseDown(self.mouse_down.?, 0, true);
     }
 
-    self.text_mode.clear(0x07);
+    self.text_mode.clear(0x00);
 }
 
 // the following calls are kinda internal-external

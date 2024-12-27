@@ -51,10 +51,13 @@ pub fn main() !void {
             display = if (display == .both) .design_only else .both;
         }
 
-        try imtui.render();
+        try app.renderer.setColorRGBA(0, 0, 0, 0);
+        try app.renderer.clear();
 
         if (display == .both and !designer.inhibit_underlay)
             try app.renderer.copy(designer.underlay_texture, null, null);
+
+        try imtui.render();
 
         app.renderer.present();
     }
