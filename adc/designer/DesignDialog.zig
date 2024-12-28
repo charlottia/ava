@@ -20,8 +20,6 @@ pub const Impl = struct {
     title: std.ArrayListUnmanaged(u8),
     title_orig: std.ArrayListUnmanaged(u8) = .{},
 
-    right_clicked: bool = false,
-
     state: union(enum) {
         idle,
         resize: struct { cix: usize },
@@ -77,10 +75,7 @@ pub const Impl = struct {
                     highlighted = true;
                 }
 
-                if (!highlighted and
-                    (self.imtui.text_mode.mouse_row == self.r1 or self.imtui.text_mode.mouse_row == self.r2 - 1 or
-                    self.imtui.text_mode.mouse_col == self.c1 or self.imtui.text_mode.mouse_col == self.c2 - 1))
-                {
+                if (!highlighted and isMouseOver(self)) {
                     self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x20, .outline);
                     highlighted = true;
                 }
@@ -169,22 +164,23 @@ pub const Impl = struct {
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
         return self.state == .title_edit or // <- "captures" cursor during edit
+            // v- Checks that the mouse is entirely within bounds, and matches
+            //    an axis with one of (r1,c1) or (r2,c2), i.e. the mouse is only
+            //    over when it's on a border.
             (self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and
-            self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2);
+            self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2 and
+            (self.imtui.text_mode.mouse_row == self.r1 or self.imtui.text_mode.mouse_row == self.r2 - 1 or
+            self.imtui.text_mode.mouse_col == self.c1 or self.imtui.text_mode.mouse_col == self.c2 - 1));
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        _ = clicks;
 
         if (cm) return null;
 
-        if (b == .right) {
-            self.right_clicked = true;
-            return null;
-        }
+        if (!isMouseOver(ptr))
+            return self.imtui.fallbackMouseDown(b, clicks, cm);
 
-        if (!isMouseOver(ptr)) return null;
         if (b != .left) return null;
 
         switch (self.state) {
@@ -324,9 +320,4 @@ pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
         allocator.free(schema.title);
         schema.title = try allocator.dupe(u8, self.impl.title.items);
     }
-}
-
-pub fn right_clicked(self: DesignDialog) bool {
-    defer self.impl.right_clicked = false;
-    return self.impl.right_clicked;
 }

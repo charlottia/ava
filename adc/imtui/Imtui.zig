@@ -493,18 +493,18 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     // (If one doesn't, the dialog takes it for itself, and swallows them fro
     // now.)
 
-    if (try self.focus_stack.getLast().handleMouseDown(b, clicks, cm)) |t|
-        return t;
+    return self.focus_stack.getLast().handleMouseDown(b, clicks, cm);
+}
 
-    // This fallback is rather awkward. It takes care of the menu and help-line
-    // shortcuts for us, but we have to explicitly avoid it whenever we're not
-    // focusing an editor, i.e. like the dialog case above. Perhaps we should
-    // just put it in Editor. XXX
-    // var cit = self.controls.valueIterator();
-    // while (cit.next()) |c|
-    //     if (c.isMouseOver()) {
-    //         return try c.handleMouseDown(b, clicks, cm);
-    //     };
+pub fn fallbackMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Control {
+    // To be used by control code when the click should go to whatever passes
+    // isMouseOver().
+
+    var cit = self.controls.valueIterator();
+    while (cit.next()) |c|
+        if (c.isMouseOver()) {
+            return try c.handleMouseDown(b, clicks, cm);
+        };
 
     return null;
 }

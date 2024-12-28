@@ -145,7 +145,7 @@ fn renderItems(self: *Designer) !void {
         switch (i.*) {
             .dialog => unreachable,
             .button => |*s| {
-                const db = try self.imtui.getOrPutControl(DesignButton, .{ dd.impl, ix, s.r1, s.c1, s.label });
+                const db = try self.imtui.getOrPutControl(DesignButton, .{ dd.impl, ix, s.r1, s.c1, s.label, s.primary, s.cancel });
                 _ = db;
             },
         }
@@ -183,7 +183,7 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     if (button.chosen()) {
         try self.controls.append(
             self.imtui.allocator,
-            .{ .button = .{ .r1 = 5, .c1 = 5, .label = try self.imtui.allocator.dupe(u8, "OK") } },
+            .{ .button = .{ .r1 = 5, .c1 = 5, .label = try self.imtui.allocator.dupe(u8, "OK"), .primary = false, .cancel = false } },
         );
     }
     add_menu.end();

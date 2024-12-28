@@ -110,10 +110,10 @@ pub const Impl = struct {
     pub fn commonMouseDown(self: *Impl, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         for (self.controls.items) |c|
             if (c.isMouseOver()) {
-                return try c.handleMouseDown(b, clicks, cm);
+                return c.handleMouseDown(b, clicks, cm);
             };
 
-        return self.control(); // stop the Editor from getting these
+        return null;
     }
 
     fn handleAccelerator(self: *Impl, keycode: SDL.Keycode) !void {
