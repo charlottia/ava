@@ -208,7 +208,7 @@ pub const Impl = struct {
                     return self.control();
                 }
 
-                return null;
+                unreachable;
             },
             .title_edit => {
                 if (!(self.imtui.text_mode.mouse_row == self.r1 and

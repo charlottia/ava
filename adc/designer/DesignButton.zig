@@ -72,6 +72,10 @@ pub const Impl = struct {
                 if (self.imtui.focus_stack.items.len > 1)
                     return;
 
+                // XXX: The below isn't aware of DesignDialog.state
+                // == .title_edit, for example. (the above doesn't catch it
+                // because it doesn't add a new focus item)
+
                 var highlighted = false;
                 if (!highlighted and
                     self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
@@ -86,7 +90,6 @@ pub const Impl = struct {
                         0x20,
                         .fill,
                     );
-                    highlighted = true;
                     highlighted = true;
                 }
 
@@ -199,7 +202,7 @@ pub const Impl = struct {
                     return self.control();
                 }
 
-                return null;
+                unreachable;
             },
             .label_edit => {
                 if (!(self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
