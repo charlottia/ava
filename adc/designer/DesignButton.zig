@@ -27,13 +27,20 @@ pub const Impl = struct {
     c2: usize = undefined,
     label_orig: std.ArrayListUnmanaged(u8) = .{},
 
+    state: union(enum) {
+        idle,
+        move: struct { origin_row: usize, origin_col: usize },
+        label_edit,
+    } = .idle,
+
     pub fn control(self: *Impl) Imtui.Control {
         return .{
             .ptr = self,
             .vtable = &.{
-                .no_key = true,
                 .parent = parent,
                 .deinit = deinit,
+                .handleKeyPress = handleKeyPress,
+                .handleKeyUp = handleKeyUp,
                 .isMouseOver = isMouseOver,
                 .handleMouseDown = handleMouseDown,
                 .handleMouseDrag = handleMouseDrag,
@@ -59,6 +66,53 @@ pub const Impl = struct {
         self.imtui.text_mode.write(r1, c1, "<");
         self.imtui.text_mode.writeAccelerated(r1, c1 + 2, self.label.items, true);
         self.imtui.text_mode.write(r1, c2 - 1, ">");
+
+        switch (self.state) {
+            .idle => {
+                if (self.imtui.focus_stack.items.len > 1)
+                    return;
+
+                var highlighted = false;
+                if (!highlighted and
+                    self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.parent.c1 + self.c1 + 1 and
+                    self.imtui.text_mode.mouse_col < self.parent.c1 + self.c2 - 1)
+                {
+                    self.imtui.text_mode.paintColour(
+                        self.parent.r1 + self.r1,
+                        self.parent.c1 + self.c1 + 1,
+                        self.parent.r1 + self.r1 + 1,
+                        self.parent.c1 + self.c2 - 1,
+                        0x20,
+                        .fill,
+                    );
+                    highlighted = true;
+                    highlighted = true;
+                }
+
+                if (!highlighted and
+                    self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.parent.c1 + self.c1 and
+                    self.imtui.text_mode.mouse_col < self.parent.c1 + self.c2)
+                {
+                    self.imtui.text_mode.paintColour(
+                        self.parent.r1 + self.r1 - 1,
+                        self.parent.c1 + self.c1 - 1,
+                        self.parent.r1 + self.r2 + 1,
+                        self.parent.c1 + self.c2 + 1,
+                        0x20,
+                        .outline,
+                    );
+                    highlighted = true;
+                }
+            },
+            .move => |_| {},
+            .label_edit => {
+                self.imtui.text_mode.cursor_row = self.parent.r1 + self.r1;
+                self.imtui.text_mode.cursor_col = self.parent.c1 + self.c1 + 2 + self.label.items.len;
+                self.imtui.text_mode.cursor_inhibit = false;
+            },
+        }
     }
 
     fn parent(ptr: *const anyopaque) ?Imtui.Control {
@@ -73,9 +127,43 @@ pub const Impl = struct {
         self.imtui.allocator.destroy(self);
     }
 
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+        const self: *Impl = @ptrCast(@alignCast(ptr));
+        switch (self.state) {
+            .move => {},
+            .label_edit => {
+                switch (keycode) {
+                    .backspace => if (self.label.items.len > 0) {
+                        if (modifiers.get(.left_control) or modifiers.get(.right_control))
+                            self.label.items.len = 0
+                        else
+                            self.label.items.len -= 1;
+                    },
+                    .@"return" => {
+                        self.state = .idle;
+                        self.imtui.unfocus(self.control());
+                    },
+                    .escape => {
+                        self.state = .idle;
+                        self.imtui.unfocus(self.control());
+                        try self.label.replaceRange(self.imtui.allocator, 0, self.label.items.len, self.label_orig.items);
+                    },
+                    else => if (Imtui.Controls.isPrintableKey(keycode)) {
+                        try self.label.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                    },
+                }
+                return;
+            },
+            else => unreachable,
+        }
+    }
+
+    fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
+
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return (self.imtui.mouse_row >= self.parent.r1 + self.r1 and self.imtui.mouse_row < self.parent.r1 + self.r2 and
+        return self.state == .label_edit or
+            (self.imtui.mouse_row >= self.parent.r1 + self.r1 and self.imtui.mouse_row < self.parent.r1 + self.r2 and
             self.imtui.mouse_col >= self.parent.c1 + self.c1 and self.imtui.mouse_col < self.parent.c1 + self.c2);
     }
 
@@ -83,26 +171,90 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         if (cm) return null;
-
         if (!isMouseOver(ptr))
             return self.imtui.fallbackMouseDown(b, clicks, cm);
-
         if (b != .left) return null;
 
-        return null;
+        switch (self.state) {
+            .idle => {
+                if (self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.parent.c1 + self.c1 + 1 and
+                    self.imtui.text_mode.mouse_col < self.parent.c1 + self.c2 - 1)
+                {
+                    try self.label_orig.replaceRange(self.imtui.allocator, 0, self.label_orig.items.len, self.label.items);
+                    self.state = .label_edit;
+                    try self.imtui.focus(self.control());
+                    return null;
+                }
+
+                if (self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.parent.c1 + self.c1 and
+                    self.imtui.text_mode.mouse_col < self.parent.c1 + self.c2)
+                {
+                    self.state = .{ .move = .{
+                        .origin_row = self.imtui.text_mode.mouse_row,
+                        .origin_col = self.imtui.text_mode.mouse_col,
+                    } };
+                    try self.imtui.focus(self.control());
+                    return self.control();
+                }
+
+                return null;
+            },
+            .label_edit => {
+                if (!(self.imtui.text_mode.mouse_row == self.parent.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.parent.c1 + self.c1 + 1 and
+                    self.imtui.text_mode.mouse_col < self.parent.c1 + self.c2 - 1))
+                {
+                    self.state = .idle;
+                    self.imtui.unfocus(self.control());
+                }
+
+                return null;
+            },
+            else => return null,
+        }
     }
 
     fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
-        _ = self;
+
+        switch (self.state) {
+            .move => |*d| {
+                const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
+                const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
+                const r1: isize = @as(isize, @intCast(self.r1)) + dr;
+                const c1: isize = @as(isize, @intCast(self.c1)) + dc;
+                const r2: isize = @as(isize, @intCast(self.r2)) + dr;
+                const c2: isize = @as(isize, @intCast(self.c2)) + dc;
+                if (r1 > 0 and r2 < self.parent.r2 - self.parent.r1) {
+                    self.r1 = @intCast(r1);
+                    self.r2 = @intCast(r2);
+                    d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
+                }
+                if (c1 > 0 and c2 < self.parent.c2 - self.parent.c1) {
+                    self.c1 = @intCast(c1);
+                    self.c2 = @intCast(c2);
+                    d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
+                }
+            },
+            else => unreachable,
+        }
     }
 
     fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         _ = b;
         _ = clicks;
-        _ = self;
+
+        switch (self.state) {
+            .move => {
+                self.state = .idle;
+                self.imtui.unfocus(self.control());
+            },
+            else => unreachable,
+        }
     }
 };
 

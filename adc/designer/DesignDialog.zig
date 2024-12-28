@@ -17,6 +17,7 @@ pub const Impl = struct {
     c1: usize,
     r2: usize,
     c2: usize,
+
     title: std.ArrayListUnmanaged(u8),
     title_orig: std.ArrayListUnmanaged(u8) = .{},
 
@@ -62,7 +63,7 @@ pub const Impl = struct {
                 var highlighted = false;
                 for (self.corners()) |corner|
                     if (!highlighted and self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
-                        self.imtui.text_mode.paintColour(corner.r -| 1, corner.c -| 1, corner.r + 2, corner.c + 2, 0x20, .outline);
+                        self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0x20, .outline);
                         highlighted = true;
                         break;
                     };
@@ -82,7 +83,7 @@ pub const Impl = struct {
             },
             .resize => |d| {
                 const corner = self.corners()[d.cix];
-                self.imtui.text_mode.paintColour(corner.r -| 1, corner.c -| 1, corner.r + 2, corner.c + 2, 0xa0, .outline);
+                self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0xa0, .outline);
             },
             .move => |_| {},
             .title_edit => {
@@ -109,7 +110,7 @@ pub const Impl = struct {
         self.imtui.allocator.destroy(self);
     }
 
-    pub fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         switch (self.state) {
@@ -177,10 +178,8 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         if (cm) return null;
-
         if (!isMouseOver(ptr))
             return self.imtui.fallbackMouseDown(b, clicks, cm);
-
         if (b != .left) return null;
 
         switch (self.state) {

@@ -145,8 +145,11 @@ fn renderItems(self: *Designer) !void {
         switch (i.*) {
             .dialog => unreachable,
             .button => |*s| {
-                const db = try self.imtui.getOrPutControl(DesignButton, .{ dd.impl, ix, s.r1, s.c1, s.label, s.primary, s.cancel });
-                _ = db;
+                const b = try self.imtui.getOrPutControl(
+                    DesignButton,
+                    .{ dd.impl, ix, s.r1, s.c1, s.label, s.primary, s.cancel },
+                );
+                try b.sync(self.imtui.allocator, s);
             },
         }
     }

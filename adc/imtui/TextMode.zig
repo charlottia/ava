@@ -72,6 +72,13 @@ pub fn TextMode(H: usize, W: usize) type {
                     ((7 - ((pair >> 12) & 0x7)) << 12) |
                         ((7 - ((pair >> 8) & 0x7)) << 8) |
                         (pair & 0xFF)
+                    // This is an interesting alternative, which inverts within
+                    // each half of the palette rather than forcing the lower
+                    // half and making pairs like 0x7f degrade to 0x00 on hover
+                    // (which is the authentic behaviour, above):
+                    // (((((pair >> 12) & 0x8) | 7) - ((pair >> 12) & 0x7)) << 12) |
+                    //     (((((pair >> 8) & 0x8) | 7) - ((pair >> 8) & 0x7)) << 8) |
+                    //     (pair & 0xFF)
                 else
                     pair;
                 try self.font_rendered.render(self.renderer, p, c, r);
