@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const SDL = @import("sdl2");
 
 const Imtui = @import("../Imtui.zig");
@@ -20,36 +21,27 @@ pub const DialogButton = @import("./DialogButton.zig");
 
 pub const MenuItemReference = struct { index: usize, item: usize };
 
-pub fn formatShortcut(buf: []u8, shortcut: Imtui.Shortcut) []const u8 {
-    var i: usize = 0;
+pub fn formatShortcut(allocator: Allocator, shortcut: Imtui.Shortcut) ![]const u8 {
+    var buf = std.ArrayListUnmanaged(u8){};
+    errdefer buf.deinit(allocator);
+
+    const writer = buf.writer(allocator);
+
     if (shortcut.modifier) |modifier| {
         const tn = @tagName(modifier);
-        buf[i] = std.ascii.toUpper(tn[0]);
-        @memcpy(buf[i + 1 ..][0 .. tn.len - 1], tn[1..]);
-        buf[i + tn.len] = '+';
-        i += tn.len + 1;
+        try std.fmt.format(writer, "{c}{s}+", .{ std.ascii.toUpper(tn[0]), tn[1..] });
     }
+
     switch (shortcut.keycode) {
-        .delete => {
-            @memcpy(buf[i..][0..3], "Del");
-            i += 3;
-        },
-        .insert => {
-            @memcpy(buf[i..][0..3], "Ins");
-            i += 3;
-        },
-        .backslash => {
-            buf[i] = '\\';
-            i += 1;
-        },
+        .delete => try writer.writeAll("Del"),
+        .insert => try writer.writeAll("Ins"),
+        .backslash => try writer.writeByte('\\'),
         else => {
             const tn = @tagName(shortcut.keycode);
-            buf[i] = std.ascii.toUpper(tn[0]);
-            @memcpy(buf[i + 1 ..][0 .. tn.len - 1], tn[1..]);
-            i += tn.len;
+            try std.fmt.format(writer, "{c}{s}", .{ std.ascii.toUpper(tn[0]), tn[1..] });
         },
     }
-    return buf[0..i];
+    return buf.toOwnedSlice(allocator);
 }
 
 pub fn lenWithoutAccelerators(s: []const u8) usize {

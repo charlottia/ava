@@ -39,12 +39,6 @@ pub const Impl = struct {
         self.index = index;
         self.width = width;
 
-        self.menu_c1 = c - 1;
-        const sw = self.imtui.text_mode.W;
-        if (self.menu_c1 + self.width + 3 > sw - 3)
-            self.menu_c1 -= self.menu_c1 + self.width + 3 - (sw - 3);
-        self.menu_c2 = self.menu_c1 + self.width + 3;
-
         self.menu_items_at = 0;
 
         const focused = self.imtui.focused(self.menubar.control());
@@ -105,7 +99,7 @@ pub fn item(self: Menu, label: []const u8) !Imtui.Controls.MenuItem {
         try impl.menu_items.append(impl.imtui.allocator, i.impl);
         break :i i.impl;
     } else if (impl.menu_items.items[impl.menu_items_at]) |i| i: {
-        i.describe(label, impl.menu_items_at);
+        try i.describe(label, impl.menu_items_at);
         break :i i;
     } else i: {
         const i = try Imtui.Controls.MenuItem.create(impl.imtui, label, impl.menu_items_at);
@@ -128,7 +122,7 @@ pub fn separator(self: Menu) !void {
     impl.menu_items_at += 1;
 }
 
-pub fn end(self: Menu) void {
+pub fn end(self: Menu) !void {
     const impl = self.impl;
     if (impl.menu_items.items.len > impl.menu_items_at) {
         for (impl.menu_items.items[impl.menu_items_at..]) |mit|
@@ -143,6 +137,23 @@ pub fn end(self: Menu) void {
 
     if (impl.menubar.openMenu() != impl)
         return;
+
+    // Ensure minimum width requirement met.
+    for (impl.menu_items.items) |mit|
+        if (mit) |it| {
+            const label_width = Imtui.Controls.lenWithoutAccelerators(it.label);
+            const shortcut_width = if (try it.renderedShortcut()) |rs|
+                1 + rs.len
+            else
+                0;
+            impl.width = @max(label_width + shortcut_width, impl.width);
+        };
+
+    impl.menu_c1 = impl.c1 - 1;
+    const sw = impl.imtui.text_mode.W;
+    if (impl.menu_c1 + impl.width + 3 > sw - 3)
+        impl.menu_c1 -= impl.menu_c1 + impl.width + 3 - (sw - 3);
+    impl.menu_c2 = impl.menu_c1 + impl.width + 3;
 
     impl.imtui.text_mode.box(impl.r + 1, impl.menu_c1, impl.r + 3 + impl.menu_items.items.len, impl.menu_c2 + 1, 0x70);
 
@@ -164,11 +175,8 @@ pub fn end(self: Menu) void {
 
             impl.imtui.text_mode.writeAccelerated(row, impl.menu_c1 + 2, it.label, it.enabled);
 
-            if (it.shortcut) |shortcut| {
-                var buf: [20]u8 = undefined;
-                const text = Imtui.Controls.formatShortcut(&buf, shortcut);
-                impl.imtui.text_mode.write(row, impl.menu_c2 - 1 - text.len, text);
-            }
+            if (try it.renderedShortcut()) |rs|
+                impl.imtui.text_mode.write(row, impl.menu_c2 - 1 - rs.len, rs);
         } else {
             impl.imtui.text_mode.draw(row, impl.menu_c1, 0x70, .VerticalRight);
             impl.imtui.text_mode.paint(row, impl.menu_c1 + 1, row + 1, impl.menu_c2, 0x70, .Horizontal);

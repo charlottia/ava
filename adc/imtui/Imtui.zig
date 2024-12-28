@@ -546,3 +546,13 @@ pub fn keycodeAlphanum(keycode: SDL.Keycode) bool {
     return @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
         @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z);
 }
+
+// TODO: use this more, and also figure out a nice way to do it for items reset
+// in describe().
+pub fn describeValue(self: *const Imtui, current: []const u8, new: []const u8) ![]const u8 {
+    if (std.mem.eql(u8, current, new))
+        return current;
+
+    self.allocator.free(current);
+    return self.allocator.dupe(u8, new);
+}

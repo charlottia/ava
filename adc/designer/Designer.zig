@@ -179,30 +179,36 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to DOS");
     if (exit.chosen())
         self.imtui.running = false;
-    file_menu.end();
+    try file_menu.end();
 
     var add_menu = try menubar.menu("&Add", 16);
     var button = (try add_menu.item("&Button")).help("Add new button to dialog");
     if (button.chosen()) {
-        try self.controls.append(
-            self.imtui.allocator,
-            .{ .button = .{ .r1 = 5, .c1 = 5, .label = try self.imtui.allocator.dupe(u8, "OK"), .primary = false, .cancel = false } },
-        );
+        try self.controls.append(self.imtui.allocator, .{ .button = .{
+            .r1 = 5,
+            .c1 = 5,
+            .label = try self.imtui.allocator.dupe(u8, "OK"),
+            .primary = false,
+            .cancel = false,
+        } });
     }
-    add_menu.end();
+    try add_menu.end();
 
     var controls_menu = try menubar.menu("&Controls", 16);
+    var buf: [100]u8 = undefined;
     for (self.controls.items) |c| {
         switch (c) {
-            .dialog => |_| {
-                _ = (try controls_menu.item("[Dialog] ")).help("Open dialog properties");
+            .dialog => |d| {
+                const label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.title});
+                _ = (try controls_menu.item(label)).help("Open dialog properties");
             },
-            .button => |_| {
-                _ = (try controls_menu.item("[Button] ")).help("Open button properties");
+            .button => |b| {
+                const label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.label});
+                _ = (try controls_menu.item(label)).help("Open button properties");
             },
         }
     }
-    controls_menu.end();
+    try controls_menu.end();
 
     menubar.end();
 

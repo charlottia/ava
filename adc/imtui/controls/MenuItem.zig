@@ -7,8 +7,9 @@ const Imtui = @import("../Imtui.zig");
 const MenuItem = @This();
 
 pub const Impl = struct {
+    // XXX: for now we explicitly support taking ownership of item labels, but not help texts.
     imtui: *Imtui,
-    label: []const u8 = undefined,
+    label: []const u8,
     index: usize = undefined,
     enabled: bool = undefined,
     shortcut: ?Imtui.Shortcut = undefined,
@@ -16,9 +17,10 @@ pub const Impl = struct {
     help: ?[]const u8 = undefined,
 
     chosen: bool = false,
+    rendered_shortcut: ?[]const u8 = null,
 
-    pub fn describe(self: *Impl, label: []const u8, index: usize) void {
-        self.label = label;
+    pub fn describe(self: *Impl, label: []const u8, index: usize) !void {
+        self.label = try self.imtui.describeValue(self.label, label);
         self.index = index;
         self.enabled = true;
         self.shortcut = null;
@@ -27,7 +29,20 @@ pub const Impl = struct {
     }
 
     pub fn deinit(self: *Impl) void {
+        if (self.rendered_shortcut) |rs| self.imtui.allocator.free(rs);
+        self.imtui.allocator.free(self.label);
         self.imtui.allocator.destroy(self);
+    }
+
+    pub fn renderedShortcut(self: *Impl) !?[]const u8 {
+        // we assume these do not change ever
+        if (self.shortcut == null)
+            return null;
+
+        if (self.rendered_shortcut == null)
+            self.rendered_shortcut = try Imtui.Controls.formatShortcut(self.imtui.allocator, self.shortcut.?);
+
+        return self.rendered_shortcut;
     }
 };
 
@@ -35,8 +50,11 @@ impl: *Impl,
 
 pub fn create(imtui: *Imtui, label: []const u8, index: usize) !MenuItem {
     var i = try imtui.allocator.create(Impl);
-    i.* = .{ .imtui = imtui };
-    i.describe(label, index);
+    i.* = .{
+        .imtui = imtui,
+        .label = try imtui.allocator.dupe(u8, label),
+    };
+    try i.describe(label, index);
     return .{ .impl = i };
 }
 
