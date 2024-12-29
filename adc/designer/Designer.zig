@@ -241,6 +241,8 @@ fn renderItems(self: *Designer) !?DesignControl {
         }
     }
 
+    self.next_focus = null;
+
     return focused;
 }
 
@@ -348,9 +350,21 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     // TODO: would be lovely to localise these in the Design structs themselves
     if (focused_dc) |f| switch (f) {
-        .dialog => {},
+        .dialog => |p| {
+            var dialog_menu = try menubar.menu("&Dialog", 0);
+
+            var edit_title = (try dialog_menu.item("&Edit Title...")).shortcut(.@"return", null).help("Edits the dialog's title");
+            if (edit_title.chosen())
+                try p.impl.startTitleEdit();
+
+            try dialog_menu.end();
+        },
         .button => |p| {
             var button_menu = try menubar.menu("&Button", 0);
+
+            var edit_label = (try button_menu.item("&Edit Label...")).shortcut(.@"return", null).help("Edits the button's label");
+            if (edit_label.chosen())
+                try p.impl.startLabelEdit();
 
             var primary = (try button_menu.item("&Primary")).help("Toggles the button's primary status");
             if (p.impl.primary)
@@ -364,9 +378,29 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             if (cancel.chosen())
                 p.impl.cancel = !p.impl.cancel;
 
+            try button_menu.separator();
+
+            var delete = (try button_menu.item("Delete")).shortcut(.delete, null).help("Deletes the button");
+            if (delete.chosen())
+                self.removeDesignControl(f);
+
             try button_menu.end();
         },
-        .label => {},
+        .label => |p| {
+            var label_menu = try menubar.menu("&Label", 0);
+
+            var edit_label = (try label_menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the label's text");
+            if (edit_label.chosen())
+                try p.impl.startTextEdit();
+
+            try label_menu.separator();
+
+            var delete = (try label_menu.item("Delete")).shortcut(.delete, null).help("Deletes the label");
+            if (delete.chosen())
+                self.removeDesignControl(f);
+
+            try label_menu.end();
+        },
     };
 
     menubar.end();
@@ -378,95 +412,79 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
     const help_line_colour = 0x30;
     self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
 
-    var handled = false;
-
     const focused = self.imtui.focus_stack.getLast();
     if (focused.is(Imtui.Controls.Menubar.Impl)) |mb| {
         if (mb.focus != null and mb.focus.? == .menu) {
             const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
             self.imtui.text_mode.write(24, 1, help_text);
-            handled = true;
+            return;
         } else if (mb.focus != null and mb.focus.? == .menubar) {
             self.imtui.text_mode.write(24, 1, "Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
-            handled = true;
+            return;
         }
     } else if (focused.parent()) |p|
         if (p.is(Imtui.Controls.Dialog.Impl)) |_| {
             self.imtui.text_mode.write(24, 1, "Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
-            handled = true;
+            return;
         };
 
-    if (!handled and self.design_root.editing_text) {
+    if (self.design_root.editing_text) {
         self.imtui.text_mode.write(24, 1, "Enter=Execute   Esc=Cancel");
-        handled = true;
+        return;
     }
 
-    if (!handled) {
+    if (focused_dc) |f| {
         var offset: usize = 1;
 
-        if (focused_dc) |f| {
-            switch (f) {
-                .dialog => |d| {
-                    // TODO: change when dialog state != idle. (Editing title -> Enter no longer Edit Title)
-                    var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Title>");
-                    var edit_shortcut = try self.imtui.shortcut(.@"return", null);
-                    if (edit_button.chosen() or edit_shortcut.chosen())
-                        try d.impl.startTitleEdit();
-                    offset += "<Enter=Edit Title> ".len;
-                },
-                .button => |b| {
-                    // TODO: as above.
-                    var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Label>");
-                    var edit_shortcut = try self.imtui.shortcut(.@"return", null);
-                    if (edit_button.chosen() or edit_shortcut.chosen())
-                        try b.impl.startLabelEdit();
-                    offset += "<Enter=Edit Label> ".len;
+        switch (f) {
+            .dialog => |d| {
+                var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Title>");
+                if (edit_button.chosen())
+                    try d.impl.startTitleEdit();
+                offset += "<Enter=Edit Title> ".len;
+            },
+            .button => |b| {
+                var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Label>");
+                if (edit_button.chosen())
+                    try b.impl.startLabelEdit();
+                offset += "<Enter=Edit Label> ".len;
 
-                    var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
-                    var delete_shortcut = try self.imtui.shortcut(.delete, null);
-                    if (delete_button.chosen() or delete_shortcut.chosen())
-                        self.removeDesignControl(f);
-                    offset += "<Del=Delete> ".len;
-                },
-                .label => |l| {
-                    // TODO: as above.
-                    var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Text>");
-                    var edit_shortcut = try self.imtui.shortcut(.@"return", null);
-                    if (edit_button.chosen() or edit_shortcut.chosen())
-                        try l.impl.startTextEdit();
-                    offset += "<Enter=Edit Text> ".len;
+                var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
+                if (delete_button.chosen())
+                    self.removeDesignControl(f);
+                offset += "<Del=Delete> ".len;
+            },
+            .label => |l| {
+                var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Text>");
+                if (edit_button.chosen())
+                    try l.impl.startTextEdit();
+                offset += "<Enter=Edit Text> ".len;
 
-                    var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
-                    var delete_shortcut = try self.imtui.shortcut(.delete, null);
-                    if (delete_button.chosen() or delete_shortcut.chosen())
-                        self.removeDesignControl(f);
-                    offset += "<Del=Delete> ".len;
-                },
-            }
-
-            std.debug.assert(offset <= 55);
-            offset = 55;
-            var next_button = try self.imtui.button(24, offset, help_line_colour, "<Tab=Next>");
-            var next_shortcut = try self.imtui.shortcut(.tab, null);
-            if (next_button.chosen() or next_shortcut.chosen())
-                try self.nextDesignControl(f);
-            offset += "<Tab=Next> ".len;
-            var prev_shortcut = try self.imtui.shortcut(.tab, .shift);
-            if (prev_shortcut.chosen())
-                try self.prevDesignControl(f);
-
-            var unfocus_button = try self.imtui.button(24, offset, help_line_colour, "<Esc=Unfocus>");
-            var unfocus_shortcut = try self.imtui.shortcut(.escape, null);
-            if (unfocus_button.chosen() or unfocus_shortcut.chosen())
-                self.imtui.unfocus(f.control());
-            offset += "<Esc=Unfocus> ".len;
-        } else {
-            var next_button = try self.imtui.button(24, offset, help_line_colour, "<Tab=Focus Dialog>");
-            var next_shortcut = try self.imtui.shortcut(.tab, null);
-            if (next_button.chosen() or next_shortcut.chosen())
-                try self.imtui.focus(self.controls.items[0].control());
-            offset += "<Tab=Focus Dialog> ".len;
+                var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
+                if (delete_button.chosen())
+                    self.removeDesignControl(f);
+                offset += "<Del=Delete> ".len;
+            },
         }
+
+        std.debug.assert(offset <= 44);
+        offset = 45;
+        self.imtui.text_mode.write(24, 45, "Arrows=Move  Tab=Next  Esc=Unfocus");
+        var next_shortcut = try self.imtui.shortcut(.tab, null);
+        if (next_shortcut.chosen())
+            try self.nextDesignControl(f);
+        var prev_shortcut = try self.imtui.shortcut(.tab, .shift);
+        if (prev_shortcut.chosen())
+            try self.prevDesignControl(f);
+
+        var unfocus_shortcut = try self.imtui.shortcut(.escape, null);
+        if (unfocus_shortcut.chosen())
+            self.imtui.unfocus(f.control());
+    } else {
+        var next_button = try self.imtui.button(24, 61, help_line_colour, "<Tab=Focus Dialog>");
+        var next_shortcut = try self.imtui.shortcut(.tab, null);
+        if (next_button.chosen() or next_shortcut.chosen())
+            try self.imtui.focus(self.controls.items[0].control());
     }
 }
 
