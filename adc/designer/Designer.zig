@@ -6,14 +6,17 @@ const ini = @import("ini");
 
 const Imtui = imtuilib.Imtui;
 
+const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
+const DesignLabel = @import("./DesignLabel.zig");
 
 const Designer = @This();
 
 const Control = union(enum) {
     dialog: DesignDialog.Schema,
     button: DesignButton.Schema,
+    label: DesignLabel.Schema,
 };
 
 const SaveFile = struct {
@@ -135,10 +138,12 @@ pub fn render(self: *Designer) !void {
 }
 
 fn renderItems(self: *Designer) !void {
-    const ds = &self.controls.items[0].dialog;
-    const dd = try self.imtui.getOrPutControl(DesignDialog, .{ ds.r1, ds.c1, ds.r2, ds.c2, ds.title });
+    const dr = try self.imtui.getOrPutControl(DesignRoot, .{});
     if (self.imtui.focus_stack.items.len == 0)
-        try self.imtui.focus_stack.append(self.imtui.allocator, dd.impl.control());
+        try self.imtui.focus_stack.append(self.imtui.allocator, dr.impl.control());
+
+    const ds = &self.controls.items[0].dialog;
+    const dd = try self.imtui.getOrPutControl(DesignDialog, .{ dr.impl, ds.r1, ds.c1, ds.r2, ds.c2, ds.title });
     try dd.sync(self.imtui.allocator, ds);
 
     for (self.controls.items[1..], 1..) |*i, ix| {
@@ -147,9 +152,16 @@ fn renderItems(self: *Designer) !void {
             .button => |*s| {
                 const b = try self.imtui.getOrPutControl(
                     DesignButton,
-                    .{ dd.impl, ix, s.r1, s.c1, s.label, s.primary, s.cancel },
+                    .{ dr.impl, dd.impl, ix, s.r1, s.c1, s.label, s.primary, s.cancel },
                 );
                 try b.sync(self.imtui.allocator, s);
+            },
+            .label => |*s| {
+                const l = try self.imtui.getOrPutControl(
+                    DesignLabel,
+                    .{ dr.impl, dd.impl, ix, s.r1, s.c1, s.label },
+                );
+                try l.sync(self.imtui.allocator, s);
             },
         }
     }
@@ -176,7 +188,7 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     }
     _ = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
     try file_menu.separator();
-    var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to DOS");
+    var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to OS");
     if (exit.chosen())
         self.imtui.running = false;
     try file_menu.end();
@@ -192,6 +204,14 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
             .cancel = false,
         } });
     }
+    var label = (try add_menu.item("&Label")).help("Add new label to dialog");
+    if (label.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .label = .{
+            .r1 = 5,
+            .c1 = 5,
+            .label = try self.imtui.allocator.dupe(u8, "Hello"),
+        } });
+    }
     try add_menu.end();
 
     var controls_menu = try menubar.menu("&Controls", 16);
@@ -199,12 +219,19 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     for (self.controls.items) |c| {
         switch (c) {
             .dialog => |d| {
-                const label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.title});
-                _ = (try controls_menu.item(label)).help("Open dialog properties");
+                const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.title});
+                var item = (try controls_menu.item(item_label)).help("Focus dialog");
+                item.bullet();
             },
             .button => |b| {
-                const label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.label});
-                _ = (try controls_menu.item(label)).help("Open button properties");
+                const item_label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.label});
+                var item = (try controls_menu.item(item_label)).help("Focus button");
+                item.bullet();
+            },
+            .label => |l| {
+                const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.label});
+                var item = (try controls_menu.item(item_label)).help("Focus label");
+                item.bullet();
             },
         }
     }
@@ -247,9 +274,9 @@ fn renderHelpLine(self: *Designer, menubar: Imtui.Controls.Menubar) !void {
         var underlay_shortcut = try self.imtui.shortcut(.grave, null);
         if (underlay_button.chosen() or underlay_shortcut.chosen()) {
             self.display = switch (self.display) {
-                .behind => .design_only,
-                .design_only => .in_front,
-                .in_front => .behind,
+                .behind => .in_front,
+                .in_front => .design_only,
+                .design_only => .behind,
             };
         }
     }

@@ -6,11 +6,15 @@ const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
 
+const DesignRoot = @import("./DesignRoot.zig");
+
 const DesignDialog = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
+    parent: *DesignRoot.Impl,
 
     // state
     r1: usize,
@@ -34,7 +38,7 @@ pub const Impl = struct {
         return .{
             .ptr = self,
             .vtable = &.{
-                .orphan = true,
+                .parent = parent,
                 .deinit = deinit,
                 .handleKeyPress = handleKeyPress,
                 .handleKeyUp = handleKeyUp,
@@ -46,7 +50,7 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(self: *Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
+    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
         self.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, 0x70);
 
         self.title_start = self.c1 + (self.c2 - self.c1 - self.title.items.len) / 2;
@@ -94,13 +98,9 @@ pub const Impl = struct {
         }
     }
 
-    fn corners(self: *const Impl) [4]struct { r: usize, c: usize } {
-        return .{
-            .{ .r = self.r1, .c = self.c1 },
-            .{ .r = self.r1, .c = self.c2 - 1 },
-            .{ .r = self.r2 - 1, .c = self.c1 },
-            .{ .r = self.r2 - 1, .c = self.c2 - 1 },
-        };
+    fn parent(ptr: *const anyopaque) ?Imtui.Control {
+        const self: *const Impl = @ptrCast(@alignCast(ptr));
+        return self.parent.control();
     }
 
     pub fn deinit(ptr: *anyopaque) void {
@@ -108,6 +108,15 @@ pub const Impl = struct {
         self.title.deinit(self.imtui.allocator);
         self.title_orig.deinit(self.imtui.allocator);
         self.imtui.allocator.destroy(self);
+    }
+
+    fn corners(self: *const Impl) [4]struct { r: usize, c: usize } {
+        return .{
+            .{ .r = self.r1, .c = self.c1 },
+            .{ .r = self.r1, .c = self.c2 - 1 },
+            .{ .r = self.r2 - 1, .c = self.c1 },
+            .{ .r = self.r2 - 1, .c = self.c2 - 1 },
+        };
     }
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -279,22 +288,23 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{s}", .{"designer.DesignDialog"});
 }
 
-pub fn create(imtui: *Imtui, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
+pub fn create(imtui: *Imtui, parent: *DesignRoot.Impl, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
+        .parent = parent,
         .r1 = r1,
         .c1 = c1,
         .r2 = r2,
         .c2 = c2,
         .title = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, title)),
     };
-    d.describe(r1, c1, r2, c2, title);
+    d.describe(parent, r1, c1, r2, c2, title);
     return .{ .impl = d };
 }
 

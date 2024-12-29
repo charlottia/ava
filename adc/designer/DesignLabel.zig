@@ -9,7 +9,7 @@ const Imtui = imtuilib.Imtui;
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 
-const DesignButton = @This();
+const DesignLabel = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
@@ -22,18 +22,16 @@ pub const Impl = struct {
     r1: usize,
     c1: usize,
     label: std.ArrayListUnmanaged(u8),
-    primary: bool,
-    cancel: bool,
 
     r2: usize = undefined,
     c2: usize = undefined,
     label_orig: std.ArrayListUnmanaged(u8) = .{},
 
     state: union(enum) {
-        unfocused,
+        idle,
         move: struct { origin_row: usize, origin_col: usize },
         label_edit,
-    } = .unfocused,
+    } = .idle,
 
     pub fn control(self: *Impl) Imtui.Control {
         return .{
@@ -51,47 +49,57 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: *DesignDialog.Impl, _: usize, _: usize, _: usize, _: []const u8, _: bool, _: bool) void {
+    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: *DesignDialog.Impl, _: usize, _: usize, _: usize, _: []const u8) void {
         self.r2 = self.r1 + 1;
-        self.c2 = self.c1 + 4 + self.label.items.len;
+        self.c2 = self.c1 + self.label.items.len;
 
         const r1 = self.dialog.r1 + self.r1;
-        const r2 = self.dialog.r1 + self.r2;
         const c1 = self.dialog.c1 + self.c1;
-        const c2 = self.dialog.c1 + self.c2;
 
-        if (self.primary) {
-            self.imtui.text_mode.paintColour(r1, c1, r2, c1 + 1, 0x7f, .fill);
-            self.imtui.text_mode.paintColour(r1, c2 - 1, r2, c2, 0x7f, .fill);
-        }
-
-        self.imtui.text_mode.write(r1, c1, "<");
-        self.imtui.text_mode.writeAccelerated(r1, c1 + 2, self.label.items, true);
-        self.imtui.text_mode.write(r1, c2 - 1, ">");
+        self.imtui.text_mode.write(r1, c1, self.label.items);
 
         switch (self.state) {
-            .unfocused => {
+            .idle => {
                 if (self.imtui.focus_stack.items.len > 1)
                     return;
 
-                if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
+                var highlighted = false;
+                if (!highlighted and
+                    self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
+                    self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1)
+                {
+                    self.imtui.text_mode.paintColour(
+                        self.dialog.r1 + self.r1,
+                        self.dialog.c1 + self.c1 + 1,
+                        self.dialog.r1 + self.r1 + 1,
+                        self.dialog.c1 + self.c2 - 1,
+                        0x20,
+                        .fill,
+                    );
+                    highlighted = true;
+                }
+
+                if (!highlighted and
+                    self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 and
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2)
                 {
                     self.imtui.text_mode.paintColour(
-                        self.dialog.r1 + self.r1,
-                        self.dialog.c1 + self.c1,
-                        self.dialog.r1 + self.r2,
-                        self.dialog.c1 + self.c2,
+                        self.dialog.r1 + self.r1 - 1,
+                        self.dialog.c1 + self.c1 - 1,
+                        self.dialog.r1 + self.r2 + 1,
+                        self.dialog.c1 + self.c2 + 1,
                         0x20,
-                        .fill,
+                        .outline,
                     );
+                    highlighted = true;
                 }
             },
             .move => |_| {},
             .label_edit => {
                 self.imtui.text_mode.cursor_row = self.dialog.r1 + self.r1;
-                self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + 2 + self.label.items.len;
+                self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + self.label.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;
             },
         }
@@ -122,11 +130,11 @@ pub const Impl = struct {
                             self.label.items.len -= 1;
                     },
                     .@"return" => {
-                        self.state = .unfocused;
+                        self.state = .idle;
                         self.imtui.unfocus(self.control());
                     },
                     .escape => {
-                        self.state = .unfocused;
+                        self.state = .idle;
                         self.imtui.unfocus(self.control());
                         try self.label.replaceRange(self.imtui.allocator, 0, self.label.items.len, self.label_orig.items);
                     },
@@ -158,7 +166,7 @@ pub const Impl = struct {
         if (b != .left) return null;
 
         switch (self.state) {
-            .unfocused => {
+            .idle => {
                 if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1)
@@ -188,7 +196,7 @@ pub const Impl = struct {
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1))
                 {
-                    self.state = .unfocused;
+                    self.state = .idle;
                     self.imtui.unfocus(self.control());
                 }
 
@@ -232,7 +240,7 @@ pub const Impl = struct {
 
         switch (self.state) {
             .move => {
-                self.state = .unfocused;
+                self.state = .idle;
                 self.imtui.unfocus(self.control());
             },
             else => unreachable,
@@ -242,11 +250,11 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, ix: usize, _: usize, _: usize, _: []const u8, _: bool, _: bool) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignButton", ix });
+pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, ix: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignLabel", ix });
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, ix: usize, r1: usize, c1: usize, label: []const u8, primary: bool, cancel: bool) !DesignButton {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, ix: usize, r1: usize, c1: usize, label: []const u8) !DesignLabel {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
@@ -256,10 +264,8 @@ pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl,
         .r1 = r1,
         .c1 = c1,
         .label = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, label)),
-        .primary = primary,
-        .cancel = cancel,
     };
-    d.describe(root, dialog, ix, r1, c1, label, primary, cancel);
+    d.describe(root, dialog, ix, r1, c1, label);
     return .{ .impl = d };
 }
 
@@ -267,15 +273,13 @@ pub const Schema = struct {
     r1: usize,
     c1: usize,
     label: []const u8,
-    primary: bool,
-    cancel: bool,
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
         allocator.free(self.label);
     }
 };
 
-pub fn sync(self: DesignButton, allocator: Allocator, schema: *Schema) !void {
+pub fn sync(self: DesignLabel, allocator: Allocator, schema: *Schema) !void {
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
     if (!std.mem.eql(u8, schema.label, self.impl.label.items)) {
