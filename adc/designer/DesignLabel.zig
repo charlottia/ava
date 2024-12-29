@@ -29,7 +29,11 @@ pub const Impl = struct {
 
     state: union(enum) {
         idle,
-        move: struct { origin_row: usize, origin_col: usize },
+        move: struct {
+            origin_row: usize,
+            origin_col: usize,
+            edit_eligible: bool,
+        },
         text_edit,
     } = .idle,
 
@@ -161,32 +165,18 @@ pub const Impl = struct {
             self.state = .{ .move = .{
                 .origin_row = self.imtui.text_mode.mouse_row,
                 .origin_col = self.imtui.text_mode.mouse_col,
+                .edit_eligible = false,
             } };
             try self.imtui.focus(self.control());
             return self.control();
         } else switch (self.state) {
             .idle => {
-                if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
-                    self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1)
-                {
-                    try self.text_orig.replaceRange(self.imtui.allocator, 0, self.text_orig.items.len, self.text.items);
-                    self.state = .text_edit;
-                    return null;
-                }
-
-                if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 and
-                    self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2)
-                {
-                    self.state = .{ .move = .{
-                        .origin_row = self.imtui.text_mode.mouse_row,
-                        .origin_col = self.imtui.text_mode.mouse_col,
-                    } };
-                    return self.control();
-                }
-
-                unreachable;
+                self.state = .{ .move = .{
+                    .origin_row = self.imtui.text_mode.mouse_row,
+                    .origin_col = self.imtui.text_mode.mouse_col,
+                    .edit_eligible = true,
+                } };
+                return self.control();
             },
             .text_edit => {
                 if (!(self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
@@ -218,11 +208,13 @@ pub const Impl = struct {
                     self.r1 = @intCast(r1);
                     self.r2 = @intCast(r2);
                     d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
+                    d.edit_eligible = false;
                 }
                 if (c1 > 0 and c2 < self.dialog.c2 - self.dialog.c1) {
                     self.c1 = @intCast(c1);
                     self.c2 = @intCast(c2);
                     d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
+                    d.edit_eligible = false;
                 }
             },
             else => unreachable,
@@ -235,7 +227,11 @@ pub const Impl = struct {
         _ = clicks;
 
         switch (self.state) {
-            .move => self.state = .idle,
+            .move => |d| {
+                self.state = .idle;
+                if (d.edit_eligible)
+                    try self.startTextEdit();
+            },
             else => unreachable,
         }
     }
