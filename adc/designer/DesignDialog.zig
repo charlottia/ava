@@ -14,7 +14,7 @@ pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
 
-    parent: *DesignRoot.Impl,
+    root: *DesignRoot.Impl,
 
     // state
     r1: usize,
@@ -54,11 +54,15 @@ pub const Impl = struct {
         };
     }
 
+    // 0x20: not focused, hovered
+    // 0x50: focused, nothing relevant hovered
+    // 0x5f: focused, text editing
+    // 0xd0: focused, hovering something relevant
     pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
         self.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, 0x70);
 
         self.title_start = self.c1 + (self.c2 - self.c1 - self.title.items.len) / 2;
-        const title_colour: u8 = if (self.state == .title_edit) 0xa0 else 0x70;
+        const title_colour: u8 = if (self.state == .title_edit) 0x5f else 0x70;
         self.imtui.text_mode.paint(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, title_colour, 0);
         self.imtui.text_mode.write(self.r1, self.title_start, self.title.items);
         self.imtui.text_mode.cursor_inhibit = true;
@@ -73,7 +77,7 @@ pub const Impl = struct {
             .idle => {
                 for (self.corners()) |corner|
                     if (self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
-                        self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0x20, .outline);
+                        self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0xd0, .outline);
                         return;
                     };
 
@@ -81,18 +85,16 @@ pub const Impl = struct {
                     self.imtui.text_mode.mouse_col >= self.title_start - 1 and
                     self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
                 {
-                    self.imtui.text_mode.paintColour(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, 0x20, .fill);
+                    self.imtui.text_mode.paintColour(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, 0xd0, .fill);
                     return;
                 }
 
-                self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x50, .outline);
+                const border_colour: u8 = if (isMouseOver(self)) 0xd0 else 0x50;
+                self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, border_colour, .outline);
             },
-            .resize => |d| {
-                const corner = self.corners()[d.cix];
-                self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0xa0, .outline);
-            },
-            .move => |_| {},
+            .move, .resize => {},
             .title_edit => {
+                self.root.editing_text = true;
                 self.imtui.text_mode.cursor_row = self.r1;
                 self.imtui.text_mode.cursor_col = self.title_start + self.title.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;
@@ -102,7 +104,7 @@ pub const Impl = struct {
 
     fn parent(ptr: *const anyopaque) ?Imtui.Control {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.parent.control();
+        return self.root.control();
     }
 
     pub fn deinit(ptr: *anyopaque) void {
@@ -290,19 +292,19 @@ pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: usize, _: usize, _: us
     return try std.fmt.bufPrint(buf, "{s}", .{"designer.DesignDialog"});
 }
 
-pub fn create(imtui: *Imtui, parent: *DesignRoot.Impl, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .parent = parent,
+        .root = root,
         .r1 = r1,
         .c1 = c1,
         .r2 = r2,
         .c2 = c2,
         .title = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, title)),
     };
-    d.describe(parent, r1, c1, r2, c2, title);
+    d.describe(root, r1, c1, r2, c2, title);
     return .{ .impl = d };
 }
 

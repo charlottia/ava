@@ -51,6 +51,7 @@ controls: std.ArrayListUnmanaged(DesignControl),
 
 inhibit_underlay: bool = false,
 
+design_root: *DesignRoot.Impl = undefined,
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog_open: bool = false,
 save_confirm_open: bool = false,
@@ -171,15 +172,15 @@ pub fn render(self: *Designer) !void {
 fn renderItems(self: *Designer) !?DesignControl {
     // What a mess!
 
-    const dr = try self.imtui.getOrPutControl(DesignRoot, .{});
+    self.design_root = (try self.imtui.getOrPutControl(DesignRoot, .{})).impl;
     if (self.imtui.focus_stack.items.len == 0)
-        try self.imtui.focus_stack.append(self.imtui.allocator, dr.impl.control());
+        try self.imtui.focus_stack.append(self.imtui.allocator, self.design_root.control());
 
     var focused: ?DesignControl = null;
 
     const dp = &self.controls.items[0].dialog;
     const dd = try self.imtui.getOrPutControl(DesignDialog, .{
-        dr.impl,
+        self.design_root,
         dp.schema.r1,
         dp.schema.c1,
         dp.schema.r2,
@@ -198,7 +199,7 @@ fn renderItems(self: *Designer) !?DesignControl {
                 const b = try self.imtui.getOrPutControl(
                     DesignButton,
                     .{
-                        dr.impl,
+                        self.design_root,
                         dd.impl,
                         p.ix,
                         p.schema.r1,
@@ -215,7 +216,7 @@ fn renderItems(self: *Designer) !?DesignControl {
             .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
-                    .{ dr.impl, dd.impl, p.ix, p.schema.r1, p.schema.c1, p.schema.text },
+                    .{ self.design_root, dd.impl, p.ix, p.schema.r1, p.schema.c1, p.schema.text },
                 );
                 p.impl = l.impl;
                 try l.sync(self.imtui.allocator, &p.schema);
@@ -254,10 +255,11 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     try file_menu.end();
 
     var add_menu = try menubar.menu("&Add", 16);
-    var button = (try add_menu.item("&Button")).help("Add new button to dialog");
+    // TODO: focus new items on add.
+    var button = (try add_menu.item("&Button")).help("Adds new button to dialog");
     if (button.chosen()) {
         try self.controls.append(self.imtui.allocator, .{ .button = .{
-            .ix = self.nextIx(),
+            .ix = self.nextDesignControlIx(),
             .schema = .{
                 .r1 = 5,
                 .c1 = 5,
@@ -268,10 +270,10 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             .impl = undefined,
         } });
     }
-    var label = (try add_menu.item("&Label")).help("Add new label to dialog");
+    var label = (try add_menu.item("&Label")).help("Adds new label to dialog");
     if (label.chosen()) {
         try self.controls.append(self.imtui.allocator, .{ .label = .{
-            .ix = self.nextIx(),
+            .ix = self.nextDesignControlIx(),
             .schema = .{
                 .r1 = 5,
                 .c1 = 5,
@@ -288,7 +290,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         switch (c) {
             .dialog => |d| {
                 const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.schema.title});
-                var item = (try controls_menu.item(item_label)).help("Focus dialog");
+                var item = (try controls_menu.item(item_label)).help("Focuses dialog");
                 if (focused_dc != null and focused_dc.? == .dialog and focused_dc.?.dialog.impl == d.impl)
                     item.bullet();
                 if (item.chosen())
@@ -296,7 +298,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             },
             .button => |b| {
                 const item_label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.schema.label});
-                var item = (try controls_menu.item(item_label)).help("Focus button");
+                var item = (try controls_menu.item(item_label)).help("Focuses button");
                 if (focused_dc != null and focused_dc.? == .button and focused_dc.?.button.impl == b.impl)
                     item.bullet();
                 if (item.chosen())
@@ -304,7 +306,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             },
             .label => |l| {
                 const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.schema.text});
-                var item = (try controls_menu.item(item_label)).help("Focus label");
+                var item = (try controls_menu.item(item_label)).help("Focuses label");
                 if (focused_dc != null and focused_dc.? == .label and focused_dc.?.label.impl == l.impl)
                     item.bullet();
                 if (item.chosen())
@@ -323,7 +325,6 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
     const help_line_colour = 0x30;
     self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
 
-    var show_ruler = true;
     var handled = false;
 
     const focused = self.imtui.focus_stack.getLast();
@@ -331,7 +332,6 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
         if (mb.focus != null and mb.focus.? == .menu) {
             const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
             self.imtui.text_mode.write(24, 1, help_text);
-            show_ruler = (11 + help_text.len) <= 62;
             handled = true;
         } else if (mb.focus != null and mb.focus.? == .menubar) {
             self.imtui.text_mode.write(24, 1, "Enter=Display Menu   Esc=Cancel   Arrow=Next Item");
@@ -340,9 +340,13 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
     } else if (focused.parent()) |p|
         if (p.is(Imtui.Controls.Dialog.Impl)) |_| {
             self.imtui.text_mode.write(24, 1, "Enter=Execute   Esc=Cancel   Tab=Next Field   Arrow=Next Item");
-            show_ruler = false;
             handled = true;
         };
+
+    if (!handled and self.design_root.editing_text) {
+        self.imtui.text_mode.write(24, 1, "Enter=Execute   Esc=Cancel");
+        handled = true;
+    }
 
     if (!handled) {
         var underlay_button = try self.imtui.button(24, 1, help_line_colour, "<`=Underlay>");
@@ -355,10 +359,10 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
             };
         }
 
-        if (focused_dc) |f| {
-            self.imtui.text_mode.draw(24, 14, help_line_colour, .Vertical);
-            var offset: usize = 16;
+        self.imtui.text_mode.draw(24, 14, help_line_colour, .Vertical);
+        var offset: usize = 16;
 
+        if (focused_dc) |f| {
             switch (f) {
                 .dialog => |d| {
                     // TODO: change when dialog state != idle. (Editing title -> Enter no longer Edit Title)
@@ -379,7 +383,7 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
                     var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
                     var delete_shortcut = try self.imtui.shortcut(.delete, null);
                     if (delete_button.chosen() or delete_shortcut.chosen())
-                        self.removeControl(f);
+                        self.removeDesignControl(f);
                     offset += "<Del=Delete> ".len;
                 },
                 .label => |l| {
@@ -393,16 +397,33 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
                     var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
                     var delete_shortcut = try self.imtui.shortcut(.delete, null);
                     if (delete_button.chosen() or delete_shortcut.chosen())
-                        self.removeControl(f);
+                        self.removeDesignControl(f);
                     offset += "<Del=Delete> ".len;
                 },
             }
+
+            std.debug.assert(offset <= 55);
+            offset = 55;
+            var next_button = try self.imtui.button(24, offset, help_line_colour, "<Tab=Next>");
+            var next_shortcut = try self.imtui.shortcut(.tab, null);
+            if (next_button.chosen() or next_shortcut.chosen())
+                try self.nextDesignControl(f);
+            offset += "<Tab=Next> ".len;
+            var prev_shortcut = try self.imtui.shortcut(.tab, .shift);
+            if (prev_shortcut.chosen())
+                try self.prevDesignControl(f);
 
             var unfocus_button = try self.imtui.button(24, offset, help_line_colour, "<Esc=Unfocus>");
             var unfocus_shortcut = try self.imtui.shortcut(.escape, null);
             if (unfocus_button.chosen() or unfocus_shortcut.chosen())
                 self.imtui.unfocus(f.control());
             offset += "<Esc=Unfocus> ".len;
+        } else {
+            var next_button = try self.imtui.button(24, offset, help_line_colour, "<Tab=Focus Dialog>");
+            var next_shortcut = try self.imtui.shortcut(.tab, null);
+            if (next_button.chosen() or next_shortcut.chosen())
+                try self.imtui.focus(self.controls.items[0].control());
+            offset += "<Tab=Focus Dialog> ".len;
         }
     }
 }
@@ -474,22 +495,38 @@ fn renderSaveConfirm(self: *Designer) !void {
     try dialog.end();
 }
 
-fn nextIx(self: *const Designer) usize {
+fn nextDesignControlIx(self: *const Designer) usize {
     var max: usize = 0;
     for (self.controls.items) |c|
         max = @max(max, c.ix());
     return max + 1;
 }
 
-fn removeControl(self: *Designer, dc: DesignControl) void {
+fn removeDesignControl(self: *Designer, dc: DesignControl) void {
     self.imtui.unfocus(dc.control());
+    const i = self.findDesignControlIndex(dc);
+    _ = self.controls.orderedRemove(i);
+    dc.deinit(self.imtui);
+}
+
+fn nextDesignControl(self: *Designer, dc: DesignControl) !void {
+    self.imtui.unfocus(dc.control());
+    const i = self.findDesignControlIndex(dc);
+    try self.imtui.focus(self.controls.items[(i + 1) % self.controls.items.len].control());
+}
+
+fn prevDesignControl(self: *Designer, dc: DesignControl) !void {
+    self.imtui.unfocus(dc.control());
+    const i = self.findDesignControlIndex(dc);
+    const prev: usize = if (i == 0) self.controls.items.len - 1 else i - 1;
+    try self.imtui.focus(self.controls.items[prev].control());
+}
+
+fn findDesignControlIndex(self: *const Designer, dc: DesignControl) usize {
     const ix = dc.ix();
     for (self.controls.items, 0..) |c, i|
-        if (c.ix() == ix) {
-            _ = self.controls.orderedRemove(i);
-            dc.deinit(self.imtui);
-            return;
-        };
+        if (c.ix() == ix)
+            return i;
 
     unreachable;
 }

@@ -60,6 +60,8 @@ pub const Impl = struct {
         const r1 = self.dialog.r1 + self.r1;
         const c1 = self.dialog.c1 + self.c1;
 
+        const text_colour: u8 = if (self.state == .text_edit) 0x5f else 0x70;
+        self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + self.text.items.len + 1, text_colour, 0);
         self.imtui.text_mode.write(r1, c1, self.text.items);
 
         if (!self.imtui.focused(self.control())) {
@@ -77,17 +79,19 @@ pub const Impl = struct {
                 );
         } else switch (self.state) {
             .idle => {
+                const border_colour: u8 = if (isMouseOver(self)) 0xd0 else 0x50;
                 self.imtui.text_mode.paintColour(
                     self.dialog.r1 + self.r1,
                     self.dialog.c1 + self.c1,
                     self.dialog.r1 + self.r2,
                     self.dialog.c1 + self.c2,
-                    0x50,
+                    border_colour,
                     .fill,
                 );
             },
             .move => |_| {},
             .text_edit => {
+                self.root.editing_text = true;
                 self.imtui.text_mode.cursor_row = self.dialog.r1 + self.r1;
                 self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + self.text.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;

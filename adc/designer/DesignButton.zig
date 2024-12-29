@@ -99,6 +99,7 @@ pub const Impl = struct {
             },
             .move => |_| {},
             .label_edit => {
+                self.root.editing_text = true;
                 self.imtui.text_mode.cursor_row = self.dialog.r1 + self.r1;
                 self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + 2 + self.label.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;

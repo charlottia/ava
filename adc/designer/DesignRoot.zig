@@ -13,6 +13,8 @@ pub const Impl = struct {
     generation: usize,
 
     // state
+    editing_text: bool = undefined,
+
     pub fn control(self: *Impl) Imtui.Control {
         return .{
             .ptr = self,
@@ -27,7 +29,9 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(_: *Impl) void {}
+    pub fn describe(self: *Impl) void {
+        self.editing_text = false;
+    }
 
     pub fn deinit(ptr: *anyopaque) void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
