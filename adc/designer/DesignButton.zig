@@ -126,6 +126,13 @@ pub const Impl = struct {
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (self.state) {
+            .idle => switch (keycode) {
+                .up => self.r1 -|= 1,
+                .down => self.r1 += 1,
+                .left => self.c1 -|= 1,
+                .right => self.c1 += 1,
+                else => return self.imtui.fallbackKeyPress(keycode, modifiers),
+            },
             .move => {},
             .label_edit => switch (keycode) {
                 .backspace => if (self.label.items.len > 0) {
@@ -143,7 +150,6 @@ pub const Impl = struct {
                     try self.label.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
                 },
             },
-            else => return self.imtui.fallbackKeyPress(keycode, modifiers),
         }
     }
 
@@ -299,4 +305,6 @@ pub fn sync(self: DesignButton, allocator: Allocator, schema: *Schema) !void {
         allocator.free(schema.label);
         schema.label = try allocator.dupe(u8, self.impl.label.items);
     }
+    schema.primary = self.impl.primary;
+    schema.cancel = self.impl.cancel;
 }

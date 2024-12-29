@@ -81,7 +81,7 @@ pub fn bullet(self: MenuItem) void {
 
 pub fn chosen(self: MenuItem) bool {
     defer self.impl.chosen = false;
-    if (self.impl.chosen)
+    if (self.impl.chosen and self.impl.menu.menubar.focus != null)
         self.impl.menu.menubar.unfocus();
     return self.impl.chosen;
 }

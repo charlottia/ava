@@ -60,8 +60,7 @@ pub const Impl = struct {
         const r1 = self.dialog.r1 + self.r1;
         const c1 = self.dialog.c1 + self.c1;
 
-        const text_colour: u8 = if (self.state == .text_edit) 0x5f else 0x70;
-        self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + self.text.items.len + 1, text_colour, 0);
+        self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + self.text.items.len, 0x70, 0);
         self.imtui.text_mode.write(r1, c1, self.text.items);
 
         if (!self.imtui.focused(self.control())) {
@@ -118,6 +117,13 @@ pub const Impl = struct {
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (self.state) {
+            .idle => switch (keycode) {
+                .up => self.r1 -|= 1,
+                .down => self.r1 += 1,
+                .left => self.c1 -|= 1,
+                .right => self.c1 += 1,
+                else => return self.imtui.fallbackKeyPress(keycode, modifiers),
+            },
             .move => {},
             .text_edit => {
                 switch (keycode) {
@@ -138,7 +144,6 @@ pub const Impl = struct {
                 }
                 return;
             },
-            else => return self.imtui.fallbackKeyPress(keycode, modifiers),
         }
     }
 

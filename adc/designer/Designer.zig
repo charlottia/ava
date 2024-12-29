@@ -42,6 +42,12 @@ const DesignControl = union(enum) {
             inline else => |p| p.impl.informRoot(),
         }
     }
+
+    fn dump(self: DesignControl, writer: anytype) !void {
+        switch (self) {
+            inline else => |d| try ini.SerDes(@TypeOf(d.schema), struct {}).save(writer, d.schema),
+        }
+    }
 };
 
 const SaveFile = struct {
@@ -149,9 +155,7 @@ pub fn dump(self: *const Designer, writer: anytype) !void {
 
     for (self.controls.items) |c| {
         try std.fmt.format(writer, "\n[{s}]\n", .{@tagName(c)});
-        switch (c) {
-            inline else => |d| try ini.SerDes(@TypeOf(d), struct {}).save(writer, d),
-        }
+        try c.dump(writer);
     }
 }
 
@@ -266,6 +270,16 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         self.imtui.running = false;
     try file_menu.end();
 
+    var view_menu = try menubar.menu("&View", 0);
+    var underlay = (try view_menu.item("&Underlay")).shortcut(.grave, null).help("Cycles the underlay between behind, in front, and hidden");
+    if (underlay.chosen())
+        self.display = switch (self.display) {
+            .behind => .in_front,
+            .in_front => .design_only,
+            .design_only => .behind,
+        };
+    try view_menu.end();
+
     var add_menu = try menubar.menu("&Add", 16);
 
     var button = (try add_menu.item("&Button")).help("Adds new button to dialog");
@@ -300,7 +314,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     try add_menu.end();
 
-    var controls_menu = try menubar.menu("&Controls", 16);
+    var controls_menu = try menubar.menu("&Controls", 0);
     var buf: [100]u8 = undefined;
     for (self.controls.items) |c| {
         switch (c) {
@@ -331,6 +345,29 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         }
     }
     try controls_menu.end();
+
+    // TODO: would be lovely to localise these in the Design structs themselves
+    if (focused_dc) |f| switch (f) {
+        .dialog => {},
+        .button => |p| {
+            var button_menu = try menubar.menu("&Button", 0);
+
+            var primary = (try button_menu.item("&Primary")).help("Toggles the button's primary status");
+            if (p.impl.primary)
+                primary.bullet();
+            if (primary.chosen())
+                p.impl.primary = !p.impl.primary;
+
+            var cancel = (try button_menu.item("&Cancel")).help("Toggles the button's cancel status");
+            if (p.impl.cancel)
+                cancel.bullet();
+            if (cancel.chosen())
+                p.impl.cancel = !p.impl.cancel;
+
+            try button_menu.end();
+        },
+        .label => {},
+    };
 
     menubar.end();
 
@@ -365,18 +402,7 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
     }
 
     if (!handled) {
-        var underlay_button = try self.imtui.button(24, 1, help_line_colour, "<`=Underlay>");
-        var underlay_shortcut = try self.imtui.shortcut(.grave, null);
-        if (underlay_button.chosen() or underlay_shortcut.chosen()) {
-            self.display = switch (self.display) {
-                .behind => .in_front,
-                .in_front => .design_only,
-                .design_only => .behind,
-            };
-        }
-
-        self.imtui.text_mode.draw(24, 14, help_line_colour, .Vertical);
-        var offset: usize = 16;
+        var offset: usize = 1;
 
         if (focused_dc) |f| {
             switch (f) {

@@ -13,7 +13,7 @@ fn default_deserialize(comptime T: type, allocator: Allocator, _: []const u8, va
         []const u8 => try allocator.dupe(u8, value),
         usize => try std.fmt.parseUnsigned(usize, value, 0),
         bool => std.ascii.eqlIgnoreCase(value, "true"),
-        else => unreachable,
+        else => @compileError("no default deserializer for " ++ @typeName(T)),
     };
 }
 
@@ -22,7 +22,7 @@ fn default_serialize(comptime T: type, writer: anytype, _: []const u8, value: T)
         []const u8 => try writer.writeAll(value),
         usize => try std.fmt.format(writer, "{d}", .{value}),
         bool => try writer.writeAll(if (value) "true" else "false"),
-        else => unreachable,
+        else => @compileError("no default serializer for " ++ @typeName(T)),
     }
 }
 

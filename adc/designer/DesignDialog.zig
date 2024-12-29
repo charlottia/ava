@@ -56,14 +56,12 @@ pub const Impl = struct {
 
     // 0x20: not focused, hovered
     // 0x50: focused, nothing relevant hovered
-    // 0x5f: focused, text editing
     // 0xd0: focused, hovering something relevant
     pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
         self.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, 0x70);
 
         self.title_start = self.c1 + (self.c2 - self.c1 - self.title.items.len) / 2;
-        const title_colour: u8 = if (self.state == .title_edit) 0x5f else 0x70;
-        self.imtui.text_mode.paint(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, title_colour, 0);
+        self.imtui.text_mode.paint(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, 0x70, 0);
         self.imtui.text_mode.write(self.r1, self.title_start, self.title.items);
         self.imtui.text_mode.cursor_inhibit = true;
 
@@ -131,6 +129,30 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         switch (self.state) {
+            .idle => switch (keycode) {
+                .up => {
+                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
+                        self.r1 -|= 1;
+                    self.r2 -|= 1;
+                },
+                .down => {
+                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
+                        self.r1 += 1;
+                    self.r2 += 1;
+                },
+                .left => {
+                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
+                        self.c1 -|= 1;
+                    self.c2 -|= 1;
+                },
+                .right => {
+                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
+                        self.c1 += 1;
+                    self.c2 += 1;
+                },
+                else => return self.imtui.fallbackKeyPress(keycode, modifiers),
+            },
+            .move, .resize => {},
             .title_edit => switch (keycode) {
                 .backspace => if (self.title.items.len > 0) {
                     if (modifiers.get(.left_control) or modifiers.get(.right_control))
@@ -147,7 +169,6 @@ pub const Impl = struct {
                     try self.title.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
                 },
             },
-            else => return self.imtui.fallbackKeyPress(keycode, modifiers),
         }
     }
 

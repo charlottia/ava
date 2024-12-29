@@ -143,7 +143,7 @@ pub fn end(self: Menu) !void {
         if (mit) |it| {
             const label_width = Imtui.Controls.lenWithoutAccelerators(it.label);
             const shortcut_width = if (try it.renderedShortcut()) |rs|
-                1 + rs.len
+                2 + rs.len
             else
                 0;
             impl.width = @max(label_width + shortcut_width, impl.width);

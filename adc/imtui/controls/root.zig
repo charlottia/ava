@@ -36,6 +36,7 @@ pub fn formatShortcut(allocator: Allocator, shortcut: Imtui.Shortcut) ![]const u
         .delete => try writer.writeAll("Del"),
         .insert => try writer.writeAll("Ins"),
         .backslash => try writer.writeByte('\\'),
+        .grave => try writer.writeByte('`'),
         else => {
             const tn = @tagName(shortcut.keycode);
             try std.fmt.format(writer, "{c}{s}", .{ std.ascii.toUpper(tn[0]), tn[1..] });
