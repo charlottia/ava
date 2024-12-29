@@ -14,9 +14,9 @@ const DesignLabel = @import("./DesignLabel.zig");
 const Designer = @This();
 
 const Control = union(enum) {
-    dialog: DesignDialog.Schema,
-    button: DesignButton.Schema,
-    label: DesignLabel.Schema,
+    dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
+    button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
+    label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
 };
 
 const SaveFile = struct {
@@ -40,13 +40,13 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: 
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
 
     var controls = std.ArrayListUnmanaged(Control){};
-    try controls.append(imtui.allocator, .{ .dialog = .{
+    try controls.append(imtui.allocator, .{ .dialog = .{ .schema = .{
         .r1 = 5,
         .c1 = 5,
         .r2 = 20,
         .c2 = 60,
         .title = try imtui.allocator.dupe(u8, "Untitled Dialog"),
-    } });
+    }, .impl = undefined } });
 
     return .{
         .imtui = imtui,
@@ -75,7 +75,13 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
                 try controls.append(imtui.allocator, @unionInit(
                     Control,
                     f.name,
-                    try ini.SerDes(f.type, struct {}).loadGroup(imtui.allocator, &p),
+                    .{
+                        .schema = try ini.SerDes(
+                            std.meta.fieldInfo(f.type, .schema).type,
+                            struct {},
+                        ).loadGroup(imtui.allocator, &p),
+                        .impl = undefined,
+                    },
                 ));
                 found = true;
                 break;
@@ -97,7 +103,7 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
 pub fn deinit(self: *Designer) void {
     for (self.controls.items) |c|
         switch (c) {
-            inline else => |d| d.deinit(self.imtui.allocator),
+            inline else => |d| d.schema.deinit(self.imtui.allocator),
         };
     self.controls.deinit(self.imtui.allocator);
     self.underlay_texture.destroy();
@@ -126,8 +132,8 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
 }
 
 pub fn render(self: *Designer) !void {
-    try self.renderItems();
-    const menubar = try self.renderMenus();
+    const focused = try self.renderItems();
+    const menubar = try self.renderMenus(focused);
     try self.renderHelpLine(menubar);
 
     self.inhibit_underlay = false;
@@ -137,37 +143,66 @@ pub fn render(self: *Designer) !void {
         try self.renderSaveConfirm();
 }
 
-fn renderItems(self: *Designer) !void {
+fn renderItems(self: *Designer) !?Imtui.Control {
+    // What a mess!
+
     const dr = try self.imtui.getOrPutControl(DesignRoot, .{});
     if (self.imtui.focus_stack.items.len == 0)
         try self.imtui.focus_stack.append(self.imtui.allocator, dr.impl.control());
 
-    const ds = &self.controls.items[0].dialog;
-    const dd = try self.imtui.getOrPutControl(DesignDialog, .{ dr.impl, ds.r1, ds.c1, ds.r2, ds.c2, ds.title });
-    try dd.sync(self.imtui.allocator, ds);
+    var focused: ?Imtui.Control = null;
+
+    const dp = &self.controls.items[0].dialog;
+    const dd = try self.imtui.getOrPutControl(DesignDialog, .{
+        dr.impl,
+        dp.schema.r1,
+        dp.schema.c1,
+        dp.schema.r2,
+        dp.schema.c2,
+        dp.schema.title,
+    });
+    dp.impl = dd.impl;
+    try dd.sync(self.imtui.allocator, &dp.schema);
+    if (self.imtui.focusedAnywhere(dd.impl.control()))
+        focused = dd.impl.control();
 
     for (self.controls.items[1..], 1..) |*i, ix| {
         switch (i.*) {
             .dialog => unreachable,
-            .button => |*s| {
+            .button => |*p| {
                 const b = try self.imtui.getOrPutControl(
                     DesignButton,
-                    .{ dr.impl, dd.impl, ix, s.r1, s.c1, s.label, s.primary, s.cancel },
+                    .{
+                        dr.impl,
+                        dd.impl,
+                        ix,
+                        p.schema.r1,
+                        p.schema.c1,
+                        p.schema.label,
+                        p.schema.primary,
+                        p.schema.cancel,
+                    },
                 );
-                try b.sync(self.imtui.allocator, s);
+                p.impl = b.impl;
+                try b.sync(self.imtui.allocator, &p.schema);
+                focused = focused orelse if (self.imtui.focusedAnywhere(b.impl.control())) b.impl.control() else null;
             },
-            .label => |*s| {
+            .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
-                    .{ dr.impl, dd.impl, ix, s.r1, s.c1, s.label },
+                    .{ dr.impl, dd.impl, ix, p.schema.r1, p.schema.c1, p.schema.label },
                 );
-                try l.sync(self.imtui.allocator, s);
+                p.impl = l.impl;
+                try l.sync(self.imtui.allocator, &p.schema);
+                focused = focused orelse if (self.imtui.focusedAnywhere(l.impl.control())) l.impl.control() else null;
             },
         }
     }
+
+    return focused;
 }
 
-fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
+fn renderMenus(self: *Designer, focused: ?Imtui.Control) !Imtui.Controls.Menubar {
     var menubar = try self.imtui.menubar(0, 0, 80);
 
     var file_menu = try menubar.menu("&File", 16);
@@ -196,21 +231,21 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     var add_menu = try menubar.menu("&Add", 16);
     var button = (try add_menu.item("&Button")).help("Add new button to dialog");
     if (button.chosen()) {
-        try self.controls.append(self.imtui.allocator, .{ .button = .{
+        try self.controls.append(self.imtui.allocator, .{ .button = .{ .schema = .{
             .r1 = 5,
             .c1 = 5,
             .label = try self.imtui.allocator.dupe(u8, "OK"),
             .primary = false,
             .cancel = false,
-        } });
+        }, .impl = undefined } });
     }
     var label = (try add_menu.item("&Label")).help("Add new label to dialog");
     if (label.chosen()) {
-        try self.controls.append(self.imtui.allocator, .{ .label = .{
+        try self.controls.append(self.imtui.allocator, .{ .label = .{ .schema = .{
             .r1 = 5,
             .c1 = 5,
             .label = try self.imtui.allocator.dupe(u8, "Hello"),
-        } });
+        }, .impl = undefined } });
     }
     try add_menu.end();
 
@@ -219,19 +254,22 @@ fn renderMenus(self: *Designer) !Imtui.Controls.Menubar {
     for (self.controls.items) |c| {
         switch (c) {
             .dialog => |d| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.title});
+                const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.schema.title});
                 var item = (try controls_menu.item(item_label)).help("Focus dialog");
-                item.bullet();
+                if (focused != null and focused.?.same(d.impl.control()))
+                    item.bullet();
             },
             .button => |b| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.label});
+                const item_label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.schema.label});
                 var item = (try controls_menu.item(item_label)).help("Focus button");
-                item.bullet();
+                if (focused != null and focused.?.same(b.impl.control()))
+                    item.bullet();
             },
             .label => |l| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.label});
+                const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.schema.label});
                 var item = (try controls_menu.item(item_label)).help("Focus label");
-                item.bullet();
+                if (focused != null and focused.?.same(l.impl.control()))
+                    item.bullet();
             },
         }
     }
@@ -253,9 +291,7 @@ fn renderHelpLine(self: *Designer, menubar: Imtui.Controls.Menubar) !void {
     if (focused.is(Imtui.Controls.Menubar.Impl)) |mb| {
         if (mb.focus != null and mb.focus.? == .menu) {
             const help_text = menubar.itemAt(mb.focus.?.menu).help.?;
-            self.imtui.text_mode.write(24, 1, "F1=Help");
-            self.imtui.text_mode.draw(24, 9, help_line_colour, .Vertical);
-            self.imtui.text_mode.write(24, 11, help_text);
+            self.imtui.text_mode.write(24, 1, help_text);
             show_ruler = (11 + help_text.len) <= 62;
             handled = true;
         } else if (mb.focus != null and mb.focus.? == .menubar) {
@@ -279,6 +315,9 @@ fn renderHelpLine(self: *Designer, menubar: Imtui.Controls.Menubar) !void {
                 .design_only => .behind,
             };
         }
+
+        self.imtui.text_mode.draw(24, 14, help_line_colour, .Vertical);
+        self.imtui.text_mode.write(24, 16, "focused control info if any");
     }
 }
 

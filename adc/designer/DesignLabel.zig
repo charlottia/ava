@@ -58,43 +58,29 @@ pub const Impl = struct {
 
         self.imtui.text_mode.write(r1, c1, self.label.items);
 
-        switch (self.state) {
+        if (!self.imtui.focused(self.control())) {
+            if (self.imtui.focus_stack.items.len > 1)
+                return;
+
+            if (isMouseOver(self))
+                self.imtui.text_mode.paintColour(
+                    self.dialog.r1 + self.r1,
+                    self.dialog.c1 + self.c1,
+                    self.dialog.r1 + self.r2,
+                    self.dialog.c1 + self.c2,
+                    0x20,
+                    .fill,
+                );
+        } else switch (self.state) {
             .idle => {
-                if (self.imtui.focus_stack.items.len > 1)
-                    return;
-
-                var highlighted = false;
-                if (!highlighted and
-                    self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
-                    self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1)
-                {
-                    self.imtui.text_mode.paintColour(
-                        self.dialog.r1 + self.r1,
-                        self.dialog.c1 + self.c1 + 1,
-                        self.dialog.r1 + self.r1 + 1,
-                        self.dialog.c1 + self.c2 - 1,
-                        0x20,
-                        .fill,
-                    );
-                    highlighted = true;
-                }
-
-                if (!highlighted and
-                    self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 and
-                    self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2)
-                {
-                    self.imtui.text_mode.paintColour(
-                        self.dialog.r1 + self.r1 - 1,
-                        self.dialog.c1 + self.c1 - 1,
-                        self.dialog.r1 + self.r2 + 1,
-                        self.dialog.c1 + self.c2 + 1,
-                        0x20,
-                        .outline,
-                    );
-                    highlighted = true;
-                }
+                self.imtui.text_mode.paintColour(
+                    self.dialog.r1 + self.r1,
+                    self.dialog.c1 + self.c1,
+                    self.dialog.r1 + self.r2,
+                    self.dialog.c1 + self.c2,
+                    0x50,
+                    .fill,
+                );
             },
             .move => |_| {},
             .label_edit => {
@@ -129,13 +115,9 @@ pub const Impl = struct {
                         else
                             self.label.items.len -= 1;
                     },
-                    .@"return" => {
-                        self.state = .idle;
-                        self.imtui.unfocus(self.control());
-                    },
+                    .@"return" => self.state = .idle,
                     .escape => {
                         self.state = .idle;
-                        self.imtui.unfocus(self.control());
                         try self.label.replaceRange(self.imtui.allocator, 0, self.label.items.len, self.label_orig.items);
                     },
                     else => if (Imtui.Controls.isPrintableKey(keycode)) {
@@ -144,7 +126,7 @@ pub const Impl = struct {
                 }
                 return;
             },
-            else => unreachable,
+            else => return self.imtui.fallbackKeyPress(keycode, modifiers),
         }
     }
 
@@ -153,19 +135,36 @@ pub const Impl = struct {
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
         return self.state == .label_edit or
-            (self.imtui.mouse_row >= self.dialog.r1 + self.r1 and self.imtui.mouse_row < self.dialog.r1 + self.r2 and
-            self.imtui.mouse_col >= self.dialog.c1 + self.c1 and self.imtui.mouse_col < self.dialog.c1 + self.c2);
+            (self.imtui.mouse_row >= self.dialog.r1 + self.r1 and
+            self.imtui.mouse_row < self.dialog.r1 + self.r2 and
+            self.imtui.mouse_col >= self.dialog.c1 + self.c1 and
+            self.imtui.mouse_col < self.dialog.c1 + self.c2);
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         if (cm) return null;
+
+        const focused = self.imtui.focused(self.control());
         if (!isMouseOver(ptr))
-            return self.imtui.fallbackMouseDown(b, clicks, cm);
+            if (try self.imtui.fallbackMouseDown(b, clicks, cm)) |r|
+                return r.@"0"
+            else {
+                if (focused) self.imtui.unfocusAnywhere(self.control());
+                return null;
+            };
+
         if (b != .left) return null;
 
-        switch (self.state) {
+        if (!focused) {
+            self.state = .{ .move = .{
+                .origin_row = self.imtui.text_mode.mouse_row,
+                .origin_col = self.imtui.text_mode.mouse_col,
+            } };
+            try self.imtui.focus(self.control());
+            return self.control();
+        } else switch (self.state) {
             .idle => {
                 if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
@@ -185,7 +184,6 @@ pub const Impl = struct {
                         .origin_row = self.imtui.text_mode.mouse_row,
                         .origin_col = self.imtui.text_mode.mouse_col,
                     } };
-                    try self.imtui.focus(self.control());
                     return self.control();
                 }
 
@@ -197,7 +195,6 @@ pub const Impl = struct {
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1))
                 {
                     self.state = .idle;
-                    self.imtui.unfocus(self.control());
                 }
 
                 return null;
@@ -239,10 +236,7 @@ pub const Impl = struct {
         _ = clicks;
 
         switch (self.state) {
-            .move => {
-                self.state = .idle;
-                self.imtui.unfocus(self.control());
-            },
+            .move => self.state = .idle,
             else => unreachable,
         }
     }

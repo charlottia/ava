@@ -27,8 +27,8 @@ pub const Impl = struct {
 
     state: union(enum) {
         idle,
-        resize: struct { cix: usize },
         move: struct { origin_row: usize, origin_col: usize },
+        resize: struct { cix: usize },
         title_edit,
     } = .idle,
 
@@ -59,31 +59,29 @@ pub const Impl = struct {
         self.imtui.text_mode.write(self.r1, self.title_start, self.title.items);
         self.imtui.text_mode.cursor_inhibit = true;
 
-        switch (self.state) {
-            .idle => {
-                if (self.imtui.focus_stack.items.len > 1)
-                    return;
+        if (!self.imtui.focused(self.control())) {
+            if (self.imtui.focus_stack.items.len > 1)
+                return;
 
-                var highlighted = false;
+            if (isMouseOver(self))
+                self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x20, .outline);
+        } else switch (self.state) {
+            .idle => {
                 for (self.corners()) |corner|
-                    if (!highlighted and self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
+                    if (self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
                         self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0x20, .outline);
-                        highlighted = true;
-                        break;
+                        return;
                     };
 
-                if (!highlighted and
-                    self.imtui.text_mode.mouse_row == self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
+                if (self.imtui.text_mode.mouse_row == self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and
+                    self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
                 {
                     self.imtui.text_mode.paintColour(self.r1, self.title_start - 1, self.r1 + 1, self.title_start + self.title.items.len + 1, 0x20, .fill);
-                    highlighted = true;
+                    return;
                 }
 
-                if (!highlighted and isMouseOver(self)) {
-                    self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x20, .outline);
-                    highlighted = true;
-                }
+                self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x50, .outline);
             },
             .resize => |d| {
                 const corner = self.corners()[d.cix];
@@ -123,49 +121,23 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         switch (self.state) {
-            .title_edit => {
-                switch (keycode) {
-                    .backspace => if (self.title.items.len > 0) {
-                        if (modifiers.get(.left_control) or modifiers.get(.right_control))
-                            self.title.items.len = 0
-                        else
-                            self.title.items.len -= 1;
-                    },
-                    .@"return" => self.state = .idle,
-                    .escape => {
-                        self.state = .idle;
-                        try self.title.replaceRange(self.imtui.allocator, 0, self.title.items.len, self.title_orig.items);
-                    },
-                    else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                        try self.title.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
-                    },
-                }
-                return;
+            .title_edit => switch (keycode) {
+                .backspace => if (self.title.items.len > 0) {
+                    if (modifiers.get(.left_control) or modifiers.get(.right_control))
+                        self.title.items.len = 0
+                    else
+                        self.title.items.len -= 1;
+                },
+                .@"return" => self.state = .idle,
+                .escape => {
+                    self.state = .idle;
+                    try self.title.replaceRange(self.imtui.allocator, 0, self.title.items.len, self.title_orig.items);
+                },
+                else => if (Imtui.Controls.isPrintableKey(keycode)) {
+                    try self.title.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                },
             },
-            else => {
-                if (keycode == .left_alt or keycode == .right_alt) {
-                    var mb = try self.imtui.getMenubar();
-                    mb.focus = .pre;
-                    try self.imtui.focus(mb.control());
-                    return;
-                }
-
-                for ((try self.imtui.getMenubar()).menus.items) |m|
-                    for (m.menu_items.items) |mi| {
-                        if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
-                            mi.?.chosen = true;
-                            return;
-                        };
-                    };
-
-                var cit = self.imtui.controls.valueIterator();
-                while (cit.next()) |c|
-                    if (c.is(Imtui.Controls.Shortcut.Impl)) |s|
-                        if (s.shortcut.matches(keycode, modifiers)) {
-                            s.*.chosen = true;
-                            return;
-                        };
-            },
+            else => return self.imtui.fallbackKeyPress(keycode, modifiers),
         }
     }
 
@@ -187,11 +159,26 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
 
         if (cm) return null;
+
+        const focused = self.imtui.focused(self.control());
         if (!isMouseOver(ptr))
-            return self.imtui.fallbackMouseDown(b, clicks, cm);
+            if (try self.imtui.fallbackMouseDown(b, clicks, cm)) |r|
+                return r.@"0"
+            else {
+                if (focused) self.imtui.unfocusAnywhere(self.control());
+                return null;
+            };
+
         if (b != .left) return null;
 
-        switch (self.state) {
+        if (!focused) {
+            try self.imtui.focus(self.control());
+            self.state = .{ .move = .{
+                .origin_row = self.imtui.text_mode.mouse_row,
+                .origin_col = self.imtui.text_mode.mouse_col,
+            } };
+            return self.control();
+        } else switch (self.state) {
             .idle => {
                 for (self.corners(), 0..) |corner, cix|
                     if (self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
@@ -221,7 +208,8 @@ pub const Impl = struct {
             },
             .title_edit => {
                 if (!(self.imtui.text_mode.mouse_row == self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1))
+                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and
+                    self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1))
                 {
                     self.state = .idle;
                 }
@@ -237,18 +225,6 @@ pub const Impl = struct {
         _ = b;
 
         switch (self.state) {
-            .resize => |d| {
-                switch (d.cix) {
-                    0, 1 => self.r1 = self.imtui.text_mode.mouse_row,
-                    2, 3 => self.r2 = self.imtui.text_mode.mouse_row + 1,
-                    else => unreachable,
-                }
-                switch (d.cix) {
-                    0, 2 => self.c1 = self.imtui.text_mode.mouse_col,
-                    1, 3 => self.c2 = self.imtui.text_mode.mouse_col + 1,
-                    else => unreachable,
-                }
-            },
             .move => |*d| {
                 const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
                 const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
@@ -270,6 +246,18 @@ pub const Impl = struct {
                     d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
                 }
             },
+            .resize => |d| {
+                switch (d.cix) {
+                    0, 1 => self.r1 = self.imtui.text_mode.mouse_row,
+                    2, 3 => self.r2 = self.imtui.text_mode.mouse_row + 1,
+                    else => unreachable,
+                }
+                switch (d.cix) {
+                    0, 2 => self.c1 = self.imtui.text_mode.mouse_col,
+                    1, 3 => self.c2 = self.imtui.text_mode.mouse_col + 1,
+                    else => unreachable,
+                }
+            },
             else => unreachable,
         }
     }
@@ -280,7 +268,7 @@ pub const Impl = struct {
         _ = clicks;
 
         switch (self.state) {
-            .resize, .move => self.state = .idle,
+            .move, .resize => self.state = .idle,
             else => unreachable,
         }
     }

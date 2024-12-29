@@ -93,7 +93,7 @@ pub const Control = struct {
         return self.is(T).?;
     }
 
-    fn same(self: Control, other: Control) bool {
+    pub fn same(self: Control, other: Control) bool {
         return self.vtable == other.vtable and self.ptr == other.ptr;
     }
 
@@ -363,6 +363,16 @@ pub fn focused(self: *Imtui, control: Control) bool {
     return self.focus_stack.getLast().same(control);
 }
 
+pub fn focusedAnywhere(self: *Imtui, control: Control) bool {
+    // No dialog magic, currently only used by Designer.
+    var i: usize = self.focus_stack.items.len - 1;
+    while (true) : (i -= 1) {
+        if (self.focus_stack.items[i].same(control))
+            return true;
+        if (i == 0) return false;
+    }
+}
+
 pub fn unfocus(self: *Imtui, control: Control) void {
     if (control.is(Controls.Dialog.Impl)) |_| {
         // Myth: Cats can only have a little salami as a treat
@@ -373,6 +383,18 @@ pub fn unfocus(self: *Imtui, control: Control) void {
     } else {
         std.debug.assert(self.focused(control));
         _ = self.focus_stack.pop();
+    }
+}
+
+pub fn unfocusAnywhere(self: *Imtui, control: Control) void {
+    // No dialog magic, currently only used by Designer.
+    // Asserts the control is focused by simply running off the front.
+    var i: usize = self.focus_stack.items.len - 1;
+    while (true) : (i -= 1) {
+        if (self.focus_stack.items[i].same(control)) {
+            _ = self.focus_stack.orderedRemove(i);
+            return;
+        }
     }
 }
 
@@ -469,6 +491,31 @@ fn handleKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifier
     try self.focus_stack.getLast().handleKeyPress(keycode, modifiers);
 }
 
+pub fn fallbackKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
+    if (keycode == .left_alt or keycode == .right_alt) {
+        var mb = try self.getMenubar();
+        mb.focus = .pre;
+        try self.focus(mb.control());
+        return;
+    }
+
+    for ((try self.getMenubar()).menus.items) |m|
+        for (m.menu_items.items) |mi| {
+            if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
+                mi.?.chosen = true;
+                return;
+            };
+        };
+
+    var cit = self.controls.valueIterator();
+    while (cit.next()) |c|
+        if (c.is(Controls.Shortcut.Impl)) |s|
+            if (s.shortcut.matches(keycode, modifiers)) {
+                s.*.chosen = true;
+                return;
+            };
+}
+
 fn handleKeyUp(self: *Imtui, keycode: SDL.Keycode) !void {
     try self.focus_stack.getLast().handleKeyUp(keycode);
 
@@ -496,14 +543,14 @@ fn handleMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Con
     return self.focus_stack.getLast().handleMouseDown(b, clicks, cm);
 }
 
-pub fn fallbackMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?Control {
+pub fn fallbackMouseDown(self: *Imtui, b: SDL.MouseButton, clicks: u8, cm: bool) !?struct { ?Control } {
     // To be used by control code when the click should go to whatever passes
     // isMouseOver().
 
     var cit = self.controls.valueIterator();
     while (cit.next()) |c|
         if (c.isMouseOver()) {
-            return try c.handleMouseDown(b, clicks, cm);
+            return .{try c.handleMouseDown(b, clicks, cm)};
         };
 
     return null;

@@ -133,7 +133,7 @@ pub const Impl = struct {
             self.dragging_header = false;
 
             if (!(r >= self.r1 and r < self.r2 and c >= self.c1 and c < self.c2))
-                return try self.imtui.fallbackMouseDown(button, clicks, cm);
+                return (try self.imtui.fallbackMouseDown(button, clicks, cm) orelse return null).@"0";
         } else {
             // cm
             if (self.dragging_header)

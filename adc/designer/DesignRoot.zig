@@ -36,29 +36,7 @@ pub const Impl = struct {
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-
-        if (keycode == .left_alt or keycode == .right_alt) {
-            var mb = try self.imtui.getMenubar();
-            mb.focus = .pre;
-            try self.imtui.focus(mb.control());
-            return;
-        }
-
-        for ((try self.imtui.getMenubar()).menus.items) |m|
-            for (m.menu_items.items) |mi| {
-                if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
-                    mi.?.chosen = true;
-                    return;
-                };
-            };
-
-        var cit = self.imtui.controls.valueIterator();
-        while (cit.next()) |c|
-            if (c.is(Imtui.Controls.Shortcut.Impl)) |s|
-                if (s.shortcut.matches(keycode, modifiers)) {
-                    s.*.chosen = true;
-                    return;
-                };
+        return self.imtui.fallbackKeyPress(keycode, modifiers);
     }
 
     fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
@@ -69,7 +47,7 @@ pub const Impl = struct {
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        return self.imtui.fallbackMouseDown(b, clicks, cm);
+        return (try self.imtui.fallbackMouseDown(b, clicks, cm) orelse return null).@"0";
     }
 };
 
