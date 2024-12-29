@@ -68,7 +68,7 @@ pub const Impl = struct {
         self.imtui.text_mode.cursor_inhibit = true;
 
         if (!self.imtui.focused(self.control())) {
-            if (self.imtui.focus_stack.items.len > 1)
+            if (self.imtui.focus_stack.items.len > 1 and !self.root.focus_idle)
                 return;
 
             if (isMouseOver(self))
@@ -94,7 +94,6 @@ pub const Impl = struct {
             },
             .move, .resize => {},
             .title_edit => {
-                self.root.editing_text = true;
                 self.imtui.text_mode.cursor_row = self.r1;
                 self.imtui.text_mode.cursor_col = self.title_start + self.title.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;
@@ -112,6 +111,11 @@ pub const Impl = struct {
         self.title.deinit(self.imtui.allocator);
         self.title_orig.deinit(self.imtui.allocator);
         self.imtui.allocator.destroy(self);
+    }
+
+    pub fn informRoot(self: *Impl) void {
+        self.root.focus_idle = self.state == .idle;
+        self.root.editing_text = self.state == .title_edit;
     }
 
     fn corners(self: *const Impl) [4]struct { r: usize, c: usize } {

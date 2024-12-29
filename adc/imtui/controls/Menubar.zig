@@ -128,15 +128,11 @@ pub const Impl = struct {
                     break;
                 },
                 .escape => self.unfocus(),
-                .@"return" => {
-                    self.menus.items[d.index].menu_items.items[d.item].?.chosen = true;
-                    self.unfocus();
-                },
+                .@"return" => self.menus.items[d.index].menu_items.items[d.item].?.chosen = true,
                 else => if (Imtui.keycodeAlphanum(keycode)) {
                     for (self.menus.items[d.index].menu_items.items) |mi|
                         if (mi != null and Imtui.acceleratorMatch(mi.?.label, keycode)) {
                             mi.?.chosen = true;
-                            self.unfocus();
                             return;
                         };
                 },
@@ -241,7 +237,6 @@ pub const Impl = struct {
         if (self.openMenu()) |m| {
             if (m.mousedOverItem()) |i| {
                 i.chosen = true;
-                self.unfocus();
                 return;
             }
 
@@ -254,7 +249,7 @@ pub const Impl = struct {
         }
     }
 
-    fn unfocus(self: *Impl) void {
+    pub fn unfocus(self: *Impl) void {
         self.focus = null;
         self.imtui.unfocus(self.control());
     }

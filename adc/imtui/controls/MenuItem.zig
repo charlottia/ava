@@ -9,6 +9,7 @@ const MenuItem = @This();
 pub const Impl = struct {
     // XXX: for now we explicitly support taking ownership of item labels, but not help texts.
     imtui: *Imtui,
+    menu: *Imtui.Controls.Menu.Impl,
     label: []const u8,
     index: usize = undefined,
     enabled: bool = undefined,
@@ -48,11 +49,12 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn create(imtui: *Imtui, label: []const u8, index: usize) !MenuItem {
-    var i = try imtui.allocator.create(Impl);
+pub fn create(menu: *Imtui.Controls.Menu.Impl, label: []const u8, index: usize) !MenuItem {
+    var i = try menu.imtui.allocator.create(Impl);
     i.* = .{
-        .imtui = imtui,
-        .label = try imtui.allocator.dupe(u8, label),
+        .imtui = menu.imtui,
+        .menu = menu,
+        .label = try menu.imtui.allocator.dupe(u8, label),
     };
     try i.describe(label, index);
     return .{ .impl = i };
@@ -79,5 +81,7 @@ pub fn bullet(self: MenuItem) void {
 
 pub fn chosen(self: MenuItem) bool {
     defer self.impl.chosen = false;
+    if (self.impl.chosen)
+        self.impl.menu.menubar.unfocus();
     return self.impl.chosen;
 }

@@ -95,14 +95,14 @@ pub fn item(self: Menu, label: []const u8) !Imtui.Controls.MenuItem {
     const impl = self.impl;
 
     const i = if (impl.menu_items_at == impl.menu_items.items.len) i: {
-        const i = try Imtui.Controls.MenuItem.create(impl.imtui, label, impl.menu_items_at);
+        const i = try Imtui.Controls.MenuItem.create(impl, label, impl.menu_items_at);
         try impl.menu_items.append(impl.imtui.allocator, i.impl);
         break :i i.impl;
     } else if (impl.menu_items.items[impl.menu_items_at]) |i| i: {
         try i.describe(label, impl.menu_items_at);
         break :i i;
     } else i: {
-        const i = try Imtui.Controls.MenuItem.create(impl.imtui, label, impl.menu_items_at);
+        const i = try Imtui.Controls.MenuItem.create(impl, label, impl.menu_items_at);
         impl.menu_items.items[impl.menu_items_at] = i.impl;
         break :i i.impl;
     };

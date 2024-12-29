@@ -14,6 +14,7 @@ pub const Impl = struct {
 
     // state
     editing_text: bool = undefined,
+    focus_idle: bool = undefined,
 
     pub fn control(self: *Impl) Imtui.Control {
         return .{
@@ -31,6 +32,7 @@ pub const Impl = struct {
 
     pub fn describe(self: *Impl) void {
         self.editing_text = false;
+        self.focus_idle = false;
     }
 
     pub fn deinit(ptr: *anyopaque) void {

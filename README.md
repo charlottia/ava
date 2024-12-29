@@ -5,7 +5,7 @@
 * [`basic/`](basic/) — Compiler and stack machine interpreter.
 * [`core/`](core/) — RISC-V stack machine core.
 * [`soc/`](soc/) — SoC in Amaranth integrating [VexRiscv].
-* [`adc/`](adc/) — Amateur Development Client (IDE).
+* [`adc/`](adc/) — Amateur Development Client (IDE) and TextMode Designer.
 
 [VexRiscv]: https://github.com/SpinalHDL/VexRiscv
 
