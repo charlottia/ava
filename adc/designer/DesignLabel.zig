@@ -21,16 +21,16 @@ pub const Impl = struct {
     // state
     r1: usize,
     c1: usize,
-    label: std.ArrayListUnmanaged(u8),
+    text: std.ArrayListUnmanaged(u8),
 
     r2: usize = undefined,
     c2: usize = undefined,
-    label_orig: std.ArrayListUnmanaged(u8) = .{},
+    text_orig: std.ArrayListUnmanaged(u8) = .{},
 
     state: union(enum) {
         idle,
         move: struct { origin_row: usize, origin_col: usize },
-        label_edit,
+        text_edit,
     } = .idle,
 
     pub fn control(self: *Impl) Imtui.Control {
@@ -51,12 +51,12 @@ pub const Impl = struct {
 
     pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: *DesignDialog.Impl, _: usize, _: usize, _: usize, _: []const u8) void {
         self.r2 = self.r1 + 1;
-        self.c2 = self.c1 + self.label.items.len;
+        self.c2 = self.c1 + self.text.items.len;
 
         const r1 = self.dialog.r1 + self.r1;
         const c1 = self.dialog.c1 + self.c1;
 
-        self.imtui.text_mode.write(r1, c1, self.label.items);
+        self.imtui.text_mode.write(r1, c1, self.text.items);
 
         if (!self.imtui.focused(self.control())) {
             if (self.imtui.focus_stack.items.len > 1)
@@ -83,9 +83,9 @@ pub const Impl = struct {
                 );
             },
             .move => |_| {},
-            .label_edit => {
+            .text_edit => {
                 self.imtui.text_mode.cursor_row = self.dialog.r1 + self.r1;
-                self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + self.label.items.len;
+                self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + self.text.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;
             },
         }
@@ -98,8 +98,8 @@ pub const Impl = struct {
 
     pub fn deinit(ptr: *anyopaque) void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.label.deinit(self.imtui.allocator);
-        self.label_orig.deinit(self.imtui.allocator);
+        self.text.deinit(self.imtui.allocator);
+        self.text_orig.deinit(self.imtui.allocator);
         self.imtui.allocator.destroy(self);
     }
 
@@ -107,21 +107,21 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (self.state) {
             .move => {},
-            .label_edit => {
+            .text_edit => {
                 switch (keycode) {
-                    .backspace => if (self.label.items.len > 0) {
+                    .backspace => if (self.text.items.len > 0) {
                         if (modifiers.get(.left_control) or modifiers.get(.right_control))
-                            self.label.items.len = 0
+                            self.text.items.len = 0
                         else
-                            self.label.items.len -= 1;
+                            self.text.items.len -= 1;
                     },
                     .@"return" => self.state = .idle,
                     .escape => {
                         self.state = .idle;
-                        try self.label.replaceRange(self.imtui.allocator, 0, self.label.items.len, self.label_orig.items);
+                        try self.text.replaceRange(self.imtui.allocator, 0, self.text.items.len, self.text_orig.items);
                     },
                     else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                        try self.label.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                        try self.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
                     },
                 }
                 return;
@@ -134,7 +134,7 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.state == .label_edit or
+        return self.state == .text_edit or
             (self.imtui.mouse_row >= self.dialog.r1 + self.r1 and
             self.imtui.mouse_row < self.dialog.r1 + self.r2 and
             self.imtui.mouse_col >= self.dialog.c1 + self.c1 and
@@ -170,9 +170,8 @@ pub const Impl = struct {
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1)
                 {
-                    try self.label_orig.replaceRange(self.imtui.allocator, 0, self.label_orig.items.len, self.label.items);
-                    self.state = .label_edit;
-                    try self.imtui.focus(self.control());
+                    try self.text_orig.replaceRange(self.imtui.allocator, 0, self.text_orig.items.len, self.text.items);
+                    self.state = .text_edit;
                     return null;
                 }
 
@@ -189,7 +188,7 @@ pub const Impl = struct {
 
                 unreachable;
             },
-            .label_edit => {
+            .text_edit => {
                 if (!(self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1))
@@ -240,6 +239,13 @@ pub const Impl = struct {
             else => unreachable,
         }
     }
+
+    pub fn startTextEdit(self: *Impl) !void {
+        std.debug.assert(self.state == .idle);
+        std.debug.assert(self.imtui.focused(self.control()));
+        try self.text_orig.replaceRange(self.imtui.allocator, 0, self.text_orig.items.len, self.text.items);
+        self.state = .text_edit;
+    }
 };
 
 impl: *Impl,
@@ -248,7 +254,7 @@ pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, ix
     return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignLabel", ix });
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, ix: usize, r1: usize, c1: usize, label: []const u8) !DesignLabel {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, ix: usize, r1: usize, c1: usize, text: []const u8) !DesignLabel {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
@@ -257,27 +263,27 @@ pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl,
         .dialog = dialog,
         .r1 = r1,
         .c1 = c1,
-        .label = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, label)),
+        .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, text)),
     };
-    d.describe(root, dialog, ix, r1, c1, label);
+    d.describe(root, dialog, ix, r1, c1, text);
     return .{ .impl = d };
 }
 
 pub const Schema = struct {
     r1: usize,
     c1: usize,
-    label: []const u8,
+    text: []const u8,
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
-        allocator.free(self.label);
+        allocator.free(self.text);
     }
 };
 
 pub fn sync(self: DesignLabel, allocator: Allocator, schema: *Schema) !void {
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
-    if (!std.mem.eql(u8, schema.label, self.impl.label.items)) {
-        allocator.free(schema.label);
-        schema.label = try allocator.dupe(u8, self.impl.label.items);
+    if (!std.mem.eql(u8, schema.text, self.impl.text.items)) {
+        allocator.free(schema.text);
+        schema.text = try allocator.dupe(u8, self.impl.text.items);
     }
 }

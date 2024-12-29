@@ -189,8 +189,7 @@ pub const Impl = struct {
                 if (self.imtui.text_mode.mouse_row == self.r1 and
                     self.imtui.text_mode.mouse_col >= self.title_start - 1 and self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
                 {
-                    try self.title_orig.replaceRange(self.imtui.allocator, 0, self.title_orig.items.len, self.title.items);
-                    self.state = .title_edit;
+                    try self.startTitleEdit();
                     return null;
                 }
 
@@ -271,6 +270,13 @@ pub const Impl = struct {
             .move, .resize => self.state = .idle,
             else => unreachable,
         }
+    }
+
+    pub fn startTitleEdit(self: *Impl) !void {
+        std.debug.assert(self.state == .idle);
+        std.debug.assert(self.imtui.focused(self.control()));
+        try self.title_orig.replaceRange(self.imtui.allocator, 0, self.title_orig.items.len, self.title.items);
+        self.state = .title_edit;
     }
 };
 

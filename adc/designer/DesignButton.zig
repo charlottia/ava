@@ -178,8 +178,7 @@ pub const Impl = struct {
                     self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
                     self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1)
                 {
-                    try self.label_orig.replaceRange(self.imtui.allocator, 0, self.label_orig.items.len, self.label.items);
-                    self.state = .label_edit;
+                    try self.startLabelEdit();
                     return null;
                 }
 
@@ -246,6 +245,13 @@ pub const Impl = struct {
             .move => self.state = .idle,
             else => unreachable,
         }
+    }
+
+    pub fn startLabelEdit(self: *Impl) !void {
+        std.debug.assert(self.state == .idle);
+        std.debug.assert(self.imtui.focused(self.control()));
+        try self.label_orig.replaceRange(self.imtui.allocator, 0, self.label_orig.items.len, self.label.items);
+        self.state = .label_edit;
     }
 };
 

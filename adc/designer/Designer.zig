@@ -13,10 +13,29 @@ const DesignLabel = @import("./DesignLabel.zig");
 
 const Designer = @This();
 
-const Control = union(enum) {
-    dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
-    button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
-    label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
+const DesignControl = union(enum) {
+    dialog: struct { ix: usize, schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
+    button: struct { ix: usize, schema: DesignButton.Schema, impl: *DesignButton.Impl },
+    label: struct { ix: usize, schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
+
+    // XXX: use this more below?
+    fn control(self: DesignControl) Imtui.Control {
+        return switch (self) {
+            inline else => |c| c.impl.control(),
+        };
+    }
+
+    fn ix(self: DesignControl) usize {
+        return switch (self) {
+            inline else => |p| p.ix,
+        };
+    }
+
+    fn deinit(self: DesignControl, imtui: *Imtui) void {
+        switch (self) {
+            inline else => |p| p.schema.deinit(imtui.allocator),
+        }
+    }
 };
 
 const SaveFile = struct {
@@ -28,7 +47,7 @@ imtui: *Imtui,
 save_filename: ?[]const u8,
 underlay_filename: []const u8,
 underlay_texture: SDL.Texture,
-controls: std.ArrayListUnmanaged(Control),
+controls: std.ArrayListUnmanaged(DesignControl),
 
 inhibit_underlay: bool = false,
 
@@ -39,14 +58,18 @@ save_confirm_open: bool = false,
 pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: []const u8) !Designer {
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
 
-    var controls = std.ArrayListUnmanaged(Control){};
-    try controls.append(imtui.allocator, .{ .dialog = .{ .schema = .{
-        .r1 = 5,
-        .c1 = 5,
-        .r2 = 20,
-        .c2 = 60,
-        .title = try imtui.allocator.dupe(u8, "Untitled Dialog"),
-    }, .impl = undefined } });
+    var controls = std.ArrayListUnmanaged(DesignControl){};
+    try controls.append(imtui.allocator, .{ .dialog = .{
+        .ix = 0,
+        .schema = .{
+            .r1 = 5,
+            .c1 = 5,
+            .r2 = 20,
+            .c2 = 60,
+            .title = try imtui.allocator.dupe(u8, "Untitled Dialog"),
+        },
+        .impl = undefined,
+    } });
 
     return .{
         .imtui = imtui,
@@ -65,17 +88,20 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
     const save_file = try SerDes.loadGroup(imtui.allocator, &p);
 
     const texture = try loadTextureFromFile(imtui.allocator, renderer, save_file.underlay);
-    var controls = std.ArrayListUnmanaged(Control){};
+    var controls = std.ArrayListUnmanaged(DesignControl){};
+
+    var ix: usize = 0;
 
     while (try p.next()) |ev| {
         std.debug.assert(ev == .group);
         var found = false;
-        inline for (std.meta.fields(Control)) |f| {
+        inline for (std.meta.fields(DesignControl)) |f| {
             if (std.mem.eql(u8, ev.group, f.name)) {
                 try controls.append(imtui.allocator, @unionInit(
-                    Control,
+                    DesignControl,
                     f.name,
                     .{
+                        .ix = ix,
                         .schema = try ini.SerDes(
                             std.meta.fieldInfo(f.type, .schema).type,
                             struct {},
@@ -83,6 +109,7 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
                         .impl = undefined,
                     },
                 ));
+                ix += 1;
                 found = true;
                 break;
             }
@@ -102,9 +129,7 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
 
 pub fn deinit(self: *Designer) void {
     for (self.controls.items) |c|
-        switch (c) {
-            inline else => |d| d.schema.deinit(self.imtui.allocator),
-        };
+        c.deinit(self.imtui);
     self.controls.deinit(self.imtui.allocator);
     self.underlay_texture.destroy();
     self.imtui.allocator.free(self.underlay_filename);
@@ -132,9 +157,9 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
 }
 
 pub fn render(self: *Designer) !void {
-    const focused = try self.renderItems();
-    const menubar = try self.renderMenus(focused);
-    try self.renderHelpLine(menubar);
+    const focused_dc = try self.renderItems();
+    const menubar = try self.renderMenus(focused_dc);
+    try self.renderHelpLine(focused_dc, menubar);
 
     self.inhibit_underlay = false;
     if (self.save_dialog_open)
@@ -143,14 +168,14 @@ pub fn render(self: *Designer) !void {
         try self.renderSaveConfirm();
 }
 
-fn renderItems(self: *Designer) !?Imtui.Control {
+fn renderItems(self: *Designer) !?DesignControl {
     // What a mess!
 
     const dr = try self.imtui.getOrPutControl(DesignRoot, .{});
     if (self.imtui.focus_stack.items.len == 0)
         try self.imtui.focus_stack.append(self.imtui.allocator, dr.impl.control());
 
-    var focused: ?Imtui.Control = null;
+    var focused: ?DesignControl = null;
 
     const dp = &self.controls.items[0].dialog;
     const dd = try self.imtui.getOrPutControl(DesignDialog, .{
@@ -164,9 +189,9 @@ fn renderItems(self: *Designer) !?Imtui.Control {
     dp.impl = dd.impl;
     try dd.sync(self.imtui.allocator, &dp.schema);
     if (self.imtui.focusedAnywhere(dd.impl.control()))
-        focused = dd.impl.control();
+        focused = self.controls.items[0];
 
-    for (self.controls.items[1..], 1..) |*i, ix| {
+    for (self.controls.items[1..]) |*i| {
         switch (i.*) {
             .dialog => unreachable,
             .button => |*p| {
@@ -175,7 +200,7 @@ fn renderItems(self: *Designer) !?Imtui.Control {
                     .{
                         dr.impl,
                         dd.impl,
-                        ix,
+                        p.ix,
                         p.schema.r1,
                         p.schema.c1,
                         p.schema.label,
@@ -185,16 +210,16 @@ fn renderItems(self: *Designer) !?Imtui.Control {
                 );
                 p.impl = b.impl;
                 try b.sync(self.imtui.allocator, &p.schema);
-                focused = focused orelse if (self.imtui.focusedAnywhere(b.impl.control())) b.impl.control() else null;
+                focused = focused orelse if (self.imtui.focusedAnywhere(b.impl.control())) i.* else null;
             },
             .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
-                    .{ dr.impl, dd.impl, ix, p.schema.r1, p.schema.c1, p.schema.label },
+                    .{ dr.impl, dd.impl, p.ix, p.schema.r1, p.schema.c1, p.schema.text },
                 );
                 p.impl = l.impl;
                 try l.sync(self.imtui.allocator, &p.schema);
-                focused = focused orelse if (self.imtui.focusedAnywhere(l.impl.control())) l.impl.control() else null;
+                focused = focused orelse if (self.imtui.focusedAnywhere(l.impl.control())) i.* else null;
             },
         }
     }
@@ -202,7 +227,7 @@ fn renderItems(self: *Designer) !?Imtui.Control {
     return focused;
 }
 
-fn renderMenus(self: *Designer, focused: ?Imtui.Control) !Imtui.Controls.Menubar {
+fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menubar {
     var menubar = try self.imtui.menubar(0, 0, 80);
 
     var file_menu = try menubar.menu("&File", 16);
@@ -231,21 +256,29 @@ fn renderMenus(self: *Designer, focused: ?Imtui.Control) !Imtui.Controls.Menubar
     var add_menu = try menubar.menu("&Add", 16);
     var button = (try add_menu.item("&Button")).help("Add new button to dialog");
     if (button.chosen()) {
-        try self.controls.append(self.imtui.allocator, .{ .button = .{ .schema = .{
-            .r1 = 5,
-            .c1 = 5,
-            .label = try self.imtui.allocator.dupe(u8, "OK"),
-            .primary = false,
-            .cancel = false,
-        }, .impl = undefined } });
+        try self.controls.append(self.imtui.allocator, .{ .button = .{
+            .ix = self.nextIx(),
+            .schema = .{
+                .r1 = 5,
+                .c1 = 5,
+                .label = try self.imtui.allocator.dupe(u8, "OK"),
+                .primary = false,
+                .cancel = false,
+            },
+            .impl = undefined,
+        } });
     }
     var label = (try add_menu.item("&Label")).help("Add new label to dialog");
     if (label.chosen()) {
-        try self.controls.append(self.imtui.allocator, .{ .label = .{ .schema = .{
-            .r1 = 5,
-            .c1 = 5,
-            .label = try self.imtui.allocator.dupe(u8, "Hello"),
-        }, .impl = undefined } });
+        try self.controls.append(self.imtui.allocator, .{ .label = .{
+            .ix = self.nextIx(),
+            .schema = .{
+                .r1 = 5,
+                .c1 = 5,
+                .text = try self.imtui.allocator.dupe(u8, "Awawa"),
+            },
+            .impl = undefined,
+        } });
     }
     try add_menu.end();
 
@@ -256,20 +289,26 @@ fn renderMenus(self: *Designer, focused: ?Imtui.Control) !Imtui.Controls.Menubar
             .dialog => |d| {
                 const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.schema.title});
                 var item = (try controls_menu.item(item_label)).help("Focus dialog");
-                if (focused != null and focused.?.same(d.impl.control()))
+                if (focused_dc != null and focused_dc.? == .dialog and focused_dc.?.dialog.impl == d.impl)
                     item.bullet();
+                if (item.chosen())
+                    try self.imtui.focus(d.impl.control());
             },
             .button => |b| {
                 const item_label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.schema.label});
                 var item = (try controls_menu.item(item_label)).help("Focus button");
-                if (focused != null and focused.?.same(b.impl.control()))
+                if (focused_dc != null and focused_dc.? == .button and focused_dc.?.button.impl == b.impl)
                     item.bullet();
+                if (item.chosen())
+                    try self.imtui.focus(b.impl.control());
             },
             .label => |l| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.schema.label});
+                const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.schema.text});
                 var item = (try controls_menu.item(item_label)).help("Focus label");
-                if (focused != null and focused.?.same(l.impl.control()))
+                if (focused_dc != null and focused_dc.? == .label and focused_dc.?.label.impl == l.impl)
                     item.bullet();
+                if (item.chosen())
+                    try self.imtui.focus(l.impl.control());
             },
         }
     }
@@ -280,7 +319,7 @@ fn renderMenus(self: *Designer, focused: ?Imtui.Control) !Imtui.Controls.Menubar
     return menubar;
 }
 
-fn renderHelpLine(self: *Designer, menubar: Imtui.Controls.Menubar) !void {
+fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Controls.Menubar) !void {
     const help_line_colour = 0x30;
     self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
 
@@ -316,8 +355,55 @@ fn renderHelpLine(self: *Designer, menubar: Imtui.Controls.Menubar) !void {
             };
         }
 
-        self.imtui.text_mode.draw(24, 14, help_line_colour, .Vertical);
-        self.imtui.text_mode.write(24, 16, "focused control info if any");
+        if (focused_dc) |f| {
+            self.imtui.text_mode.draw(24, 14, help_line_colour, .Vertical);
+            var offset: usize = 16;
+
+            switch (f) {
+                .dialog => |d| {
+                    // TODO: change when dialog state != idle. (Editing title -> Enter no longer Edit Title)
+                    var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Title>");
+                    var edit_shortcut = try self.imtui.shortcut(.@"return", null);
+                    if (edit_button.chosen() or edit_shortcut.chosen())
+                        try d.impl.startTitleEdit();
+                    offset += "<Enter=Edit Title> ".len;
+                },
+                .button => |b| {
+                    // TODO: as above.
+                    var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Label>");
+                    var edit_shortcut = try self.imtui.shortcut(.@"return", null);
+                    if (edit_button.chosen() or edit_shortcut.chosen())
+                        try b.impl.startLabelEdit();
+                    offset += "<Enter=Edit Label> ".len;
+
+                    var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
+                    var delete_shortcut = try self.imtui.shortcut(.delete, null);
+                    if (delete_button.chosen() or delete_shortcut.chosen())
+                        self.removeControl(f);
+                    offset += "<Del=Delete> ".len;
+                },
+                .label => |l| {
+                    // TODO: as above.
+                    var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Text>");
+                    var edit_shortcut = try self.imtui.shortcut(.@"return", null);
+                    if (edit_button.chosen() or edit_shortcut.chosen())
+                        try l.impl.startTextEdit();
+                    offset += "<Enter=Edit Text> ".len;
+
+                    var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
+                    var delete_shortcut = try self.imtui.shortcut(.delete, null);
+                    if (delete_button.chosen() or delete_shortcut.chosen())
+                        self.removeControl(f);
+                    offset += "<Del=Delete> ".len;
+                },
+            }
+
+            var unfocus_button = try self.imtui.button(24, offset, help_line_colour, "<Esc=Unfocus>");
+            var unfocus_shortcut = try self.imtui.shortcut(.escape, null);
+            if (unfocus_button.chosen() or unfocus_shortcut.chosen())
+                self.imtui.unfocus(f.control());
+            offset += "<Esc=Unfocus> ".len;
+        }
     }
 }
 
@@ -386,4 +472,24 @@ fn renderSaveConfirm(self: *Designer) !void {
     }
 
     try dialog.end();
+}
+
+fn nextIx(self: *const Designer) usize {
+    var max: usize = 0;
+    for (self.controls.items) |c|
+        max = @max(max, c.ix());
+    return max + 1;
+}
+
+fn removeControl(self: *Designer, dc: DesignControl) void {
+    self.imtui.unfocus(dc.control());
+    const ix = dc.ix();
+    for (self.controls.items, 0..) |c, i|
+        if (c.ix() == ix) {
+            _ = self.controls.orderedRemove(i);
+            dc.deinit(self.imtui);
+            return;
+        };
+
+    unreachable;
 }
