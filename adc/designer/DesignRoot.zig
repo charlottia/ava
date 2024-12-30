@@ -5,12 +5,15 @@ const ini = @import("ini");
 const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
+const Designer = @import("./Designer.zig");
 
 const DesignRoot = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+
+    designer: *Designer,
 
     // state
     editing_text: bool = undefined,
@@ -30,7 +33,7 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(self: *Impl) void {
+    pub fn describe(self: *Impl, _: *Designer) void {
         self.editing_text = false;
         self.focus_idle = false;
     }
@@ -59,15 +62,16 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8) ![]const u8 {
+pub fn bufPrintImtuiId(buf: []u8, _: *Designer) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{s}", .{"designer.DesignRoot"});
 }
 
-pub fn create(imtui: *Imtui) !DesignRoot {
+pub fn create(imtui: *Imtui, designer: *Designer) !DesignRoot {
     const d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
+        .designer = designer,
     };
     return .{ .impl = d };
 }

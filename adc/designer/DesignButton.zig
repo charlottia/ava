@@ -16,15 +16,17 @@ pub const Impl = struct {
     generation: usize,
 
     root: *DesignRoot.Impl,
+    id: usize,
     dialog: *DesignDialog.Impl,
 
-    // state
+    // visible state
     r1: usize,
     c1: usize,
     label: std.ArrayListUnmanaged(u8),
     primary: bool,
     cancel: bool,
 
+    // internal state
     r2: usize = undefined,
     c2: usize = undefined,
     label_orig: std.ArrayListUnmanaged(u8) = .{},
@@ -261,32 +263,62 @@ pub const Impl = struct {
         try self.label_orig.replaceRange(self.imtui.allocator, 0, self.label_orig.items.len, self.label.items);
         self.state = .label_edit;
     }
+
+    pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
+        var menu = try menubar.menu("&Button", 0);
+
+        var edit_label = (try menu.item("&Edit Label...")).shortcut(.@"return", null).help("Edits the button's label");
+        if (edit_label.chosen())
+            try self.startLabelEdit();
+
+        var primary = (try menu.item("&Primary")).help("Toggles the button's primary status");
+        if (self.primary)
+            primary.bullet();
+        if (primary.chosen())
+            self.primary = !self.primary;
+
+        var cancel = (try menu.item("&Cancel")).help("Toggles the button's cancel status");
+        if (self.cancel)
+            cancel.bullet();
+        if (cancel.chosen())
+            self.cancel = !self.cancel;
+
+        try menu.separator();
+
+        var delete = (try menu.item("Delete")).shortcut(.delete, null).help("Deletes the button");
+        if (delete.chosen())
+            self.root.designer.removeDesignControlById(self.id);
+
+        try menu.end();
+    }
 };
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, ix: usize, _: usize, _: usize, _: []const u8, _: bool, _: bool) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignButton", ix });
+pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, id: usize, _: usize, _: usize, _: []const u8, _: bool, _: bool) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignButton", id });
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, ix: usize, r1: usize, c1: usize, label: []const u8, primary: bool, cancel: bool) !DesignButton {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, label: []const u8, primary: bool, cancel: bool) !DesignButton {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
         .dialog = dialog,
+        .id = id,
         .r1 = r1,
         .c1 = c1,
         .label = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, label)),
         .primary = primary,
         .cancel = cancel,
     };
-    d.describe(root, dialog, ix, r1, c1, label, primary, cancel);
+    d.describe(root, dialog, id, r1, c1, label, primary, cancel);
     return .{ .impl = d };
 }
 
 pub const Schema = struct {
+    id: usize,
     r1: usize,
     c1: usize,
     label: []const u8,
@@ -299,6 +331,7 @@ pub const Schema = struct {
 };
 
 pub fn sync(self: DesignButton, allocator: Allocator, schema: *Schema) !void {
+    schema.id = self.impl.id;
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
     if (!std.mem.eql(u8, schema.label, self.impl.label.items)) {

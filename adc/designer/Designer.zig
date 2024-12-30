@@ -14,20 +14,19 @@ const DesignLabel = @import("./DesignLabel.zig");
 const Designer = @This();
 
 const DesignControl = union(enum) {
-    dialog: struct { ix: usize, schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
-    button: struct { ix: usize, schema: DesignButton.Schema, impl: *DesignButton.Impl },
-    label: struct { ix: usize, schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
+    dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
+    button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
+    label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
 
-    // XXX: use this more below?
     fn control(self: DesignControl) Imtui.Control {
         return switch (self) {
             inline else => |c| c.impl.control(),
         };
     }
 
-    fn ix(self: DesignControl) usize {
+    fn id(self: DesignControl) usize {
         return switch (self) {
-            inline else => |p| p.ix,
+            inline else => |p| p.impl.id,
         };
     }
 
@@ -46,6 +45,12 @@ const DesignControl = union(enum) {
     fn dump(self: DesignControl, writer: anytype) !void {
         switch (self) {
             inline else => |d| try ini.SerDes(@TypeOf(d.schema), struct {}).save(writer, d.schema),
+        }
+    }
+
+    fn createMenu(self: DesignControl, menubar: Imtui.Controls.Menubar) !void {
+        switch (self) {
+            inline else => |p| try p.impl.createMenu(menubar),
         }
     }
 };
@@ -74,8 +79,8 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: 
 
     var controls = std.ArrayListUnmanaged(DesignControl){};
     try controls.append(imtui.allocator, .{ .dialog = .{
-        .ix = 0,
         .schema = .{
+            .id = 1,
             .r1 = 5,
             .c1 = 5,
             .r2 = 20,
@@ -104,8 +109,6 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
     const texture = try loadTextureFromFile(imtui.allocator, renderer, save_file.underlay);
     var controls = std.ArrayListUnmanaged(DesignControl){};
 
-    var ix: usize = 0;
-
     while (try p.next()) |ev| {
         std.debug.assert(ev == .group);
         var found = false;
@@ -115,7 +118,6 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
                     DesignControl,
                     f.name,
                     .{
-                        .ix = ix,
                         .schema = try ini.SerDes(
                             std.meta.fieldInfo(f.type, .schema).type,
                             struct {},
@@ -123,7 +125,6 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
                         .impl = undefined,
                     },
                 ));
-                ix += 1;
                 found = true;
                 break;
             }
@@ -183,7 +184,7 @@ pub fn render(self: *Designer) !void {
 fn renderItems(self: *Designer) !?DesignControl {
     // What a mess!
 
-    self.design_root = (try self.imtui.getOrPutControl(DesignRoot, .{})).impl;
+    self.design_root = (try self.imtui.getOrPutControl(DesignRoot, .{self})).impl;
     if (self.imtui.focus_stack.items.len == 0)
         try self.imtui.focus_stack.append(self.imtui.allocator, self.design_root.control());
 
@@ -197,6 +198,7 @@ fn renderItems(self: *Designer) !?DesignControl {
     const dp = &self.controls.items[0].dialog;
     const dd = try self.imtui.getOrPutControl(DesignDialog, .{
         self.design_root,
+        dp.schema.id,
         dp.schema.r1,
         dp.schema.c1,
         dp.schema.r2,
@@ -215,7 +217,7 @@ fn renderItems(self: *Designer) !?DesignControl {
                     .{
                         self.design_root,
                         dd.impl,
-                        p.ix,
+                        p.schema.id,
                         p.schema.r1,
                         p.schema.c1,
                         p.schema.label,
@@ -231,7 +233,7 @@ fn renderItems(self: *Designer) !?DesignControl {
             .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
-                    .{ self.design_root, dd.impl, p.ix, p.schema.r1, p.schema.c1, p.schema.text },
+                    .{ self.design_root, dd.impl, p.schema.id, p.schema.r1, p.schema.c1, p.schema.text },
                 );
                 p.impl = l.impl;
                 try l.sync(self.imtui.allocator, &p.schema);
@@ -287,8 +289,8 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var button = (try add_menu.item("&Button")).help("Adds new button to dialog");
     if (button.chosen()) {
         try self.controls.append(self.imtui.allocator, .{ .button = .{
-            .ix = self.nextDesignControlIx(),
             .schema = .{
+                .id = self.nextDesignControlId(),
                 .r1 = 5,
                 .c1 = 5,
                 .label = try self.imtui.allocator.dupe(u8, "OK"),
@@ -303,8 +305,8 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var label = (try add_menu.item("&Label")).help("Adds new label to dialog");
     if (label.chosen()) {
         try self.controls.append(self.imtui.allocator, .{ .label = .{
-            .ix = self.nextDesignControlIx(),
             .schema = .{
+                .id = self.nextDesignControlId(),
                 .r1 = 5,
                 .c1 = 5,
                 .text = try self.imtui.allocator.dupe(u8, "Awawa"),
@@ -348,60 +350,8 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     }
     try controls_menu.end();
 
-    // TODO: would be lovely to localise these in the Design structs themselves
-    if (focused_dc) |f| switch (f) {
-        .dialog => |p| {
-            var dialog_menu = try menubar.menu("&Dialog", 0);
-
-            var edit_title = (try dialog_menu.item("&Edit Title...")).shortcut(.@"return", null).help("Edits the dialog's title");
-            if (edit_title.chosen())
-                try p.impl.startTitleEdit();
-
-            try dialog_menu.end();
-        },
-        .button => |p| {
-            var button_menu = try menubar.menu("&Button", 0);
-
-            var edit_label = (try button_menu.item("&Edit Label...")).shortcut(.@"return", null).help("Edits the button's label");
-            if (edit_label.chosen())
-                try p.impl.startLabelEdit();
-
-            var primary = (try button_menu.item("&Primary")).help("Toggles the button's primary status");
-            if (p.impl.primary)
-                primary.bullet();
-            if (primary.chosen())
-                p.impl.primary = !p.impl.primary;
-
-            var cancel = (try button_menu.item("&Cancel")).help("Toggles the button's cancel status");
-            if (p.impl.cancel)
-                cancel.bullet();
-            if (cancel.chosen())
-                p.impl.cancel = !p.impl.cancel;
-
-            try button_menu.separator();
-
-            var delete = (try button_menu.item("Delete")).shortcut(.delete, null).help("Deletes the button");
-            if (delete.chosen())
-                self.removeDesignControl(f);
-
-            try button_menu.end();
-        },
-        .label => |p| {
-            var label_menu = try menubar.menu("&Label", 0);
-
-            var edit_label = (try label_menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the label's text");
-            if (edit_label.chosen())
-                try p.impl.startTextEdit();
-
-            try label_menu.separator();
-
-            var delete = (try label_menu.item("Delete")).shortcut(.delete, null).help("Deletes the label");
-            if (delete.chosen())
-                self.removeDesignControl(f);
-
-            try label_menu.end();
-        },
-    };
+    if (focused_dc) |f|
+        try f.createMenu(menubar);
 
     menubar.end();
 
@@ -555,37 +505,41 @@ fn renderSaveConfirm(self: *Designer) !void {
     try dialog.end();
 }
 
-fn nextDesignControlIx(self: *const Designer) usize {
+fn nextDesignControlId(self: *const Designer) usize {
     var max: usize = 0;
     for (self.controls.items) |c|
-        max = @max(max, c.ix());
+        max = @max(max, c.id());
     return max + 1;
 }
 
 fn removeDesignControl(self: *Designer, dc: DesignControl) void {
+    self.removeDesignControlById(dc.id());
+}
+
+pub fn removeDesignControlById(self: *Designer, id: usize) void {
+    const ix = self.findDesignControlIxById(id);
+    const dc = self.controls.items[ix];
     self.imtui.unfocus(dc.control());
-    const i = self.findDesignControlIndex(dc);
-    _ = self.controls.orderedRemove(i);
+    _ = self.controls.orderedRemove(ix);
     dc.deinit(self.imtui);
 }
 
 fn nextDesignControl(self: *Designer, dc: DesignControl) !void {
     self.imtui.unfocus(dc.control());
-    const i = self.findDesignControlIndex(dc);
-    try self.imtui.focus(self.controls.items[(i + 1) % self.controls.items.len].control());
+    const ix = self.findDesignControlIxById(dc.id());
+    try self.imtui.focus(self.controls.items[(ix + 1) % self.controls.items.len].control());
 }
 
 fn prevDesignControl(self: *Designer, dc: DesignControl) !void {
     self.imtui.unfocus(dc.control());
-    const i = self.findDesignControlIndex(dc);
-    const prev: usize = if (i == 0) self.controls.items.len - 1 else i - 1;
+    const ix = self.findDesignControlIxById(dc.id());
+    const prev: usize = if (ix == 0) self.controls.items.len - 1 else ix - 1;
     try self.imtui.focus(self.controls.items[prev].control());
 }
 
-fn findDesignControlIndex(self: *const Designer, dc: DesignControl) usize {
-    const ix = dc.ix();
+fn findDesignControlIxById(self: *const Designer, id: usize) usize {
     for (self.controls.items, 0..) |c, i|
-        if (c.ix() == ix)
+        if (c.id() == id)
             return i;
 
     unreachable;

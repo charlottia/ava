@@ -16,13 +16,15 @@ pub const Impl = struct {
     generation: usize,
 
     root: *DesignRoot.Impl,
+    id: usize,
     dialog: *DesignDialog.Impl,
 
-    // state
+    // visible state
     r1: usize,
     c1: usize,
     text: std.ArrayListUnmanaged(u8),
 
+    // internal state
     r2: usize = undefined,
     c2: usize = undefined,
     text_orig: std.ArrayListUnmanaged(u8) = .{},
@@ -255,30 +257,48 @@ pub const Impl = struct {
         try self.text_orig.replaceRange(self.imtui.allocator, 0, self.text_orig.items.len, self.text.items);
         self.state = .text_edit;
     }
+
+    pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
+        var menu = try menubar.menu("&Label", 0);
+
+        var edit_label = (try menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the label's text");
+        if (edit_label.chosen())
+            try self.startTextEdit();
+
+        try menu.separator();
+
+        var delete = (try menu.item("Delete")).shortcut(.delete, null).help("Deletes the label");
+        if (delete.chosen())
+            self.root.designer.removeDesignControlById(self.id);
+
+        try menu.end();
+    }
 };
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, ix: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignLabel", ix });
+pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, id: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignLabel", id });
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, ix: usize, r1: usize, c1: usize, text: []const u8) !DesignLabel {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, text: []const u8) !DesignLabel {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
         .dialog = dialog,
+        .id = id,
         .r1 = r1,
         .c1 = c1,
         .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, text)),
     };
-    d.describe(root, dialog, ix, r1, c1, text);
+    d.describe(root, dialog, id, r1, c1, text);
     return .{ .impl = d };
 }
 
 pub const Schema = struct {
+    id: usize,
     r1: usize,
     c1: usize,
     text: []const u8,
@@ -289,6 +309,7 @@ pub const Schema = struct {
 };
 
 pub fn sync(self: DesignLabel, allocator: Allocator, schema: *Schema) !void {
+    schema.id = self.impl.id;
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
     if (!std.mem.eql(u8, schema.text, self.impl.text.items)) {

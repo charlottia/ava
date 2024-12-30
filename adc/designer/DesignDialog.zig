@@ -15,14 +15,16 @@ pub const Impl = struct {
     generation: usize,
 
     root: *DesignRoot.Impl,
+    id: usize,
 
-    // state
+    // visible state
     r1: usize,
     c1: usize,
     r2: usize,
     c2: usize,
-
     title: std.ArrayListUnmanaged(u8),
+
+    // internal state
     title_orig: std.ArrayListUnmanaged(u8) = .{},
 
     state: union(enum) {
@@ -57,7 +59,7 @@ pub const Impl = struct {
     // 0x20: not focused, hovered
     // 0x50: focused, nothing relevant hovered
     // 0xd0: focused, hovering something relevant
-    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
+    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
         self.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, 0x70);
 
         self.title_start = self.c1 + (self.c2 - self.c1 - self.title.items.len) / 2;
@@ -309,31 +311,43 @@ pub const Impl = struct {
         try self.title_orig.replaceRange(self.imtui.allocator, 0, self.title_orig.items.len, self.title.items);
         self.state = .title_edit;
     }
+
+    pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
+        var menu = try menubar.menu("&Dialog", 0);
+
+        var edit_title = (try menu.item("&Edit Title...")).shortcut(.@"return", null).help("Edits the dialog's title");
+        if (edit_title.chosen())
+            try self.startTitleEdit();
+
+        try menu.end();
+    }
 };
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{s}", .{"designer.DesignDialog"});
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, id: usize, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
+        .id = id,
         .r1 = r1,
         .c1 = c1,
         .r2 = r2,
         .c2 = c2,
         .title = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, title)),
     };
-    d.describe(root, r1, c1, r2, c2, title);
+    d.describe(root, id, r1, c1, r2, c2, title);
     return .{ .impl = d };
 }
 
 pub const Schema = struct {
+    id: usize,
     r1: usize,
     c1: usize,
     r2: usize,
@@ -346,6 +360,7 @@ pub const Schema = struct {
 };
 
 pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
+    schema.id = self.impl.id;
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
     schema.r2 = self.impl.r2;
