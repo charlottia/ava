@@ -60,7 +60,9 @@ pub const Impl = struct {
         self.c2 = self.c1 + self.text.items.len;
 
         const r1 = self.dialog.r1 + self.r1;
+        const r2 = self.dialog.r1 + self.r2;
         const c1 = self.dialog.c1 + self.c1;
+        const c2 = self.dialog.c1 + self.c2;
 
         self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + self.text.items.len, 0x70, 0);
         self.imtui.text_mode.write(r1, c1, self.text.items);
@@ -70,30 +72,16 @@ pub const Impl = struct {
                 return;
 
             if (isMouseOver(self))
-                self.imtui.text_mode.paintColour(
-                    self.dialog.r1 + self.r1,
-                    self.dialog.c1 + self.c1,
-                    self.dialog.r1 + self.r2,
-                    self.dialog.c1 + self.c2,
-                    0x20,
-                    .fill,
-                );
+                self.imtui.text_mode.paintColour(r1, c1, r2, c2, 0x20, .fill);
         } else switch (self.state) {
             .idle => {
                 const border_colour: u8 = if (isMouseOver(self)) 0xd0 else 0x50;
-                self.imtui.text_mode.paintColour(
-                    self.dialog.r1 + self.r1,
-                    self.dialog.c1 + self.c1,
-                    self.dialog.r1 + self.r2,
-                    self.dialog.c1 + self.c2,
-                    border_colour,
-                    .fill,
-                );
+                self.imtui.text_mode.paintColour(r1, c1, r2, c2, border_colour, .fill);
             },
             .move => |_| {},
             .text_edit => {
-                self.imtui.text_mode.cursor_row = self.dialog.r1 + self.r1;
-                self.imtui.text_mode.cursor_col = self.dialog.c1 + self.c1 + self.text.items.len;
+                self.imtui.text_mode.cursor_row = r1;
+                self.imtui.text_mode.cursor_col = c1 + self.text.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;
             },
         }
@@ -120,31 +108,28 @@ pub const Impl = struct {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         switch (self.state) {
             .idle => switch (keycode) {
-                .up => self.r1 -|= 1,
-                .down => self.r1 += 1,
-                .left => self.c1 -|= 1,
-                .right => self.c1 += 1,
+                .up => _ = self.adjustRow(-1),
+                .down => _ = self.adjustRow(1),
+                .left => _ = self.adjustCol(-1),
+                .right => _ = self.adjustCol(1),
                 else => return self.imtui.fallbackKeyPress(keycode, modifiers),
             },
             .move => {},
-            .text_edit => {
-                switch (keycode) {
-                    .backspace => if (self.text.items.len > 0) {
-                        if (modifiers.get(.left_control) or modifiers.get(.right_control))
-                            self.text.items.len = 0
-                        else
-                            self.text.items.len -= 1;
-                    },
-                    .@"return" => self.state = .idle,
-                    .escape => {
-                        self.state = .idle;
-                        try self.text.replaceRange(self.imtui.allocator, 0, self.text.items.len, self.text_orig.items);
-                    },
-                    else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                        try self.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
-                    },
-                }
-                return;
+            .text_edit => switch (keycode) {
+                .backspace => if (self.text.items.len > 0) {
+                    if (modifiers.get(.left_control) or modifiers.get(.right_control))
+                        self.text.items.len = 0
+                    else
+                        self.text.items.len -= 1;
+                },
+                .@"return" => self.state = .idle,
+                .escape => {
+                    self.state = .idle;
+                    try self.text.replaceRange(self.imtui.allocator, 0, self.text.items.len, self.text_orig.items);
+                },
+                else => if (Imtui.Controls.isPrintableKey(keycode)) {
+                    try self.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                },
             },
         }
     }
@@ -215,19 +200,11 @@ pub const Impl = struct {
             .move => |*d| {
                 const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
                 const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
-                const r1: isize = @as(isize, @intCast(self.r1)) + dr;
-                const c1: isize = @as(isize, @intCast(self.c1)) + dc;
-                const r2: isize = @as(isize, @intCast(self.r2)) + dr;
-                const c2: isize = @as(isize, @intCast(self.c2)) + dc;
-                if (r1 > 0 and r2 < self.dialog.r2 - self.dialog.r1) {
-                    self.r1 = @intCast(r1);
-                    self.r2 = @intCast(r2);
+                if (self.adjustRow(dr)) {
                     d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
                     d.edit_eligible = false;
                 }
-                if (c1 > 0 and c2 < self.dialog.c2 - self.dialog.c1) {
-                    self.c1 = @intCast(c1);
-                    self.c2 = @intCast(c2);
+                if (self.adjustCol(dc)) {
                     d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
                     d.edit_eligible = false;
                 }
@@ -249,6 +226,28 @@ pub const Impl = struct {
             },
             else => unreachable,
         }
+    }
+
+    fn adjustRow(self: *Impl, dr: isize) bool {
+        const r1: isize = @as(isize, @intCast(self.r1)) + dr;
+        const r2: isize = @as(isize, @intCast(self.r2)) + dr;
+        if (r1 > 0 and r2 < self.dialog.r2 - self.dialog.r1) {
+            self.r1 = @intCast(r1);
+            self.r2 = @intCast(r2);
+            return true;
+        }
+        return false;
+    }
+
+    fn adjustCol(self: *Impl, dc: isize) bool {
+        const c1: isize = @as(isize, @intCast(self.c1)) + dc;
+        const c2: isize = @as(isize, @intCast(self.c2)) + dc;
+        if (c1 > 0 and c2 < self.dialog.c2 - self.dialog.c1) {
+            self.c1 = @intCast(c1);
+            self.c2 = @intCast(c2);
+            return true;
+        }
+        return false;
     }
 
     pub fn startTextEdit(self: *Impl) !void {

@@ -133,24 +133,28 @@ pub const Impl = struct {
         switch (self.state) {
             .idle => switch (keycode) {
                 .up => {
-                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
-                        self.r1 -|= 1;
-                    self.r2 -|= 1;
+                    if (modifiers.get(.left_shift) or modifiers.get(.right_shift))
+                        self.r2 -|= 1
+                    else
+                        _ = self.adjustRow(-1);
                 },
                 .down => {
-                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
-                        self.r1 += 1;
-                    self.r2 += 1;
+                    if (modifiers.get(.left_shift) or modifiers.get(.right_shift))
+                        self.r2 += 1
+                    else
+                        _ = self.adjustRow(1);
                 },
                 .left => {
-                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
-                        self.c1 -|= 1;
-                    self.c2 -|= 1;
+                    if (modifiers.get(.left_shift) or modifiers.get(.right_shift))
+                        self.c2 -|= 1
+                    else
+                        _ = self.adjustCol(-1);
                 },
                 .right => {
-                    if (!(modifiers.get(.left_shift) or modifiers.get(.right_shift)))
-                        self.c1 += 1;
-                    self.c2 += 1;
+                    if (modifiers.get(.left_shift) or modifiers.get(.right_shift))
+                        self.c2 += 1
+                    else
+                        _ = self.adjustCol(1);
                 },
                 else => return self.imtui.fallbackKeyPress(keycode, modifiers),
             },
@@ -253,22 +257,11 @@ pub const Impl = struct {
             .move => |*d| {
                 const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
                 const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
-                const r1: isize = @as(isize, @intCast(self.r1)) + dr;
-                const c1: isize = @as(isize, @intCast(self.c1)) + dc;
-                const r2: isize = @as(isize, @intCast(self.r2)) + dr;
-                const c2: isize = @as(isize, @intCast(self.c2)) + dc;
-                // Don't allow moving right up to the edge:
-                // (a) why would you need to; and,
-                // (b) the hover outline crashes on render due to OOB. :)
-                if (r1 > 0 and r2 < self.imtui.text_mode.H) {
-                    self.r1 = @intCast(r1);
-                    self.r2 = @intCast(r2);
+                if (self.adjustRow(dr)) {
                     d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
                     d.edit_eligible = false;
                 }
-                if (c1 > 0 and c2 < self.imtui.text_mode.W) {
-                    self.c1 = @intCast(c1);
-                    self.c2 = @intCast(c2);
+                if (self.adjustCol(dc)) {
                     d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
                     d.edit_eligible = false;
                 }
@@ -303,6 +296,31 @@ pub const Impl = struct {
             .resize => self.state = .idle,
             else => unreachable,
         }
+    }
+
+    fn adjustRow(self: *Impl, dr: isize) bool {
+        // Don't allow moving right up to the edge:
+        // (a) why would you need to; and,
+        // (b) the hover outline crashes on render due to OOB. :)
+        const r1: isize = @as(isize, @intCast(self.r1)) + dr;
+        const r2: isize = @as(isize, @intCast(self.r2)) + dr;
+        if (r1 > 0 and r2 < self.imtui.text_mode.H) {
+            self.r1 = @intCast(r1);
+            self.r2 = @intCast(r2);
+            return true;
+        }
+        return false;
+    }
+
+    fn adjustCol(self: *Impl, dc: isize) bool {
+        const c1: isize = @as(isize, @intCast(self.c1)) + dc;
+        const c2: isize = @as(isize, @intCast(self.c2)) + dc;
+        if (c1 > 0 and c2 < self.imtui.text_mode.W) {
+            self.c1 = @intCast(c1);
+            self.c2 = @intCast(c2);
+            return true;
+        }
+        return false;
     }
 
     pub fn startTitleEdit(self: *Impl) !void {
