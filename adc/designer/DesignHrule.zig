@@ -56,8 +56,8 @@ pub const Impl = struct {
         self.r2 = self.r1 + 1;
 
         const r1 = self.dialog.r1 + self.r1;
-        const r2 = self.dialog.r1 + self.r2;
         const c1 = self.dialog.c1 + self.c1;
+        const r2 = self.dialog.r1 + self.r2;
         const c2 = self.dialog.c1 + self.c2;
 
         self.imtui.text_mode.paint(r1, c1, r2, c2, 0x70, .Horizontal);

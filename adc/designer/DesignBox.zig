@@ -6,8 +6,9 @@ const SDL = imtuilib.SDL;
 const Imtui = imtuilib.Imtui;
 
 const DesignRoot = @import("./DesignRoot.zig");
+const DesignDialog = @import("./DesignDialog.zig");
 
-const DesignDialog = @This();
+const DesignBox = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
@@ -15,16 +16,17 @@ pub const Impl = struct {
 
     root: *DesignRoot.Impl,
     id: usize,
+    dialog: *DesignDialog.Impl,
 
     // visible state
     r1: usize,
     c1: usize,
     r2: usize,
     c2: usize,
-    title: std.ArrayListUnmanaged(u8),
+    text: std.ArrayListUnmanaged(u8),
 
     // internal state
-    title_orig: std.ArrayListUnmanaged(u8) = .{},
+    text_orig: std.ArrayListUnmanaged(u8) = .{},
 
     state: union(enum) {
         idle,
@@ -34,10 +36,10 @@ pub const Impl = struct {
             edit_eligible: bool,
         },
         resize: struct { cix: usize },
-        title_edit,
+        text_edit,
     } = .idle,
 
-    title_start: usize = undefined,
+    text_start: usize = undefined,
 
     pub fn control(self: *Impl) Imtui.Control {
         return .{
@@ -55,22 +57,19 @@ pub const Impl = struct {
         };
     }
 
-    // 0x20: not focused, hovered
-    // 0x50: focused, nothing relevant hovered
-    // 0xd0: focused, hovering something relevant
-    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
-        const r1 = self.r1;
-        const c1 = self.c1;
-        const r2 = self.r2;
-        const c2 = self.c2;
+    pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: *DesignDialog.Impl, _: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) void {
+        const r1 = self.dialog.r1 + self.r1;
+        const c1 = self.dialog.c1 + self.c1;
+        const r2 = self.dialog.r1 + self.r2;
+        const c2 = self.dialog.c1 + self.c2;
 
         self.imtui.text_mode.box(r1, c1, r2, c2, 0x70);
 
-        if (self.title.items.len > 0) {
-            self.title_start = c1 + (c2 - c1 -| self.title.items.len) / 2;
-            self.imtui.text_mode.paint(r1, self.title_start - 1, r1 + 1, self.title_start + self.title.items.len + 1, 0x70, 0);
-            self.imtui.text_mode.write(r1, self.title_start, self.title.items);
-        } else self.title_start = c1 + (c2 - c1) / 2;
+        if (self.text.items.len > 0) {
+            self.text_start = c1 + (c2 - c1 -| self.text.items.len) / 2;
+            self.imtui.text_mode.paint(r1, self.text_start - 1, r1 + 1, self.text_start + self.text.items.len + 1, 0x70, 0);
+            self.imtui.text_mode.write(r1, self.text_start, self.text.items);
+        } else self.text_start = c1 + (c2 - c1) / 2;
 
         self.imtui.text_mode.cursor_inhibit = true;
 
@@ -89,10 +88,10 @@ pub const Impl = struct {
                     };
 
                 if (self.imtui.text_mode.mouse_row == r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and
-                    self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1)
+                    self.imtui.text_mode.mouse_col >= self.text_start - 1 and
+                    self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1)
                 {
-                    self.imtui.text_mode.paintColour(r1, self.title_start - 1, r1 + 1, self.title_start + self.title.items.len + 1, 0xd0, .fill);
+                    self.imtui.text_mode.paintColour(r1, self.text_start - 1, r1 + 1, self.text_start + self.text.items.len + 1, 0xd0, .fill);
                     return;
                 }
 
@@ -100,9 +99,9 @@ pub const Impl = struct {
                 self.imtui.text_mode.paintColour(r1 - 1, c1 - 1, r2 + 1, c2 + 1, border_colour, .outline);
             },
             .move, .resize => {},
-            .title_edit => {
+            .text_edit => {
                 self.imtui.text_mode.cursor_row = r1;
-                self.imtui.text_mode.cursor_col = self.title_start + self.title.items.len;
+                self.imtui.text_mode.cursor_col = self.text_start + self.text.items.len;
                 self.imtui.text_mode.cursor_inhibit = false;
             },
         }
@@ -115,22 +114,22 @@ pub const Impl = struct {
 
     pub fn deinit(ptr: *anyopaque) void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        self.title.deinit(self.imtui.allocator);
-        self.title_orig.deinit(self.imtui.allocator);
+        self.text.deinit(self.imtui.allocator);
+        self.text_orig.deinit(self.imtui.allocator);
         self.imtui.allocator.destroy(self);
     }
 
     pub fn informRoot(self: *Impl) void {
         self.root.focus_idle = self.state == .idle;
-        self.root.editing_text = self.state == .title_edit;
+        self.root.editing_text = self.state == .text_edit;
     }
 
     fn corners(self: *const Impl) [4]struct { r: usize, c: usize } {
         return .{
-            .{ .r = self.r1, .c = self.c1 },
-            .{ .r = self.r1, .c = self.c2 - 1 },
-            .{ .r = self.r2 - 1, .c = self.c1 },
-            .{ .r = self.r2 - 1, .c = self.c2 - 1 },
+            .{ .r = self.dialog.r1 + self.r1, .c = self.dialog.c1 + self.c1 },
+            .{ .r = self.dialog.r1 + self.r1, .c = self.dialog.c1 + self.c2 - 1 },
+            .{ .r = self.dialog.r1 + self.r2 - 1, .c = self.dialog.c1 + self.c1 },
+            .{ .r = self.dialog.r1 + self.r2 - 1, .c = self.dialog.c1 + self.c2 - 1 },
         };
     }
 
@@ -166,20 +165,20 @@ pub const Impl = struct {
                 else => return self.imtui.fallbackKeyPress(keycode, modifiers),
             },
             .move, .resize => {},
-            .title_edit => switch (keycode) {
-                .backspace => if (self.title.items.len > 0) {
+            .text_edit => switch (keycode) {
+                .backspace => if (self.text.items.len > 0) {
                     if (modifiers.get(.left_control) or modifiers.get(.right_control))
-                        self.title.items.len = 0
+                        self.text.items.len = 0
                     else
-                        self.title.items.len -= 1;
+                        self.text.items.len -= 1;
                 },
                 .@"return" => self.state = .idle,
                 .escape => {
                     self.state = .idle;
-                    try self.title.replaceRange(self.imtui.allocator, 0, self.title.items.len, self.title_orig.items);
+                    try self.text.replaceRange(self.imtui.allocator, 0, self.text.items.len, self.text_orig.items);
                 },
                 else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                    try self.title.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                    try self.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
                 },
             },
         }
@@ -189,14 +188,15 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.state == .title_edit or // <- "captures" cursor during edit
-            // v- Checks that the mouse is entirely within bounds, and matches
-            //    an axis with one of (r1,c1) or (r2,c2), i.e. the mouse is only
-            //    over when it's on a border.
-            (self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and
-            self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2 and
-            (self.imtui.text_mode.mouse_row == self.r1 or self.imtui.text_mode.mouse_row == self.r2 - 1 or
-            self.imtui.text_mode.mouse_col == self.c1 or self.imtui.text_mode.mouse_col == self.c2 - 1));
+        return self.state == .text_edit or
+            (self.imtui.mouse_row >= self.dialog.r1 + self.r1 and
+            self.imtui.mouse_row < self.dialog.r1 + self.r2 and
+            self.imtui.mouse_col >= self.dialog.c1 + self.c1 and
+            self.imtui.mouse_col < self.dialog.c1 + self.c2 and
+            (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 or
+            self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r2 - 1 or
+            self.imtui.text_mode.mouse_col == self.dialog.c1 + self.c1 or
+            self.imtui.text_mode.mouse_col == self.dialog.c1 + self.c2 - 1));
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
@@ -231,9 +231,9 @@ pub const Impl = struct {
                         return self.control();
                     };
 
-                const edit_eligible = self.imtui.text_mode.mouse_row == self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and
-                    self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1;
+                const edit_eligible = self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.text_start - 1 and
+                    self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1;
 
                 self.state = .{ .move = .{
                     .origin_row = self.imtui.text_mode.mouse_row,
@@ -242,10 +242,10 @@ pub const Impl = struct {
                 } };
                 return self.control();
             },
-            .title_edit => {
-                if (!(self.imtui.text_mode.mouse_row == self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.title_start - 1 and
-                    self.imtui.text_mode.mouse_col < self.title_start + self.title.items.len + 1))
+            .text_edit => {
+                if (!(self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
+                    self.imtui.text_mode.mouse_col >= self.text_start - 1 and
+                    self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1))
                 {
                     self.state = .idle;
                 }
@@ -298,7 +298,7 @@ pub const Impl = struct {
             .move => |d| {
                 self.state = .idle;
                 if (d.edit_eligible)
-                    try self.startTitleEdit();
+                    try self.startTextEdit();
             },
             .resize => self.state = .idle,
             else => unreachable,
@@ -306,12 +306,9 @@ pub const Impl = struct {
     }
 
     fn adjustRow(self: *Impl, dr: isize) bool {
-        // Don't allow moving right up to the edge:
-        // (a) why would you need to; and,
-        // (b) the hover outline crashes on render due to OOB. :)
         const r1: isize = @as(isize, @intCast(self.r1)) + dr;
         const r2: isize = @as(isize, @intCast(self.r2)) + dr;
-        if (r1 > 0 and r2 < self.imtui.text_mode.H) {
+        if (r1 > 0 and r2 < self.dialog.r2 - self.dialog.r1) {
             self.r1 = @intCast(r1);
             self.r2 = @intCast(r2);
             return true;
@@ -322,7 +319,7 @@ pub const Impl = struct {
     fn adjustCol(self: *Impl, dc: isize) bool {
         const c1: isize = @as(isize, @intCast(self.c1)) + dc;
         const c2: isize = @as(isize, @intCast(self.c2)) + dc;
-        if (c1 > 0 and c2 < self.imtui.text_mode.W) {
+        if (c1 > 0 and c2 < self.dialog.c2 - self.dialog.c1) {
             self.c1 = @intCast(c1);
             self.c2 = @intCast(c2);
             return true;
@@ -330,30 +327,30 @@ pub const Impl = struct {
         return false;
     }
 
-    pub fn startTitleEdit(self: *Impl) !void {
+    pub fn startTextEdit(self: *Impl) !void {
         std.debug.assert(self.state == .idle);
         std.debug.assert(self.imtui.focused(self.control()));
-        try self.title_orig.replaceRange(self.imtui.allocator, 0, self.title_orig.items.len, self.title.items);
-        self.state = .title_edit;
+        try self.text_orig.replaceRange(self.imtui.allocator, 0, self.text_orig.items.len, self.text.items);
+        self.state = .text_edit;
     }
 
     pub fn populateHelpLine(self: *Impl, offset: *usize) !void {
-        var edit_button = try self.imtui.button(24, offset.*, 0x30, "<Enter=Edit Title>");
+        var edit_button = try self.imtui.button(24, offset.*, 0x30, "<Enter=Edit Text>");
         if (edit_button.chosen())
-            try self.startTitleEdit();
-        offset.* += "<Enter=Edit Title> ".len;
+            try self.startTextEdit();
+        offset.* += "<Enter=Edit Text> ".len;
     }
 
     pub fn bufPrintFocusLabel(self: *const Impl, buf: []u8) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "[Dialog] {s}", .{self.title.items});
+        return try std.fmt.bufPrint(buf, "[Box] {s}", .{self.text.items});
     }
 
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
-        var menu = try menubar.menu("&Dialog", 0);
+        var menu = try menubar.menu("&Box", 0);
 
-        var edit_title = (try menu.item("&Edit Title...")).shortcut(.@"return", null).help("Edits the dialog's title");
-        if (edit_title.chosen())
-            try self.startTitleEdit();
+        var edit_text = (try menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the box's text");
+        if (edit_text.chosen())
+            try self.startTextEdit();
 
         try menu.end();
     }
@@ -361,24 +358,25 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}", .{"designer.DesignDialog"});
+pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, id: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignBox", id });
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, id: usize, r1: usize, c1: usize, r2: usize, c2: usize, title: []const u8) !DesignDialog {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, r2: usize, c2: usize, text: []const u8) !DesignBox {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
+        .dialog = dialog,
         .id = id,
         .r1 = r1,
         .c1 = c1,
         .r2 = r2,
         .c2 = c2,
-        .title = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, title)),
+        .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, text)),
     };
-    d.describe(root, id, r1, c1, r2, c2, title);
+    d.describe(root, dialog, id, r1, c1, r2, c2, text);
     return .{ .impl = d };
 }
 
@@ -388,21 +386,21 @@ pub const Schema = struct {
     c1: usize,
     r2: usize,
     c2: usize,
-    title: []const u8,
+    text: []const u8,
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
-        allocator.free(self.title);
+        allocator.free(self.text);
     }
 };
 
-pub fn sync(self: DesignDialog, allocator: Allocator, schema: *Schema) !void {
+pub fn sync(self: DesignBox, allocator: Allocator, schema: *Schema) !void {
     schema.id = self.impl.id;
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
     schema.r2 = self.impl.r2;
     schema.c2 = self.impl.c2;
-    if (!std.mem.eql(u8, schema.title, self.impl.title.items)) {
-        allocator.free(schema.title);
-        schema.title = try allocator.dupe(u8, self.impl.title.items);
+    if (!std.mem.eql(u8, schema.text, self.impl.text.items)) {
+        allocator.free(schema.text);
+        schema.text = try allocator.dupe(u8, self.impl.text.items);
     }
 }

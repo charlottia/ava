@@ -61,8 +61,8 @@ pub const Impl = struct {
         self.c2 = self.c1 + 4 + self.label.items.len;
 
         const r1 = self.dialog.r1 + self.r1;
-        const r2 = self.dialog.r1 + self.r2;
         const c1 = self.dialog.c1 + self.c1;
+        const r2 = self.dialog.r1 + self.r2;
         const c2 = self.dialog.c1 + self.c2;
 
         if (self.primary) {

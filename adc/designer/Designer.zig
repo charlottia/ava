@@ -10,6 +10,7 @@ const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
 const DesignLabel = @import("./DesignLabel.zig");
+const DesignBox = @import("./DesignBox.zig");
 const DesignHrule = @import("./DesignHrule.zig");
 
 const Designer = @This();
@@ -18,6 +19,7 @@ const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
     label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
+    box: struct { schema: DesignBox.Schema, impl: *DesignBox.Impl },
     hrule: struct { schema: DesignHrule.Schema, impl: *DesignHrule.Impl },
 
     fn control(self: DesignControl) Imtui.Control {
@@ -248,6 +250,16 @@ fn renderItems(self: *Designer) !?DesignControl {
                 if (self.next_focus != null and self.next_focus == ix)
                     try self.imtui.focus(l.impl.control());
             },
+            .box => |*p| {
+                const l = try self.imtui.getOrPutControl(
+                    DesignBox,
+                    .{ self.design_root, dd.impl, p.schema.id, p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, p.schema.text },
+                );
+                p.impl = l.impl;
+                try l.sync(self.imtui.allocator, &p.schema);
+                if (self.next_focus != null and self.next_focus == ix)
+                    try self.imtui.focus(l.impl.control());
+            },
             .hrule => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignHrule,
@@ -320,6 +332,8 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         self.next_focus = self.controls.items.len - 1;
     }
 
+    try add_menu.separator();
+
     var label = (try add_menu.item("&Label")).help("Adds new label to dialog");
     if (label.chosen()) {
         try self.controls.append(self.imtui.allocator, .{ .label = .{
@@ -327,6 +341,22 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .id = self.nextDesignControlId(),
                 .r1 = 5,
                 .c1 = 5,
+                .text = try self.imtui.allocator.dupe(u8, "Awawa"),
+            },
+            .impl = undefined,
+        } });
+        self.next_focus = self.controls.items.len - 1;
+    }
+
+    var box = (try add_menu.item("Bo&x")).help("Adds new box to dialog");
+    if (box.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .box = .{
+            .schema = .{
+                .id = self.nextDesignControlId(),
+                .r1 = 3,
+                .c1 = 3,
+                .r2 = 7,
+                .c2 = 7,
                 .text = try self.imtui.allocator.dupe(u8, "Awawa"),
             },
             .impl = undefined,
