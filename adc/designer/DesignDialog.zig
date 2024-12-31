@@ -64,15 +64,16 @@ pub const Impl = struct {
 
         self.imtui.text_mode.box(r1, c1, r2, c2, 0x70);
 
-        if (self.text.items.len > 0) {
-            self.text_start = c1 + (c2 - c1 -| self.text.items.len) / 2;
-            self.imtui.text_mode.paint(r1, self.text_start - 1, r1 + 1, self.text_start + self.text.items.len + 1, 0x70, 0);
-            self.imtui.text_mode.write(r1, self.text_start, self.text.items);
+        const len = Imtui.Controls.lenWithoutAccelerators(self.text.items);
+        if (len > 0) {
+            self.text_start = c1 + (c2 - c1 -| len) / 2;
+            self.imtui.text_mode.paint(r1, self.text_start - 1, r1 + 1, self.text_start + len + 1, 0x70, 0);
+            self.imtui.text_mode.writeAccelerated(r1, self.text_start, self.text.items, true);
         } else self.text_start = c1 + (c2 - c1) / 2;
 
         if (!DesignBehaviours.describe_whResizable(self, r1, c1, r2, c2)) {
             self.imtui.text_mode.cursor_row = r1;
-            self.imtui.text_mode.cursor_col = self.text_start + self.text.items.len;
+            self.imtui.text_mode.cursor_col = self.text_start + len;
             self.imtui.text_mode.cursor_inhibit = false;
         }
     }

@@ -164,8 +164,8 @@ pub fn TextMode(H: usize, W: usize) type {
             // As above.
             var next_highlight = false;
             var j: usize = 0;
-            for (text) |char| {
-                if (char == '&')
+            for (text, 0..) |char, i| {
+                if (char == '&' and i != text.len - 1)
                     next_highlight = true
                 else {
                     self.screen[r * W + c + j] |= char;

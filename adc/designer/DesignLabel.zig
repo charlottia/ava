@@ -56,18 +56,19 @@ pub const Impl = struct {
     }
 
     pub fn describe(self: *Impl, _: *DesignRoot.Impl, _: *DesignDialog.Impl, _: usize, _: usize, _: usize, _: []const u8) void {
+        const len = Imtui.Controls.lenWithoutAccelerators(self.text.items);
         self.r2 = self.r1 + 1;
-        self.c2 = self.c1 + self.text.items.len;
+        self.c2 = self.c1 + len;
 
         const r1 = self.dialog.r1 + self.r1;
         const c1 = self.dialog.c1 + self.c1;
 
-        self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + self.text.items.len, 0x70, 0);
-        self.imtui.text_mode.write(r1, c1, self.text.items);
+        self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + len, 0x70, 0);
+        self.imtui.text_mode.writeAccelerated(r1, c1, self.text.items, true);
 
         if (!DesignBehaviours.describe_autosized(self)) {
             self.imtui.text_mode.cursor_row = r1;
-            self.imtui.text_mode.cursor_col = c1 + self.text.items.len;
+            self.imtui.text_mode.cursor_col = c1 + len;
             self.imtui.text_mode.cursor_inhibit = false;
         }
     }

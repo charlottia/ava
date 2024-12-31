@@ -47,8 +47,8 @@ pub fn formatShortcut(allocator: Allocator, shortcut: Imtui.Shortcut) ![]const u
 
 pub fn lenWithoutAccelerators(s: []const u8) usize {
     var len: usize = 0;
-    for (s) |c|
-        len += if (c == '&') 0 else 1;
+    for (s, 0..) |c, i|
+        len += if (c == '&' and i != s.len - 1) 0 else 1;
     return len;
 }
 
