@@ -341,10 +341,6 @@ pub const Impl = struct {
         offset.* += "<Enter=Edit Text> ".len;
     }
 
-    pub fn bufPrintFocusLabel(self: *const Impl, buf: []u8) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "[Box] {s}", .{self.text.items});
-    }
-
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
         var menu = try menubar.menu("&Box", 0);
 
@@ -390,6 +386,10 @@ pub const Schema = struct {
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
         allocator.free(self.text);
+    }
+
+    pub fn bufPrintFocusLabel(self: *const Schema, buf: []u8) ![]const u8 {
+        return try std.fmt.bufPrint(buf, "[Box] {s}", .{self.text});
     }
 };
 

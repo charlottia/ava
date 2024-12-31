@@ -246,10 +246,6 @@ pub const Impl = struct {
         offset.* += "<Del=Delete> ".len;
     }
 
-    pub fn bufPrintFocusLabel(_: *const Impl, buf: []u8) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "[Input]", .{});
-    }
-
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
         var menu = try menubar.menu("&Input", 0);
 
@@ -290,6 +286,10 @@ pub const Schema = struct {
     c2: usize,
 
     pub fn deinit(_: Schema, _: Allocator) void {}
+
+    pub fn bufPrintFocusLabel(_: *const Schema, buf: []u8) ![]const u8 {
+        return try std.fmt.bufPrint(buf, "[Input]", .{});
+    }
 };
 
 pub fn sync(self: DesignInput, _: Allocator, schema: *Schema) !void {

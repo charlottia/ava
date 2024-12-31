@@ -10,6 +10,7 @@ const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
 const DesignInput = @import("./DesignInput.zig");
+const DesignRadio = @import("./DesignRadio.zig");
 const DesignLabel = @import("./DesignLabel.zig");
 const DesignBox = @import("./DesignBox.zig");
 const DesignHrule = @import("./DesignHrule.zig");
@@ -20,6 +21,7 @@ const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
     input: struct { schema: DesignInput.Schema, impl: *DesignInput.Impl },
+    radio: struct { schema: DesignRadio.Schema, impl: *DesignRadio.Impl },
     label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
     box: struct { schema: DesignBox.Schema, impl: *DesignBox.Impl },
     hrule: struct { schema: DesignHrule.Schema, impl: *DesignHrule.Impl },
@@ -259,6 +261,23 @@ fn renderItems(self: *Designer) !?DesignControl {
                 if (self.next_focus != null and self.next_focus == ix)
                     try self.imtui.focus(b.impl.control());
             },
+            .radio => |*p| {
+                const b = try self.imtui.getOrPutControl(
+                    DesignRadio,
+                    .{
+                        self.design_root,
+                        dd.impl,
+                        p.schema.id,
+                        p.schema.r1,
+                        p.schema.c1,
+                        p.schema.label,
+                    },
+                );
+                p.impl = b.impl;
+                try b.sync(self.imtui.allocator, &p.schema);
+                if (self.next_focus != null and self.next_focus == ix)
+                    try self.imtui.focus(b.impl.control());
+            },
             .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
@@ -374,6 +393,20 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         self.next_focus = self.controls.items.len - 1;
     }
 
+    var radio = (try add_menu.item("&Radio")).help("Adds new radio to dialog");
+    if (radio.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .radio = .{
+            .schema = .{
+                .id = self.nextDesignControlId(),
+                .r1 = 5,
+                .c1 = 5,
+                .label = try self.imtui.allocator.dupe(u8, "Dogll"),
+            },
+            .impl = undefined,
+        } });
+        self.next_focus = self.controls.items.len - 1;
+    }
+
     try add_menu.separator();
 
     var label = (try add_menu.item("&Label")).help("Adds new label to dialog");
@@ -427,7 +460,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     for (self.controls.items) |c|
         switch (c) {
             inline else => |p, tag| {
-                const item_label = try p.impl.bufPrintFocusLabel(&buf);
+                const item_label = try p.schema.bufPrintFocusLabel(&buf);
                 var item = (try controls_menu.item(item_label)).help("Focuses " ++ @tagName(tag));
                 if (focused_dc) |f|
                     switch (f) {

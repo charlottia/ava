@@ -344,10 +344,6 @@ pub const Impl = struct {
         offset.* += "<Enter=Edit Title> ".len;
     }
 
-    pub fn bufPrintFocusLabel(self: *const Impl, buf: []u8) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "[Dialog] {s}", .{self.title.items});
-    }
-
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
         var menu = try menubar.menu("&Dialog", 0);
 
@@ -392,6 +388,10 @@ pub const Schema = struct {
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
         allocator.free(self.title);
+    }
+
+    pub fn bufPrintFocusLabel(self: *const Schema, buf: []u8) ![]const u8 {
+        return try std.fmt.bufPrint(buf, "[Dialog] {s}", .{self.title});
     }
 };
 
