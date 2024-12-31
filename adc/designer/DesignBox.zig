@@ -139,6 +139,11 @@ pub const Impl = struct {
         if (edit_button.chosen())
             try DesignBehaviours.startTextEdit(self);
         offset.* += "<Enter=Edit Text> ".len;
+
+        var delete_button = try self.imtui.button(24, offset.*, 0x30, "<Del=Delete>");
+        if (delete_button.chosen())
+            self.root.designer.removeDesignControlById(self.id);
+        offset.* += "<Del=Delete> ".len;
     }
 
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
@@ -147,6 +152,12 @@ pub const Impl = struct {
         var edit_text = (try menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the box's text");
         if (edit_text.chosen())
             try DesignBehaviours.startTextEdit(self);
+
+        try menu.separator();
+
+        var delete = (try menu.item("Delete")).shortcut(.delete, null).help("Deletes the hrule");
+        if (delete.chosen())
+            self.root.designer.removeDesignControlById(self.id);
 
         try menu.end();
     }
