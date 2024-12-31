@@ -99,7 +99,7 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: 
             .c1 = 5,
             .r2 = 20,
             .c2 = 60,
-            .title = try imtui.allocator.dupe(u8, "Untitled Dialog"),
+            .text = try imtui.allocator.dupe(u8, "Untitled Dialog"),
         },
         .impl = undefined,
     } });
@@ -184,6 +184,8 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
 }
 
 pub fn render(self: *Designer) !void {
+    self.imtui.text_mode.cursor_inhibit = true;
+
     const focused_dc = try self.renderItems();
     const menubar = try self.renderMenus(focused_dc);
     try self.renderHelpLine(focused_dc, menubar);
@@ -217,7 +219,7 @@ fn renderItems(self: *Designer) !?DesignControl {
         dp.schema.c1,
         dp.schema.r2,
         dp.schema.c2,
-        dp.schema.title,
+        dp.schema.text,
     });
     dp.impl = dd.impl;
     try dd.sync(self.imtui.allocator, &dp.schema);
@@ -234,7 +236,7 @@ fn renderItems(self: *Designer) !?DesignControl {
                         p.schema.id,
                         p.schema.r1,
                         p.schema.c1,
-                        p.schema.label,
+                        p.schema.text,
                         p.schema.primary,
                         p.schema.cancel,
                     },
@@ -270,7 +272,7 @@ fn renderItems(self: *Designer) !?DesignControl {
                         p.schema.id,
                         p.schema.r1,
                         p.schema.c1,
-                        p.schema.label,
+                        p.schema.text,
                     },
                 );
                 p.impl = b.impl;
@@ -370,7 +372,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .id = self.nextDesignControlId(),
                 .r1 = 5,
                 .c1 = 5,
-                .label = try self.imtui.allocator.dupe(u8, "OK"),
+                .text = try self.imtui.allocator.dupe(u8, "OK"),
                 .primary = false,
                 .cancel = false,
             },
@@ -400,7 +402,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .id = self.nextDesignControlId(),
                 .r1 = 5,
                 .c1 = 5,
-                .label = try self.imtui.allocator.dupe(u8, "Dogll"),
+                .text = try self.imtui.allocator.dupe(u8, "Dogll"),
             },
             .impl = undefined,
         } });

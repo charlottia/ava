@@ -7,6 +7,7 @@ const Imtui = imtuilib.Imtui;
 
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
+const DesignBehaviours = @import("./DesignBehaviours.zig");
 
 const DesignLabel = @This();
 
@@ -60,29 +61,14 @@ pub const Impl = struct {
 
         const r1 = self.dialog.r1 + self.r1;
         const c1 = self.dialog.c1 + self.c1;
-        const r2 = self.dialog.r1 + self.r2;
-        const c2 = self.dialog.c1 + self.c2;
 
         self.imtui.text_mode.paint(r1, c1, r1 + 1, c1 + self.text.items.len, 0x70, 0);
         self.imtui.text_mode.write(r1, c1, self.text.items);
 
-        if (!self.imtui.focused(self.control())) {
-            if (self.imtui.focus_stack.items.len > 1 and !self.root.focus_idle)
-                return;
-
-            if (isMouseOver(self) and !(self.root.focus_idle and self.imtui.focus_stack.getLast().isMouseOver()))
-                self.imtui.text_mode.paintColour(r1, c1, r2, c2, 0x20, .fill);
-        } else switch (self.state) {
-            .idle => {
-                const border_colour: u8 = if (isMouseOver(self)) 0xd0 else 0x50;
-                self.imtui.text_mode.paintColour(r1, c1, r2, c2, border_colour, .fill);
-            },
-            .move => {},
-            .text_edit => {
-                self.imtui.text_mode.cursor_row = r1;
-                self.imtui.text_mode.cursor_col = c1 + self.text.items.len;
-                self.imtui.text_mode.cursor_inhibit = false;
-            },
+        if (!DesignBehaviours.describe_autosized(self)) {
+            self.imtui.text_mode.cursor_row = r1;
+            self.imtui.text_mode.cursor_col = c1 + self.text.items.len;
+            self.imtui.text_mode.cursor_inhibit = false;
         }
     }
 
@@ -105,161 +91,45 @@ pub const Impl = struct {
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        switch (self.state) {
-            .idle => switch (keycode) {
-                .up => _ = self.adjustRow(-1),
-                .down => _ = self.adjustRow(1),
-                .left => _ = self.adjustCol(-1),
-                .right => _ = self.adjustCol(1),
-                else => return self.imtui.fallbackKeyPress(keycode, modifiers),
-            },
-            .move => {},
-            .text_edit => switch (keycode) {
-                .backspace => if (self.text.items.len > 0) {
-                    if (modifiers.get(.left_control) or modifiers.get(.right_control))
-                        self.text.items.len = 0
-                    else
-                        self.text.items.len -= 1;
-                },
-                .@"return" => self.state = .idle,
-                .escape => {
-                    self.state = .idle;
-                    try self.text.replaceRange(self.imtui.allocator, 0, self.text.items.len, self.text_orig.items);
-                },
-                else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                    try self.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
-                },
-            },
-        }
+
+        if (!try DesignBehaviours.handleKeyPress_autosized(self, keycode, modifiers))
+            try DesignBehaviours.handleKeyPress_textEdit(self, keycode, modifiers);
     }
 
     fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.state == .text_edit or
-            (self.imtui.mouse_row >= self.dialog.r1 + self.r1 and
-            self.imtui.mouse_row < self.dialog.r1 + self.r2 and
-            self.imtui.mouse_col >= self.dialog.c1 + self.c1 and
-            self.imtui.mouse_col < self.dialog.c1 + self.c2);
+        return DesignBehaviours.isMouseOver_autosized(self);
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-
-        if (cm) return null;
-
-        const focused = self.imtui.focused(self.control());
-        if (!isMouseOver(ptr))
-            if (try self.imtui.fallbackMouseDown(b, clicks, cm)) |r|
-                return r.@"0"
-            else {
-                if (focused) self.imtui.unfocusAnywhere(self.control());
-                return null;
-            };
-
-        if (b != .left) return null;
-
-        if (!focused) {
-            self.state = .{ .move = .{
-                .origin_row = self.imtui.text_mode.mouse_row,
-                .origin_col = self.imtui.text_mode.mouse_col,
-                .edit_eligible = false,
-            } };
-            try self.imtui.focus(self.control());
-            return self.control();
-        } else switch (self.state) {
-            .idle => {
-                self.state = .{ .move = .{
-                    .origin_row = self.imtui.text_mode.mouse_row,
-                    .origin_col = self.imtui.text_mode.mouse_col,
-                    .edit_eligible = true,
-                } };
-                return self.control();
-            },
-            .text_edit => {
-                if (!(self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and
-                    self.imtui.text_mode.mouse_col >= self.dialog.c1 + self.c1 + 1 and
-                    self.imtui.text_mode.mouse_col < self.dialog.c1 + self.c2 - 1))
-                {
-                    self.state = .idle;
-                }
-
-                return null;
-            },
-            else => return null,
-        }
+        return DesignBehaviours.handleMouseDown_autosized(self, b, clicks, cm);
     }
 
     fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        _ = b;
-
-        switch (self.state) {
-            .move => |*d| {
-                const dr = @as(isize, @intCast(self.imtui.text_mode.mouse_row)) - @as(isize, @intCast(d.origin_row));
-                const dc = @as(isize, @intCast(self.imtui.text_mode.mouse_col)) - @as(isize, @intCast(d.origin_col));
-                if (self.adjustRow(dr)) {
-                    d.origin_row = @intCast(@as(isize, @intCast(d.origin_row)) + dr);
-                    d.edit_eligible = false;
-                }
-                if (self.adjustCol(dc)) {
-                    d.origin_col = @intCast(@as(isize, @intCast(d.origin_col)) + dc);
-                    d.edit_eligible = false;
-                }
-            },
-            else => unreachable,
-        }
+        return DesignBehaviours.handleMouseDrag_autosized(self, b);
     }
 
     fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        _ = b;
-        _ = clicks;
-
-        switch (self.state) {
-            .move => |d| {
-                self.state = .idle;
-                if (d.edit_eligible)
-                    try self.startTextEdit();
-            },
-            else => unreachable,
-        }
+        return DesignBehaviours.handleMouseUp_autosized(self, b, clicks);
     }
 
-    fn adjustRow(self: *Impl, dr: isize) bool {
-        const r1: isize = @as(isize, @intCast(self.r1)) + dr;
-        const r2: isize = @as(isize, @intCast(self.r2)) + dr;
-        if (r1 > 0 and r2 < self.dialog.r2 - self.dialog.r1) {
-            self.r1 = @intCast(r1);
-            self.r2 = @intCast(r2);
-            return true;
-        }
-        return false;
+    pub fn adjustRow(self: *Impl, dr: isize) bool {
+        return DesignBehaviours.adjustRow(self, 1, self.dialog.r2 - self.dialog.r1 - 1, dr);
     }
 
-    fn adjustCol(self: *Impl, dc: isize) bool {
-        const c1: isize = @as(isize, @intCast(self.c1)) + dc;
-        const c2: isize = @as(isize, @intCast(self.c2)) + dc;
-        if (c1 > 0 and c2 < self.dialog.c2 - self.dialog.c1) {
-            self.c1 = @intCast(c1);
-            self.c2 = @intCast(c2);
-            return true;
-        }
-        return false;
-    }
-
-    pub fn startTextEdit(self: *Impl) !void {
-        std.debug.assert(self.state == .idle);
-        std.debug.assert(self.imtui.focused(self.control()));
-        try self.text_orig.replaceRange(self.imtui.allocator, 0, self.text_orig.items.len, self.text.items);
-        self.state = .text_edit;
+    pub fn adjustCol(self: *Impl, dc: isize) bool {
+        return DesignBehaviours.adjustCol(self, 1, self.dialog.c2 - self.dialog.c1 - 1, dc);
     }
 
     pub fn populateHelpLine(self: *Impl, offset: *usize) !void {
         var edit_button = try self.imtui.button(24, offset.*, 0x30, "<Enter=Edit Text>");
         if (edit_button.chosen())
-            try self.startTextEdit();
+            try DesignBehaviours.startTextEdit(self);
         offset.* += "<Enter=Edit Text> ".len;
 
         var delete_button = try self.imtui.button(24, offset.*, 0x30, "<Del=Delete>");
@@ -273,7 +143,7 @@ pub const Impl = struct {
 
         var edit_label = (try menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the label's text");
         if (edit_label.chosen())
-            try self.startTextEdit();
+            try DesignBehaviours.startTextEdit(self);
 
         try menu.separator();
 
