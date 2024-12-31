@@ -6,10 +6,10 @@
   * last one doesn't exist yet, but think of the &Help dialog
 * [x] materialise Editor in the focus stack
 * [x] what ids _should_ we use for dialog stuff? buncha XXX there
-* [-] do the dialog designer. HACE LA COSA VERDADERA.
+* [x] do the dialog designer. HACE LA COSA VERDADERA.
   * [x] move generationGet/Set into Control itself?
     * Not Control, but a "base class".
-  * [ ] how about refactoring `create` somehow too?
+  * [x] how about refactoring `create` somehow too?
 * [ ] consider interaction tests -- can test against TextMode w/o backing, no
       graphics required.
 
@@ -27,7 +27,7 @@ internals:
 * [ ] scour remaining XXX/TODO and just do a bunch (h.a.d)
 * [x] consider if we care to look into ctm stuff per below
   * I think I ended up fixing this to a good enough state.
-* [ ] text selection in EditorLike could use a real fixer upper.
+* [x] text selection in EditorLike could use a real fixer upper.
 
 ---
 
