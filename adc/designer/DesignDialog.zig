@@ -70,7 +70,7 @@ pub const Impl = struct {
             if (self.imtui.focus_stack.items.len > 1 and !self.root.focus_idle)
                 return;
 
-            if (isMouseOver(self))
+            if (isMouseOver(self) and !(self.root.focus_idle and self.imtui.focus_stack.getLast().isMouseOver()))
                 self.imtui.text_mode.paintColour(self.r1 - 1, self.c1 - 1, self.r2 + 1, self.c2 + 1, 0x20, .outline);
         } else switch (self.state) {
             .idle => {
