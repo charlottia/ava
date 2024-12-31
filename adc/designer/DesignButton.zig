@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const imtuilib = @import("imtui");
-const ini = @import("ini");
 const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
@@ -262,6 +261,18 @@ pub const Impl = struct {
         std.debug.assert(self.imtui.focused(self.control()));
         try self.label_orig.replaceRange(self.imtui.allocator, 0, self.label_orig.items.len, self.label.items);
         self.state = .label_edit;
+    }
+
+    pub fn populateHelpLine(self: *Impl, offset: *usize) !void {
+        var edit_button = try self.imtui.button(24, offset.*, 0x30, "<Enter=Edit Label>");
+        if (edit_button.chosen())
+            try self.startLabelEdit();
+        offset.* += "<Enter=Edit Label> ".len;
+
+        var delete_button = try self.imtui.button(24, offset.*, 0x30, "<Del=Delete>");
+        if (delete_button.chosen())
+            self.root.designer.removeDesignControlById(self.id);
+        offset.* += "<Del=Delete> ".len;
     }
 
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {

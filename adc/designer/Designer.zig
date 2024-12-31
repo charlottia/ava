@@ -10,6 +10,7 @@ const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
 const DesignLabel = @import("./DesignLabel.zig");
+const DesignHrule = @import("./DesignHrule.zig");
 
 const Designer = @This();
 
@@ -17,6 +18,7 @@ const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
     label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
+    hrule: struct { schema: DesignHrule.Schema, impl: *DesignHrule.Impl },
 
     fn control(self: DesignControl) Imtui.Control {
         return switch (self) {
@@ -48,10 +50,16 @@ const DesignControl = union(enum) {
         }
     }
 
+    fn populateHelpLine(self: DesignControl, offset: *usize) !void {
+        return switch (self) {
+            inline else => |p| p.impl.populateHelpLine(offset),
+        };
+    }
+
     fn createMenu(self: DesignControl, menubar: Imtui.Controls.Menubar) !void {
-        switch (self) {
-            inline else => |p| try p.impl.createMenu(menubar),
-        }
+        return switch (self) {
+            inline else => |p| p.impl.createMenu(menubar),
+        };
     }
 };
 
@@ -240,6 +248,16 @@ fn renderItems(self: *Designer) !?DesignControl {
                 if (self.next_focus != null and self.next_focus == ix)
                     try self.imtui.focus(l.impl.control());
             },
+            .hrule => |*p| {
+                const l = try self.imtui.getOrPutControl(
+                    DesignHrule,
+                    .{ self.design_root, dd.impl, p.schema.id, p.schema.r1, p.schema.c1, p.schema.c2 },
+                );
+                p.impl = l.impl;
+                try l.sync(self.imtui.allocator, &p.schema);
+                if (self.next_focus != null and self.next_focus == ix)
+                    try self.imtui.focus(l.impl.control());
+            },
         }
     }
 
@@ -316,12 +334,27 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         self.next_focus = self.controls.items.len - 1;
     }
 
+    var hrule = (try add_menu.item("&Hrule")).help("Adds new hrule to dialog");
+    if (hrule.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .hrule = .{
+            .schema = .{
+                .id = self.nextDesignControlId(),
+                .r1 = 5,
+                .c1 = 5,
+                .c2 = 10,
+            },
+            .impl = undefined,
+        } });
+        self.next_focus = self.controls.items.len - 1;
+    }
+
     try add_menu.end();
 
     var controls_menu = try menubar.menu("&Controls", 0);
     var buf: [100]u8 = undefined;
     for (self.controls.items) |c| {
         switch (c) {
+            // TODO: inline else
             .dialog => |d| {
                 const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.schema.title});
                 var item = (try controls_menu.item(item_label)).help("Focuses dialog");
@@ -346,6 +379,14 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 if (item.chosen())
                     try self.imtui.focus(l.impl.control());
             },
+            .hrule => |h| {
+                const item_label = try std.fmt.bufPrint(&buf, "[Hrule]", .{});
+                var item = (try controls_menu.item(item_label)).help("Focuses hrule");
+                if (focused_dc != null and focused_dc.? == .hrule and focused_dc.?.hrule.impl == h.impl)
+                    item.bullet();
+                if (item.chosen())
+                    try self.imtui.focus(h.impl.control());
+            },
         }
     }
     try controls_menu.end();
@@ -359,8 +400,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 }
 
 fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Controls.Menubar) !void {
-    const help_line_colour = 0x30;
-    self.imtui.text_mode.paint(24, 0, 25, 80, help_line_colour, .Blank);
+    self.imtui.text_mode.paint(24, 0, 25, 80, 0x30, .Blank);
 
     const focused = self.imtui.focus_stack.getLast();
     if (focused.is(Imtui.Controls.Menubar.Impl)) |mb| {
@@ -386,36 +426,7 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
     if (focused_dc) |f| {
         var offset: usize = 1;
 
-        switch (f) {
-            .dialog => |d| {
-                var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Title>");
-                if (edit_button.chosen())
-                    try d.impl.startTitleEdit();
-                offset += "<Enter=Edit Title> ".len;
-            },
-            .button => |b| {
-                var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Label>");
-                if (edit_button.chosen())
-                    try b.impl.startLabelEdit();
-                offset += "<Enter=Edit Label> ".len;
-
-                var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
-                if (delete_button.chosen())
-                    self.removeDesignControl(f);
-                offset += "<Del=Delete> ".len;
-            },
-            .label => |l| {
-                var edit_button = try self.imtui.button(24, offset, help_line_colour, "<Enter=Edit Text>");
-                if (edit_button.chosen())
-                    try l.impl.startTextEdit();
-                offset += "<Enter=Edit Text> ".len;
-
-                var delete_button = try self.imtui.button(24, offset, help_line_colour, "<Del=Delete>");
-                if (delete_button.chosen())
-                    self.removeDesignControl(f);
-                offset += "<Del=Delete> ".len;
-            },
-        }
+        try f.populateHelpLine(&offset);
 
         std.debug.assert(offset <= 44);
         offset = 45;
@@ -431,7 +442,7 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
         if (unfocus_shortcut.chosen())
             self.imtui.unfocus(f.control());
     } else {
-        var next_button = try self.imtui.button(24, 61, help_line_colour, "<Tab=Focus Dialog>");
+        var next_button = try self.imtui.button(24, 61, 0x30, "<Tab=Focus Dialog>");
         var next_shortcut = try self.imtui.shortcut(.tab, null);
         if (next_button.chosen() or next_shortcut.chosen())
             try self.imtui.focus(self.controls.items[0].control());
