@@ -9,6 +9,7 @@ const Imtui = imtuilib.Imtui;
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
+const DesignInput = @import("./DesignInput.zig");
 const DesignLabel = @import("./DesignLabel.zig");
 const DesignBox = @import("./DesignBox.zig");
 const DesignHrule = @import("./DesignHrule.zig");
@@ -18,6 +19,7 @@ const Designer = @This();
 const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
+    input: struct { schema: DesignInput.Schema, impl: *DesignInput.Impl },
     label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
     box: struct { schema: DesignBox.Schema, impl: *DesignBox.Impl },
     hrule: struct { schema: DesignHrule.Schema, impl: *DesignHrule.Impl },
@@ -240,6 +242,23 @@ fn renderItems(self: *Designer) !?DesignControl {
                 if (self.next_focus != null and self.next_focus == ix)
                     try self.imtui.focus(b.impl.control());
             },
+            .input => |*p| {
+                const b = try self.imtui.getOrPutControl(
+                    DesignInput,
+                    .{
+                        self.design_root,
+                        dd.impl,
+                        p.schema.id,
+                        p.schema.r1,
+                        p.schema.c1,
+                        p.schema.c2,
+                    },
+                );
+                p.impl = b.impl;
+                try b.sync(self.imtui.allocator, &p.schema);
+                if (self.next_focus != null and self.next_focus == ix)
+                    try self.imtui.focus(b.impl.control());
+            },
             .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
@@ -253,7 +272,16 @@ fn renderItems(self: *Designer) !?DesignControl {
             .box => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignBox,
-                    .{ self.design_root, dd.impl, p.schema.id, p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, p.schema.text },
+                    .{
+                        self.design_root,
+                        dd.impl,
+                        p.schema.id,
+                        p.schema.r1,
+                        p.schema.c1,
+                        p.schema.r2,
+                        p.schema.c2,
+                        p.schema.text,
+                    },
                 );
                 p.impl = l.impl;
                 try l.sync(self.imtui.allocator, &p.schema);
@@ -326,6 +354,20 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .label = try self.imtui.allocator.dupe(u8, "OK"),
                 .primary = false,
                 .cancel = false,
+            },
+            .impl = undefined,
+        } });
+        self.next_focus = self.controls.items.len - 1;
+    }
+
+    var input = (try add_menu.item("&Input")).help("Adds new input to dialog");
+    if (input.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .input = .{
+            .schema = .{
+                .id = self.nextDesignControlId(),
+                .r1 = 5,
+                .c1 = 5,
+                .c2 = 10,
             },
             .impl = undefined,
         } });

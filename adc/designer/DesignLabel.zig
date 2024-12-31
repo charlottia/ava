@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const imtuilib = @import("imtui");
-const ini = @import("ini");
 const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
@@ -78,7 +77,7 @@ pub const Impl = struct {
                 const border_colour: u8 = if (isMouseOver(self)) 0xd0 else 0x50;
                 self.imtui.text_mode.paintColour(r1, c1, r2, c2, border_colour, .fill);
             },
-            .move => |_| {},
+            .move => {},
             .text_edit => {
                 self.imtui.text_mode.cursor_row = r1;
                 self.imtui.text_mode.cursor_col = c1 + self.text.items.len;

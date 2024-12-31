@@ -8,7 +8,7 @@ const Imtui = imtuilib.Imtui;
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 
-const DesignHrule = @This();
+const DesignInput = @This();
 
 pub const Impl = struct {
     imtui: *Imtui,
@@ -59,11 +59,7 @@ pub const Impl = struct {
         const r2 = self.dialog.r1 + self.r2;
         const c2 = self.dialog.c1 + self.c2;
 
-        self.imtui.text_mode.paint(r1, c1, r2, c2, 0x70, .Horizontal);
-        if (self.c1 == 0)
-            self.imtui.text_mode.draw(r1, c1, 0x70, .VerticalRight);
-        if (self.c2 == self.dialog.c2 - self.dialog.c1)
-            self.imtui.text_mode.draw(r1, c2 - 1, 0x70, .VerticalLeft);
+        self.imtui.text_mode.paint(r1, c1, r2, c2, 0x70, '.');
 
         if (!self.imtui.focused(self.control())) {
             if (self.imtui.focus_stack.items.len > 1 and !self.root.focus_idle)
@@ -235,9 +231,7 @@ pub const Impl = struct {
     fn adjustCol(self: *Impl, dc: isize) bool {
         const c1: isize = @as(isize, @intCast(self.c1)) + dc;
         const c2: isize = @as(isize, @intCast(self.c2)) + dc;
-        // NOTE: this differs from other controls in that it's allowed to
-        // overlap the left and right borders.
-        if (c1 >= 0 and c2 <= self.dialog.c2 - self.dialog.c1) {
+        if (c1 > 0 and c2 < self.dialog.c2 - self.dialog.c1) {
             self.c1 = @intCast(c1);
             self.c2 = @intCast(c2);
             return true;
@@ -253,12 +247,13 @@ pub const Impl = struct {
     }
 
     pub fn bufPrintFocusLabel(_: *const Impl, buf: []u8) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "[Hrule]", .{});
+        return try std.fmt.bufPrint(buf, "[Input]", .{});
     }
-    pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
-        var menu = try menubar.menu("&Hrule", 0);
 
-        var delete = (try menu.item("Delete")).shortcut(.delete, null).help("Deletes the hrule");
+    pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
+        var menu = try menubar.menu("&Input", 0);
+
+        var delete = (try menu.item("Delete")).shortcut(.delete, null).help("Deletes the input");
         if (delete.chosen())
             self.root.designer.removeDesignControlById(self.id);
 
@@ -269,10 +264,10 @@ pub const Impl = struct {
 impl: *Impl,
 
 pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, id: usize, _: usize, _: usize, _: usize) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignHrule", id });
+    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignInput", id });
 }
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, c2: usize) !DesignHrule {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, c2: usize) !DesignInput {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
@@ -297,7 +292,7 @@ pub const Schema = struct {
     pub fn deinit(_: Schema, _: Allocator) void {}
 };
 
-pub fn sync(self: DesignHrule, _: Allocator, schema: *Schema) !void {
+pub fn sync(self: DesignInput, _: Allocator, schema: *Schema) !void {
     schema.id = self.impl.id;
     schema.r1 = self.impl.r1;
     schema.c1 = self.impl.c1;
