@@ -275,6 +275,10 @@ pub const Impl = struct {
         offset.* += "<Del=Delete> ".len;
     }
 
+    pub fn bufPrintFocusLabel(self: *const Impl, buf: []u8) ![]const u8 {
+        return try std.fmt.bufPrint(buf, "[Button] {s}", .{self.label.items});
+    }
+
     pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
         var menu = try menubar.menu("&Button", 0);
 

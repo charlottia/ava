@@ -352,43 +352,21 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     var controls_menu = try menubar.menu("&Controls", 0);
     var buf: [100]u8 = undefined;
-    for (self.controls.items) |c| {
+    for (self.controls.items) |c|
         switch (c) {
-            // TODO: inline else
-            .dialog => |d| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Dialog] {s}", .{d.schema.title});
-                var item = (try controls_menu.item(item_label)).help("Focuses dialog");
-                if (focused_dc != null and focused_dc.? == .dialog and focused_dc.?.dialog.impl == d.impl)
-                    item.bullet();
+            inline else => |p, tag| {
+                const item_label = try p.impl.bufPrintFocusLabel(&buf);
+                var item = (try controls_menu.item(item_label)).help("Focuses " ++ @tagName(tag));
+                if (focused_dc) |f|
+                    switch (f) {
+                        tag => |d| if (d.impl == p.impl)
+                            item.bullet(),
+                        else => {},
+                    };
                 if (item.chosen())
-                    try self.imtui.focus(d.impl.control());
+                    try self.imtui.focus(p.impl.control());
             },
-            .button => |b| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Button] {s}", .{b.schema.label});
-                var item = (try controls_menu.item(item_label)).help("Focuses button");
-                if (focused_dc != null and focused_dc.? == .button and focused_dc.?.button.impl == b.impl)
-                    item.bullet();
-                if (item.chosen())
-                    try self.imtui.focus(b.impl.control());
-            },
-            .label => |l| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Label] {s}", .{l.schema.text});
-                var item = (try controls_menu.item(item_label)).help("Focuses label");
-                if (focused_dc != null and focused_dc.? == .label and focused_dc.?.label.impl == l.impl)
-                    item.bullet();
-                if (item.chosen())
-                    try self.imtui.focus(l.impl.control());
-            },
-            .hrule => |h| {
-                const item_label = try std.fmt.bufPrint(&buf, "[Hrule]", .{});
-                var item = (try controls_menu.item(item_label)).help("Focuses hrule");
-                if (focused_dc != null and focused_dc.? == .hrule and focused_dc.?.hrule.impl == h.impl)
-                    item.bullet();
-                if (item.chosen())
-                    try self.imtui.focus(h.impl.control());
-            },
-        }
-    }
+        };
     try controls_menu.end();
 
     if (focused_dc) |f|
