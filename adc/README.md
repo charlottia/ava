@@ -5,6 +5,11 @@
 * `zig-out/bin/adc`
 * `zig-out/bin/designer`
 
+
+## TextMode Designer
+
+![Screenshot of the TextMode Designer.](designer.png)
+
 <!--
 
 `adc --serial /dev/cu.usbserial-ibU1IGlC1` will connect to Ava BASIC running on
