@@ -3,6 +3,8 @@ const imtuilib = @import("imtui");
 const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
+const DesignRoot = @import("./DesignRoot.zig");
+const DesignDialog = @import("./DesignDialog.zig");
 
 const Self = @This();
 
@@ -76,7 +78,7 @@ fn StateForBehaviours(comptime behaviours: anytype) type {
 
 const Sizing = enum { autosized, width_resizable, wh_resizable };
 
-fn ArchetypesForBehaviours(comptime behaviours: anytype) struct {
+fn archetypesForBehaviours(comptime behaviours: anytype) struct {
     sizing: Sizing,
     text_editable: bool,
     dialog: bool,
@@ -102,17 +104,20 @@ fn ArchetypesForBehaviours(comptime behaviours: anytype) struct {
 }
 
 pub fn DesCon(comptime Config: type) type {
-    const DesignRoot = @import("./DesignRoot.zig");
-    const DesignDialog = @import("./DesignDialog.zig");
-
     // TODO: would be nice to automatically set r2/c2 undefined defaults where
     // applicable (autosized/width_resizable).
+    //
+    // XXX: inability to reify structs with decls makes things a bit more
+    // awkward (and is unlikely to ever change); see
+    // https://github.com/ziglang/zig/issues/6709.
+
+    const Fields = if (@hasDecl(Config, "Fields")) Config.Fields else void;
 
     return struct {
         const Impl = @This();
 
+        pub const Archetypes = archetypesForBehaviours(Config.behaviours);
         pub const State = StateForBehaviours(Config.behaviours);
-        pub const Archetypes = ArchetypesForBehaviours(Config.behaviours);
 
         imtui: *Imtui,
         generation: usize,
@@ -130,9 +135,8 @@ pub fn DesCon(comptime Config: type) type {
         // TODO: as above
         text: if (Archetypes.text_editable) std.ArrayListUnmanaged(u8) else void = if (Archetypes.text_editable) undefined else {},
 
-        // HACK:
-        primary: bool = false,
-        cancel: bool = false,
+        // TODO: as above
+        fields: Fields = if (@hasDecl(Config, "Fields")) undefined else {},
 
         // internal state
         text_start: if (Archetypes.text_editable) usize else void = undefined,
@@ -552,11 +556,15 @@ pub fn DesCon(comptime Config: type) type {
                 var edit_text = (try menu.item("&Edit Text...")).shortcut(.@"return", null).help("Edits the " ++ Config.name ++ "'s text");
                 if (edit_text.chosen())
                     try self.startTextEdit();
-
-                try menu.separator();
             }
 
+            if (@hasDecl(Config, "addToMenu"))
+                try Config.addToMenu(self, menu);
+
             if (!Archetypes.dialog) {
+                if (menu.impl.menu_items_at > 0)
+                    try menu.separator();
+
                 var delete = (try menu.item("Delete")).shortcut(.delete, null).help("Deletes the " ++ Config.name);
                 if (delete.chosen())
                     self.root.designer.removeDesignControlById(self.id);

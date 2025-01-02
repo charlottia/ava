@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const imtuilib = @import("imtui");
-const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
 

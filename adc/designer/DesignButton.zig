@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const imtuilib = @import("imtui");
-const SDL = imtuilib.SDL;
 
 const Imtui = imtuilib.Imtui;
 
@@ -16,6 +15,11 @@ pub const Impl = DesignBehaviours.DesCon(struct {
     pub const menu_name = "&Button";
     pub const behaviours = .{.text_editable};
 
+    pub const Fields = struct {
+        primary: bool,
+        cancel: bool,
+    };
+
     pub fn describe(self: *Impl) void {
         const len = Imtui.Controls.lenWithoutAccelerators(self.text.items);
         self.r2 = self.r1 + 1;
@@ -27,7 +31,7 @@ pub const Impl = DesignBehaviours.DesCon(struct {
         const c2 = self.dialog.c1 + self.c2;
         self.text_start = c1 + 2;
 
-        if (self.primary) {
+        if (self.fields.primary) {
             self.imtui.text_mode.paintColour(r1, c1, r2, c1 + 1, 0x7f, .fill);
             self.imtui.text_mode.paintColour(r1, c2 - 1, r2, c2, 0x7f, .fill);
         }
@@ -35,6 +39,20 @@ pub const Impl = DesignBehaviours.DesCon(struct {
         self.imtui.text_mode.write(r1, c1, "<");
         self.imtui.text_mode.writeAccelerated(r1, c1 + 2, self.text.items, true);
         self.imtui.text_mode.write(r1, c2 - 1, ">");
+    }
+
+    pub fn addToMenu(self: *Impl, menu: Imtui.Controls.Menu) !void {
+        var primary = (try menu.item("&Primary")).help("Toggles the button's primary status");
+        if (self.fields.primary)
+            primary.bullet();
+        if (primary.chosen())
+            self.fields.primary = !self.fields.primary;
+
+        var cancel = (try menu.item("&Cancel")).help("Toggles the button's cancel status");
+        if (self.fields.cancel)
+            cancel.bullet();
+        if (cancel.chosen())
+            self.fields.cancel = !self.fields.cancel;
     }
 });
 
@@ -57,8 +75,10 @@ pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl,
         .r2 = undefined,
         .c2 = undefined,
         .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, text)),
-        .primary = primary,
-        .cancel = cancel,
+        .fields = .{
+            .primary = primary,
+            .cancel = cancel,
+        },
     };
     d.describe();
     return .{ .impl = d };
@@ -89,6 +109,6 @@ pub fn sync(self: DesignButton, allocator: Allocator, schema: *Schema) !void {
         allocator.free(schema.text);
         schema.text = try allocator.dupe(u8, self.impl.text.items);
     }
-    schema.primary = self.impl.primary;
-    schema.cancel = self.impl.cancel;
+    schema.primary = self.impl.fields.primary;
+    schema.cancel = self.impl.fields.cancel;
 }
