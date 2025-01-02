@@ -33,7 +33,7 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(self: *Impl, _: *Designer) void {
+    pub fn describe(self: *Impl) void {
         self.editing_text = false;
         self.focus_idle = false;
     }
