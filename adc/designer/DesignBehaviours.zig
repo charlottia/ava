@@ -6,8 +6,6 @@ const Imtui = imtuilib.Imtui;
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 
-const Self = @This();
-
 fn corners(r1: usize, c1: usize, r2: usize, c2: usize) [4]struct { r: usize, c: usize } {
     return .{
         .{ .r = r1, .c = c1 },
@@ -103,23 +101,39 @@ fn archetypesForBehaviours(comptime behaviours: anytype) struct {
     return .{ .sizing = sizing, .text_editable = text_editable, .dialog = dialog };
 }
 
-pub fn DesCon(comptime Config: type) type {
-    // TODO: would be nice to automatically set r2/c2 undefined defaults where
-    // applicable (autosized/width_resizable).
-    //
-    // XXX: inability to reify structs with decls makes things a bit more
-    // awkward (and is unlikely to ever change); see
-    // https://github.com/ziglang/zig/issues/6709.
-    //
-    // I think we can do it by putting all the switchable data on a separate
-    // struct. It'll also matter slightly less if we can generate create(),
-    // since that's the only thing actually instantiating these structs.
-
-    const Fields = if (@hasDecl(Config, "Fields")) Config.Fields else void;
+pub fn Impl(comptime Config: type) type {
     const Archetypes = archetypesForBehaviours(Config.behaviours);
 
+    comptime var FieldsFields: []const std.builtin.Type.StructField =
+        if (@hasDecl(Config, "Fields")) @typeInfo(Config.Fields).Struct.fields else &.{};
+
+    if (!Archetypes.dialog)
+        FieldsFields = FieldsFields ++ [_]std.builtin.Type.StructField{
+            .{ .name = "dialog", .type = *DesignDialog.Impl, .default_value = null, .is_comptime = false, .alignment = @alignOf(*DesignDialog.Impl) },
+        };
+
+    FieldsFields = FieldsFields ++ [_]std.builtin.Type.StructField{
+        .{ .name = "r1", .type = usize, .default_value = null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "c1", .type = usize, .default_value = null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "r2", .type = usize, .default_value = if (Archetypes.sizing != .wh_resizable) &@as(usize, undefined) else null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "c2", .type = usize, .default_value = if (Archetypes.sizing == .autosized) &@as(usize, undefined) else null, .is_comptime = false, .alignment = @alignOf(usize) },
+    };
+
+    if (Archetypes.text_editable)
+        FieldsFields = FieldsFields ++ [_]std.builtin.Type.StructField{
+            .{ .name = "text", .type = std.ArrayListUnmanaged(u8), .default_value = null, .is_comptime = false, .alignment = @alignOf(std.ArrayListUnmanaged(u8)) },
+            .{ .name = "text_start", .type = usize, .default_value = &@as(usize, undefined), .is_comptime = false, .alignment = @alignOf(usize) },
+        };
+
+    const Fields = @Type(.{ .Struct = .{
+        .layout = .auto,
+        .fields = FieldsFields,
+        .decls = &.{},
+        .is_tuple = false,
+    } });
+
     return struct {
-        const Impl = @This();
+        const Self = @This();
 
         const State = StateForBehaviours(Config.behaviours);
 
@@ -128,28 +142,15 @@ pub fn DesCon(comptime Config: type) type {
 
         root: *DesignRoot.Impl,
         id: usize,
-        // TODO: insert this and `text` dynamically to avoid unwanted defaults
-        dialog: if (Archetypes.dialog) void else *DesignDialog.Impl = undefined,
 
-        // visible state
-        r1: usize,
-        c1: usize,
-        r2: usize,
-        c2: usize,
-        // TODO: as above
-        text: if (Archetypes.text_editable) std.ArrayListUnmanaged(u8) else void = undefined,
-        // TODO: as above
-        fields: Fields = undefined,
-
-        // internal state
-        text_start: if (Archetypes.text_editable) usize else void = undefined,
         state: State = .idle,
+        fields: Fields,
 
         pub fn bufPrintImtuiId(buf: []u8, id: usize) ![]const u8 {
             return try std.fmt.bufPrint(buf, "designer.{s}/{d}", .{ Config.name, id });
         }
 
-        pub fn control(self: *Impl) Imtui.Control {
+        pub fn control(self: *Self) Imtui.Control {
             return .{
                 .ptr = self,
                 .vtable = &.{
@@ -165,13 +166,13 @@ pub fn DesCon(comptime Config: type) type {
             };
         }
 
-        pub fn describe(self: *Impl) void {
+        pub fn describe(self: *Self) void {
             Config.describe(self);
 
-            const r1 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1;
-            const c1 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1;
-            const r2 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r2;
-            const c2 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c2;
+            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
+            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
+            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
+            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
 
             const c = self.control();
 
@@ -206,10 +207,10 @@ pub fn DesCon(comptime Config: type) type {
                             };
 
                         if (Archetypes.text_editable and self.imtui.text_mode.mouse_row == r1 and
-                            self.imtui.text_mode.mouse_col >= self.text_start - 1 and
-                            self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1)
+                            self.imtui.text_mode.mouse_col >= self.fields.text_start - 1 and
+                            self.imtui.text_mode.mouse_col < self.fields.text_start + self.fields.text.items.len + 1)
                         {
-                            self.imtui.text_mode.paintColour(r1, self.text_start - 1, r1 + 1, self.text_start + self.text.items.len + 1, 0xd0, .fill);
+                            self.imtui.text_mode.paintColour(r1, self.fields.text_start - 1, r1 + 1, self.fields.text_start + self.fields.text.items.len + 1, 0xd0, .fill);
                             return;
                         }
                     } else {
@@ -224,7 +225,7 @@ pub fn DesCon(comptime Config: type) type {
                         return
                     else if (tag == .text_edit) {
                         self.imtui.text_mode.cursor_row = r1;
-                        self.imtui.text_mode.cursor_col = self.text_start + Imtui.Controls.lenWithoutAccelerators(self.text.items);
+                        self.imtui.text_mode.cursor_col = self.fields.text_start + Imtui.Controls.lenWithoutAccelerators(self.fields.text.items);
                         self.imtui.text_mode.cursor_inhibit = false;
                     } else {
                         unreachable;
@@ -234,20 +235,21 @@ pub fn DesCon(comptime Config: type) type {
         }
 
         fn parent(ptr: *const anyopaque) ?Imtui.Control {
-            const self: *const Impl = @ptrCast(@alignCast(ptr));
+            const self: *const Self = @ptrCast(@alignCast(ptr));
             return self.root.control();
         }
 
         pub fn deinit(ptr: *anyopaque) void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
-            if (@TypeOf(self.text) != void)
-                self.text.deinit(self.imtui.allocator);
-            if (Archetypes.text_editable and self.state == .text_edit)
-                self.state.text_edit.deinit(self.imtui.allocator);
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            if (Archetypes.text_editable) {
+                self.fields.text.deinit(self.imtui.allocator);
+                if (self.state == .text_edit)
+                    self.state.text_edit.deinit(self.imtui.allocator);
+            }
             self.imtui.allocator.destroy(self);
         }
 
-        pub fn informRoot(self: *Impl) void {
+        pub fn informRoot(self: *Self) void {
             self.root.focus_idle = self.state == .idle;
 
             if (Archetypes.text_editable)
@@ -255,29 +257,29 @@ pub fn DesCon(comptime Config: type) type {
         }
 
         fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
+            const self: *Self = @ptrCast(@alignCast(ptr));
 
             const shift = modifiers.get(.left_shift) or modifiers.get(.right_shift);
 
             switch (self.state) {
                 .idle => switch (keycode) {
                     .up => if (Archetypes.sizing == .wh_resizable and shift) {
-                        self.r2 -|= 1;
+                        self.fields.r2 -|= 1;
                     } else {
                         _ = self.adjustRow(-1);
                     },
                     .down => if (Archetypes.sizing == .wh_resizable and shift) {
-                        self.r2 += 1;
+                        self.fields.r2 += 1;
                     } else {
                         _ = self.adjustRow(1);
                     },
                     .left => if (Archetypes.sizing != .autosized and shift) {
-                        self.c2 -|= 1;
+                        self.fields.c2 -|= 1;
                     } else {
                         _ = self.adjustCol(-1);
                     },
                     .right => if (Archetypes.sizing != .autosized and shift) {
-                        self.c2 += 1;
+                        self.fields.c2 += 1;
                     } else {
                         _ = self.adjustCol(1);
                     },
@@ -288,23 +290,23 @@ pub fn DesCon(comptime Config: type) type {
                     if (Archetypes.sizing != .autosized and tag == .resize)
                         return
                     else if (tag == .text_edit) switch (keycode) {
-                        .backspace => if (self.text.items.len > 0) {
+                        .backspace => if (self.fields.text.items.len > 0) {
                             if (modifiers.get(.left_control) or modifiers.get(.right_control))
-                                self.text.items.len = 0
+                                self.fields.text.items.len = 0
                             else
-                                self.text.items.len -= 1;
+                                self.fields.text.items.len -= 1;
                         },
                         .@"return" => {
                             self.state.text_edit.deinit(self.imtui.allocator);
                             self.state = .idle;
                         },
                         .escape => {
-                            try self.text.replaceRange(self.imtui.allocator, 0, self.text.items.len, self.state.text_edit.items);
+                            try self.fields.text.replaceRange(self.imtui.allocator, 0, self.fields.text.items.len, self.state.text_edit.items);
                             self.state.text_edit.deinit(self.imtui.allocator);
                             self.state = .idle;
                         },
                         else => if (Imtui.Controls.isPrintableKey(keycode)) {
-                            try self.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
+                            try self.fields.text.append(self.imtui.allocator, Imtui.Controls.getCharacter(keycode, modifiers));
                         },
                     } else {
                         unreachable;
@@ -316,14 +318,14 @@ pub fn DesCon(comptime Config: type) type {
         fn handleKeyUp(_: *anyopaque, _: SDL.Keycode) !void {}
 
         fn isMouseOver(ptr: *const anyopaque) bool {
-            const self: *const Impl = @ptrCast(@alignCast(ptr));
+            const self: *const Self = @ptrCast(@alignCast(ptr));
             if (Archetypes.text_editable and self.state == .text_edit)
                 return true;
 
-            const r1 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1;
-            const c1 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1;
-            const r2 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r2;
-            const c2 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c2;
+            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
+            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
+            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
+            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
 
             return switch (Archetypes.sizing) {
                 .autosized, .width_resizable => self.imtui.mouse_row >= r1 and self.imtui.mouse_row < r2 and
@@ -336,14 +338,14 @@ pub fn DesCon(comptime Config: type) type {
         }
 
         fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
+            const self: *Self = @ptrCast(@alignCast(ptr));
 
             const c = self.control();
 
-            const r1 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1;
-            const c1 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1;
-            const r2 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r2;
-            const c2 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c2;
+            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
+            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
+            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
+            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
 
             if (cm) return null;
 
@@ -403,8 +405,8 @@ pub fn DesCon(comptime Config: type) type {
                     if (Archetypes.text_editable) {
                         const edit_eligible = Archetypes.sizing == .autosized or
                             (self.imtui.text_mode.mouse_row == r1 and
-                            self.imtui.text_mode.mouse_col >= self.text_start - 1 and
-                            self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1);
+                            self.imtui.text_mode.mouse_col >= self.fields.text_start - 1 and
+                            self.imtui.text_mode.mouse_col < self.fields.text_start + self.fields.text.items.len + 1);
 
                         self.state = .{ .move = .{
                             .origin_row = self.imtui.text_mode.mouse_row,
@@ -426,8 +428,8 @@ pub fn DesCon(comptime Config: type) type {
                         return null
                     else if (tag == .text_edit) {
                         if (!(self.imtui.text_mode.mouse_row == r1 and
-                            self.imtui.text_mode.mouse_col >= self.text_start - 1 and
-                            self.imtui.text_mode.mouse_col < self.text_start + Imtui.Controls.lenWithoutAccelerators(self.text.items) + 1))
+                            self.imtui.text_mode.mouse_col >= self.fields.text_start - 1 and
+                            self.imtui.text_mode.mouse_col < self.fields.text_start + Imtui.Controls.lenWithoutAccelerators(self.fields.text.items) + 1))
                         {
                             self.state.text_edit.deinit(self.imtui.allocator);
                             self.state = .idle;
@@ -442,7 +444,7 @@ pub fn DesCon(comptime Config: type) type {
         }
 
         fn handleMouseDrag(ptr: *anyopaque, b: SDL.MouseButton) !void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
+            const self: *Self = @ptrCast(@alignCast(ptr));
             _ = b;
 
             switch (self.state) {
@@ -464,17 +466,17 @@ pub fn DesCon(comptime Config: type) type {
                     if (Archetypes.sizing != .autosized and tag == .resize) {
                         if (Archetypes.sizing == .width_resizable)
                             switch (d.end) {
-                                0 => self.c1 = self.imtui.text_mode.mouse_col -| self.dialog.c1,
-                                1 => self.c2 = @min(self.imtui.text_mode.mouse_col + 1 -| self.dialog.c1, self.dialog.c2 - self.dialog.c1),
+                                0 => self.fields.c1 = self.imtui.text_mode.mouse_col -| self.fields.dialog.fields.c1,
+                                1 => self.fields.c2 = @min(self.imtui.text_mode.mouse_col + 1 -| self.fields.dialog.fields.c1, self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1),
                             }
                         else if (Archetypes.sizing == .wh_resizable) {
                             switch (d.cix) {
-                                0, 1 => self.r1 = self.imtui.text_mode.mouse_row - (if (!Archetypes.dialog) self.dialog.r1 else 0),
-                                2, 3 => self.r2 = self.imtui.text_mode.mouse_row + 1 -| (if (!Archetypes.dialog) self.dialog.r1 else 0),
+                                0, 1 => self.fields.r1 = self.imtui.text_mode.mouse_row - (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0),
+                                2, 3 => self.fields.r2 = self.imtui.text_mode.mouse_row + 1 -| (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0),
                             }
                             switch (d.cix) {
-                                0, 2 => self.c1 = self.imtui.text_mode.mouse_col - (if (!Archetypes.dialog) self.dialog.c1 else 0),
-                                1, 3 => self.c2 = self.imtui.text_mode.mouse_col + 1 -| (if (!Archetypes.dialog) self.dialog.c1 else 0),
+                                0, 2 => self.fields.c1 = self.imtui.text_mode.mouse_col - (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0),
+                                1, 3 => self.fields.c2 = self.imtui.text_mode.mouse_col + 1 -| (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0),
                             }
                         } else unreachable;
                     } else {
@@ -485,7 +487,7 @@ pub fn DesCon(comptime Config: type) type {
         }
 
         fn handleMouseUp(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8) !void {
-            const self: *Impl = @ptrCast(@alignCast(ptr));
+            const self: *Self = @ptrCast(@alignCast(ptr));
             _ = b;
             _ = clicks;
 
@@ -505,21 +507,21 @@ pub fn DesCon(comptime Config: type) type {
             }
         }
 
-        pub fn adjustRow(self: *Impl, dr: isize) bool {
+        pub fn adjustRow(self: *Self, dr: isize) bool {
             const lb = 1; // XXX
-            const ub = if (Archetypes.dialog) (self.imtui.text_mode.H - 1) else (self.dialog.r2 - self.dialog.r1 - 1);
+            const ub = if (Archetypes.dialog) (self.imtui.text_mode.H - 1) else (self.fields.dialog.fields.r2 - self.fields.dialog.fields.r1 - 1);
 
-            const r1: isize = @as(isize, @intCast(self.r1)) + dr;
-            const r2: isize = @as(isize, @intCast(self.r2)) + dr;
+            const r1: isize = @as(isize, @intCast(self.fields.r1)) + dr;
+            const r2: isize = @as(isize, @intCast(self.fields.r2)) + dr;
             if (r1 >= lb and r2 <= ub) {
-                self.r1 = @intCast(r1);
-                self.r2 = @intCast(r2);
+                self.fields.r1 = @intCast(r1);
+                self.fields.r2 = @intCast(r2);
                 return true;
             }
             return false;
         }
 
-        pub fn adjustCol(self: *Impl, dc: isize) bool {
+        pub fn adjustCol(self: *Self, dc: isize) bool {
             const lb = if (Archetypes.sizing == .width_resizable)
                 0 // XXX: hack for Hrule. It needs to override this itself.
             else
@@ -527,21 +529,21 @@ pub fn DesCon(comptime Config: type) type {
             const ub = if (Archetypes.dialog)
                 self.imtui.text_mode.W - 1
             else if (Archetypes.sizing == .width_resizable)
-                self.dialog.c2 - self.dialog.c1 // XXX: hack for Hrule. It needs to override this itself.
+                self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1 // XXX: hack for Hrule. It needs to override this itself.
             else
-                self.dialog.c2 - self.dialog.c1 - 1;
+                self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1 - 1;
 
-            const c1: isize = @as(isize, @intCast(self.c1)) + dc;
-            const c2: isize = @as(isize, @intCast(self.c2)) + dc;
+            const c1: isize = @as(isize, @intCast(self.fields.c1)) + dc;
+            const c2: isize = @as(isize, @intCast(self.fields.c2)) + dc;
             if (c1 >= lb and c2 <= ub) {
-                self.c1 = @intCast(c1);
-                self.c2 = @intCast(c2);
+                self.fields.c1 = @intCast(c1);
+                self.fields.c2 = @intCast(c2);
                 return true;
             }
             return false;
         }
 
-        pub fn populateHelpLine(self: *Impl, offset: *usize) !void {
+        pub fn populateHelpLine(self: *Self, offset: *usize) !void {
             if (Archetypes.text_editable) {
                 var edit_button = try self.imtui.button(24, offset.*, 0x30, "<Enter=Edit Text>");
                 if (edit_button.chosen())
@@ -557,7 +559,7 @@ pub fn DesCon(comptime Config: type) type {
             }
         }
 
-        pub fn createMenu(self: *Impl, menubar: Imtui.Controls.Menubar) !void {
+        pub fn createMenu(self: *Self, menubar: Imtui.Controls.Menubar) !void {
             var menu = try menubar.menu(Config.menu_name, 0);
 
             if (Archetypes.text_editable) {
@@ -581,18 +583,18 @@ pub fn DesCon(comptime Config: type) type {
             try menu.end();
         }
 
-        fn startTextEdit(self: *Impl) !void {
+        fn startTextEdit(self: *Self) !void {
             std.debug.assert(self.state == .idle);
             std.debug.assert(self.imtui.focused(self.control()));
             self.state = .{ .text_edit = .{} };
-            try self.state.text_edit.appendSlice(self.imtui.allocator, self.text.items);
+            try self.state.text_edit.appendSlice(self.imtui.allocator, self.fields.text.items);
         }
 
-        fn border(self: *const Impl, colour: u8) void {
-            const r1 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1;
-            const c1 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1;
-            const r2 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r2;
-            const c2 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c2;
+        fn border(self: *const Self, colour: u8) void {
+            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
+            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
+            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
+            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
 
             switch (Archetypes.sizing) {
                 .autosized => self.imtui.text_mode.paintColour(r1, c1, r2, c2, colour, .fill),
@@ -606,25 +608,25 @@ pub fn DesCon(comptime Config: type) type {
 test {
     const testing = std.testing;
 
-    const Autosized = DesCon(struct {
+    const Autosized = Impl(struct {
         pub const behaviours = .{};
     });
     try testing.expectEqualDeep(&[_][]const u8{ "idle", "move" }, std.meta.fieldNames(Autosized.State));
     try testing.expectEqualDeep(&[_][]const u8{ "origin_row", "origin_col" }, std.meta.fieldNames(std.meta.TagPayloadByName(Autosized.State, "move")));
 
-    const WidthResizable = DesCon(struct {
+    const WidthResizable = Impl(struct {
         pub const behaviours = .{.width_resizable};
     });
     try testing.expectEqualDeep(&[_][]const u8{ "idle", "resize", "move" }, std.meta.fieldNames(WidthResizable.State));
     try testing.expectEqualDeep(&[_][]const u8{"end"}, std.meta.fieldNames(std.meta.TagPayloadByName(WidthResizable.State, "resize")));
 
-    const AutosizedTextEditable = DesCon(struct {
+    const AutosizedTextEditable = Impl(struct {
         pub const behaviours = .{.text_editable};
     });
     try testing.expectEqualDeep(&[_][]const u8{ "idle", "text_edit", "move" }, std.meta.fieldNames(AutosizedTextEditable.State));
     try testing.expectEqualDeep(&[_][]const u8{ "origin_row", "origin_col", "edit_eligible" }, std.meta.fieldNames(std.meta.TagPayloadByName(AutosizedTextEditable.State, "move")));
 
-    const WhResizableTextEditable = DesCon(struct {
+    const WhResizableTextEditable = Impl(struct {
         pub const behaviours = .{ .wh_resizable, .text_editable };
     });
     try testing.expectEqualDeep(&[_][]const u8{ "idle", "resize", "text_edit", "move" }, std.meta.fieldNames(WhResizableTextEditable.State));

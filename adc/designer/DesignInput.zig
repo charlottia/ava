@@ -10,17 +10,17 @@ const DesignBehaviours = @import("./DesignBehaviours.zig");
 
 const DesignInput = @This();
 
-pub const Impl = DesignBehaviours.DesCon(struct {
+pub const Impl = DesignBehaviours.Impl(struct {
     pub const name = "input";
     pub const menu_name = "&Input";
     pub const behaviours = .{.width_resizable};
 
     pub fn describe(self: *Impl) void {
-        self.r2 = self.r1 + 1;
+        self.fields.r2 = self.fields.r1 + 1;
 
-        const r1 = self.dialog.r1 + self.r1;
-        const c1 = self.dialog.c1 + self.c1;
-        const c2 = self.dialog.c1 + self.c2;
+        const r1 = self.fields.dialog.fields.r1 + self.fields.r1;
+        const c1 = self.fields.dialog.fields.c1 + self.fields.c1;
+        const c2 = self.fields.dialog.fields.c1 + self.fields.c2;
 
         for (c1..c2) |c|
             self.imtui.text_mode.write(r1, c, ".");
@@ -35,12 +35,13 @@ pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl,
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
-        .dialog = dialog,
         .id = id,
-        .r1 = r1,
-        .c1 = c1,
-        .r2 = undefined,
-        .c2 = c2,
+        .fields = .{
+            .dialog = dialog,
+            .r1 = r1,
+            .c1 = c1,
+            .c2 = c2,
+        },
     };
     d.describe();
     return .{ .impl = d };
@@ -61,7 +62,7 @@ pub const Schema = struct {
 
 pub fn sync(self: DesignInput, _: Allocator, schema: *Schema) !void {
     schema.id = self.impl.id;
-    schema.r1 = self.impl.r1;
-    schema.c1 = self.impl.c1;
-    schema.c2 = self.impl.c2;
+    schema.r1 = self.impl.fields.r1;
+    schema.c1 = self.impl.fields.c1;
+    schema.c2 = self.impl.fields.c2;
 }
