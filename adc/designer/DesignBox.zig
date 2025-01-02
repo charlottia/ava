@@ -35,10 +35,6 @@ pub const Impl = DesignBehaviours.DesCon(struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, _: *DesignRoot.Impl, _: *DesignDialog.Impl, id: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d}", .{ "designer.DesignBox", id });
-}
-
 pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, r2: usize, c2: usize, text: []const u8) !DesignBox {
     var d = try imtui.allocator.create(Impl);
     d.* = .{

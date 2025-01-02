@@ -329,7 +329,11 @@ pub fn getOrPutControl(self: *Imtui, comptime T: type, args: anytype) !T {
 
     // Not guaranteed to be large enough ... https://media1.tenor.com/m/ZaxUeXcUtDkAAAAd/shrug-smug.gif
     var buf: [100]u8 = undefined;
-    const id = try @call(.auto, T.bufPrintImtuiId, .{&buf} ++ args);
+    const id = if (@hasDecl(T, "bufPrintImtuiId"))
+        try @call(.auto, T.bufPrintImtuiId, .{&buf} ++ args)
+    else
+        // HACK: This is bad and you should feel bad.
+        try @call(.auto, T.Impl.bufPrintImtuiId, .{ &buf, args[2] }); // .{root, dialog, id, ...}
 
     var e = try self.controls.getOrPut(self.allocator, id);
 

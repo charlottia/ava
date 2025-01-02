@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const imtuilib = @import("imtui");
 const SDL = imtuilib.SDL;
@@ -361,6 +362,15 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             .in_front => .design_only,
             .design_only => .behind,
         };
+    if (builtin.mode == .Debug) {
+        var dump_ids = (try view_menu.item("&Dump all IDs")).shortcut(.d, .ctrl).help("Dumps all Imtui IDs to stdout");
+        if (dump_ids.chosen()) {
+            std.log.debug("dumping ids", .{});
+            var it = self.imtui.controls.keyIterator();
+            while (it.next()) |t|
+                std.log.debug("  {s}", .{t.*});
+        }
+    }
     try view_menu.end();
 
     var add_menu = try menubar.menu("&Add", 16);
@@ -462,6 +472,8 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     for (self.controls.items) |c|
         switch (c) {
             inline else => |p, tag| {
+                // XXX: This is awkwardly placed in the schema because brand new
+                // controls will have impl=undefined at this point. Do better.
                 const item_label = try p.schema.bufPrintFocusLabel(&buf);
                 var item = (try controls_menu.item(item_label)).help("Focuses " ++ @tagName(tag));
                 if (focused_dc) |f|

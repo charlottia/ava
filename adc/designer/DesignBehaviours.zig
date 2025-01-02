@@ -110,14 +110,18 @@ pub fn DesCon(comptime Config: type) type {
     // XXX: inability to reify structs with decls makes things a bit more
     // awkward (and is unlikely to ever change); see
     // https://github.com/ziglang/zig/issues/6709.
+    //
+    // I think we can do it by putting all the switchable data on a separate
+    // struct. It'll also matter slightly less if we can generate create(),
+    // since that's the only thing actually instantiating these structs.
 
     const Fields = if (@hasDecl(Config, "Fields")) Config.Fields else void;
+    const Archetypes = archetypesForBehaviours(Config.behaviours);
 
     return struct {
         const Impl = @This();
 
-        pub const Archetypes = archetypesForBehaviours(Config.behaviours);
-        pub const State = StateForBehaviours(Config.behaviours);
+        const State = StateForBehaviours(Config.behaviours);
 
         imtui: *Imtui,
         generation: usize,
@@ -125,7 +129,7 @@ pub fn DesCon(comptime Config: type) type {
         root: *DesignRoot.Impl,
         id: usize,
         // TODO: insert this and `text` dynamically to avoid unwanted defaults
-        dialog: if (Archetypes.dialog) void else *DesignDialog.Impl = if (Archetypes.dialog) {} else undefined,
+        dialog: if (Archetypes.dialog) void else *DesignDialog.Impl = undefined,
 
         // visible state
         r1: usize,
@@ -133,14 +137,17 @@ pub fn DesCon(comptime Config: type) type {
         r2: usize,
         c2: usize,
         // TODO: as above
-        text: if (Archetypes.text_editable) std.ArrayListUnmanaged(u8) else void = if (Archetypes.text_editable) undefined else {},
-
+        text: if (Archetypes.text_editable) std.ArrayListUnmanaged(u8) else void = undefined,
         // TODO: as above
-        fields: Fields = if (@hasDecl(Config, "Fields")) undefined else {},
+        fields: Fields = undefined,
 
         // internal state
         text_start: if (Archetypes.text_editable) usize else void = undefined,
         state: State = .idle,
+
+        pub fn bufPrintImtuiId(buf: []u8, id: usize) ![]const u8 {
+            return try std.fmt.bufPrint(buf, "designer.{s}/{d}", .{ Config.name, id });
+        }
 
         pub fn control(self: *Impl) Imtui.Control {
             return .{
@@ -175,18 +182,20 @@ pub fn DesCon(comptime Config: type) type {
                 if (c.isMouseOver() and !(self.root.focus_idle and self.imtui.focus_stack.getLast().isMouseOver()))
                     self.border(0x20);
                 return;
-            } else switch (self.state) {
+            }
+
+            switch (self.state) {
                 .idle => {
                     if (Archetypes.sizing == .autosized) {
                         // nop
                     } else if (Archetypes.sizing == .width_resizable) {
-                        if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and self.imtui.text_mode.mouse_col == self.dialog.c1 + self.c1) {
-                            self.imtui.text_mode.paintColour(self.dialog.r1 + self.r1 - 1, self.dialog.c1 + self.c1 - 1, self.dialog.r1 + self.r1 + 2, self.dialog.c1 + self.c1 + 2, 0xd0, .outline);
+                        if (self.imtui.text_mode.mouse_row == r1 and self.imtui.text_mode.mouse_col == c1) {
+                            self.imtui.text_mode.paintColour(r1 - 1, c1 - 1, r1 + 2, c1 + 2, 0xd0, .outline);
                             return;
                         }
 
-                        if (self.imtui.text_mode.mouse_row == self.dialog.r1 + self.r1 and self.imtui.text_mode.mouse_col == self.dialog.c1 + self.c2 - 1) {
-                            self.imtui.text_mode.paintColour(self.dialog.r1 + self.r1 - 1, self.dialog.c1 + self.c2 - 2, self.dialog.r1 + self.r1 + 2, self.dialog.c1 + self.c2 + 1, 0xd0, .outline);
+                        if (self.imtui.text_mode.mouse_row == r1 and self.imtui.text_mode.mouse_col == c2 - 1) {
+                            self.imtui.text_mode.paintColour(r1 - 1, c2 - 2, r1 + 2, c2 + 1, 0xd0, .outline);
                             return;
                         }
                     } else if (Archetypes.sizing == .wh_resizable) {
@@ -196,21 +205,18 @@ pub fn DesCon(comptime Config: type) type {
                                 return;
                             };
 
-                        if (Archetypes.text_editable) {
-                            if (self.imtui.text_mode.mouse_row == r1 and
-                                self.imtui.text_mode.mouse_col >= self.text_start - 1 and
-                                self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1)
-                            {
-                                self.imtui.text_mode.paintColour(r1, self.text_start - 1, r1 + 1, self.text_start + self.text.items.len + 1, 0xd0, .fill);
-                                return;
-                            }
+                        if (Archetypes.text_editable and self.imtui.text_mode.mouse_row == r1 and
+                            self.imtui.text_mode.mouse_col >= self.text_start - 1 and
+                            self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1)
+                        {
+                            self.imtui.text_mode.paintColour(r1, self.text_start - 1, r1 + 1, self.text_start + self.text.items.len + 1, 0xd0, .fill);
+                            return;
                         }
                     } else {
                         unreachable;
                     }
 
-                    const border_colour: u8 = if (c.isMouseOver()) 0xd0 else 0x50;
-                    self.border(border_colour);
+                    self.border(if (c.isMouseOver()) 0xd0 else 0x50);
                 },
                 .move => {},
                 inline else => |_, tag| {
@@ -236,9 +242,8 @@ pub fn DesCon(comptime Config: type) type {
             const self: *Impl = @ptrCast(@alignCast(ptr));
             if (@TypeOf(self.text) != void)
                 self.text.deinit(self.imtui.allocator);
-            if (Archetypes.text_editable)
-                if (self.state == .text_edit)
-                    self.state.text_edit.deinit(self.imtui.allocator);
+            if (Archetypes.text_editable and self.state == .text_edit)
+                self.state.text_edit.deinit(self.imtui.allocator);
             self.imtui.allocator.destroy(self);
         }
 
@@ -252,24 +257,26 @@ pub fn DesCon(comptime Config: type) type {
         fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
             const self: *Impl = @ptrCast(@alignCast(ptr));
 
+            const shift = modifiers.get(.left_shift) or modifiers.get(.right_shift);
+
             switch (self.state) {
                 .idle => switch (keycode) {
-                    .up => if ((Archetypes.sizing == .wh_resizable) and (modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
+                    .up => if (Archetypes.sizing == .wh_resizable and shift) {
                         self.r2 -|= 1;
                     } else {
                         _ = self.adjustRow(-1);
                     },
-                    .down => if ((Archetypes.sizing == .wh_resizable) and (modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
+                    .down => if (Archetypes.sizing == .wh_resizable and shift) {
                         self.r2 += 1;
                     } else {
                         _ = self.adjustRow(1);
                     },
-                    .left => if ((Archetypes.sizing != .autosized) and (modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
+                    .left => if (Archetypes.sizing != .autosized and shift) {
                         self.c2 -|= 1;
                     } else {
                         _ = self.adjustCol(-1);
                     },
-                    .right => if ((Archetypes.sizing != .autosized) and (modifiers.get(.left_shift) or modifiers.get(.right_shift))) {
+                    .right => if (Archetypes.sizing != .autosized and shift) {
                         self.c2 += 1;
                     } else {
                         _ = self.adjustCol(1);
@@ -310,9 +317,8 @@ pub fn DesCon(comptime Config: type) type {
 
         fn isMouseOver(ptr: *const anyopaque) bool {
             const self: *const Impl = @ptrCast(@alignCast(ptr));
-            if (Archetypes.text_editable)
-                if (self.state == .text_edit)
-                    return true;
+            if (Archetypes.text_editable and self.state == .text_edit)
+                return true;
 
             const r1 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1;
             const c1 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1;
@@ -366,7 +372,9 @@ pub fn DesCon(comptime Config: type) type {
                     } };
                 try self.imtui.focus(c);
                 return c;
-            } else switch (self.state) {
+            }
+
+            switch (self.state) {
                 .idle => {
                     if (Archetypes.sizing == .autosized) {
                         // nop
@@ -393,7 +401,8 @@ pub fn DesCon(comptime Config: type) type {
                     }
 
                     if (Archetypes.text_editable) {
-                        const edit_eligible = Archetypes.sizing == .autosized or (self.imtui.text_mode.mouse_row == r1 and
+                        const edit_eligible = Archetypes.sizing == .autosized or
+                            (self.imtui.text_mode.mouse_row == r1 and
                             self.imtui.text_mode.mouse_col >= self.text_start - 1 and
                             self.imtui.text_mode.mouse_col < self.text_start + self.text.items.len + 1);
 
@@ -456,16 +465,16 @@ pub fn DesCon(comptime Config: type) type {
                         if (Archetypes.sizing == .width_resizable)
                             switch (d.end) {
                                 0 => self.c1 = self.imtui.text_mode.mouse_col -| self.dialog.c1,
-                                1 => self.c2 = @min(self.imtui.text_mode.mouse_col -| self.dialog.c1 + 1, self.dialog.c2 - self.dialog.c1),
+                                1 => self.c2 = @min(self.imtui.text_mode.mouse_col + 1 -| self.dialog.c1, self.dialog.c2 - self.dialog.c1),
                             }
                         else if (Archetypes.sizing == .wh_resizable) {
                             switch (d.cix) {
                                 0, 1 => self.r1 = self.imtui.text_mode.mouse_row - (if (!Archetypes.dialog) self.dialog.r1 else 0),
-                                2, 3 => self.r2 = self.imtui.text_mode.mouse_row + 1 - (if (!Archetypes.dialog) self.dialog.r1 else 0),
+                                2, 3 => self.r2 = self.imtui.text_mode.mouse_row + 1 -| (if (!Archetypes.dialog) self.dialog.r1 else 0),
                             }
                             switch (d.cix) {
                                 0, 2 => self.c1 = self.imtui.text_mode.mouse_col - (if (!Archetypes.dialog) self.dialog.c1 else 0),
-                                1, 3 => self.c2 = self.imtui.text_mode.mouse_col + 1 - (if (!Archetypes.dialog) self.dialog.c1 else 0),
+                                1, 3 => self.c2 = self.imtui.text_mode.mouse_col + 1 -| (if (!Archetypes.dialog) self.dialog.c1 else 0),
                             }
                         } else unreachable;
                     } else {
@@ -483,9 +492,8 @@ pub fn DesCon(comptime Config: type) type {
             switch (self.state) {
                 .move => |d| {
                     self.state = .idle;
-                    if (comptime Archetypes.text_editable)
-                        if (d.edit_eligible)
-                            try self.startTextEdit();
+                    if (Archetypes.text_editable and d.edit_eligible)
+                        try self.startTextEdit();
                 },
                 inline else => |_, tag| {
                     if (Archetypes.sizing != .autosized and tag == .resize) {
@@ -581,31 +589,15 @@ pub fn DesCon(comptime Config: type) type {
         }
 
         fn border(self: *const Impl, colour: u8) void {
+            const r1 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1;
+            const c1 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1;
+            const r2 = (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r2;
+            const c2 = (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c2;
+
             switch (Archetypes.sizing) {
-                .autosized => self.imtui.text_mode.paintColour(
-                    self.dialog.r1 + self.r1,
-                    self.dialog.c1 + self.c1,
-                    self.dialog.r1 + self.r2,
-                    self.dialog.c1 + self.c2,
-                    colour,
-                    .fill,
-                ),
-                .width_resizable => self.imtui.text_mode.paintColour(
-                    self.dialog.r1 + self.r1,
-                    self.dialog.c1 + self.c1,
-                    self.dialog.r1 + self.r2,
-                    self.dialog.c1 + self.c2,
-                    colour,
-                    .fill,
-                ),
-                .wh_resizable => self.imtui.text_mode.paintColour(
-                    (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r1 - 1,
-                    (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c1 - 1,
-                    (if (!Archetypes.dialog) self.dialog.r1 else 0) + self.r2 + 1,
-                    (if (!Archetypes.dialog) self.dialog.c1 else 0) + self.c2 + 1,
-                    colour,
-                    .outline,
-                ),
+                .autosized => self.imtui.text_mode.paintColour(r1, c1, r2, c2, colour, .fill),
+                .width_resizable => self.imtui.text_mode.paintColour(r1, c1, r2, c2, colour, .fill),
+                .wh_resizable => self.imtui.text_mode.paintColour(r1 - 1, c1 - 1, r2 + 1, c2 + 1, colour, .outline),
             }
         }
     };
