@@ -84,6 +84,7 @@ controls: std.ArrayListUnmanaged(DesignControl),
 inhibit_underlay: bool = false,
 design_root: *DesignRoot.Impl = undefined,
 next_focus: ?usize = null,
+system_cursor: bool = false,
 
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog_open: bool = false,
@@ -362,8 +363,15 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             .in_front => .design_only,
             .design_only => .behind,
         };
+    var system_cursor = (try view_menu.item("System &Cursor")).help("Toggles showing the system cursor");
+    if (self.system_cursor)
+        system_cursor.bullet();
+    if (system_cursor.chosen()) {
+        self.system_cursor = !self.system_cursor;
+        _ = try SDL.showCursor(self.system_cursor);
+    }
     if (builtin.mode == .Debug) {
-        var dump_ids = (try view_menu.item("&Dump all IDs")).shortcut(.d, .ctrl).help("Dumps all Imtui IDs to stdout");
+        var dump_ids = (try view_menu.item("&Dump All IDs")).shortcut(.d, .ctrl).help("Dumps all Imtui IDs to stdout");
         if (dump_ids.chosen()) {
             std.log.debug("dumping ids", .{});
             var it = self.imtui.controls.keyIterator();
