@@ -20,12 +20,11 @@ pub const Impl = DesignBehaviours.Impl(struct {
         self.fields.r2 = self.fields.r1 + 1;
         self.fields.c2 = self.fields.c1 + 4 + len;
 
-        const r1 = self.fields.dialog.fields.r1 + self.fields.r1;
-        const c1 = self.fields.dialog.fields.c1 + self.fields.c1;
-        self.fields.text_start = c1 + 4;
+        const x = self.coords();
+        self.fields.text_start = x.c1 + 4;
 
-        self.imtui.text_mode.write(r1, c1, "( )");
-        self.imtui.text_mode.writeAccelerated(r1, c1 + 4, self.fields.text.items, true);
+        self.imtui.text_mode.write(x.r1, x.c1, "( )");
+        self.imtui.text_mode.writeAccelerated(x.r1, x.c1 + 4, self.fields.text.items, true);
     }
 });
 

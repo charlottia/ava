@@ -18,12 +18,9 @@ pub const Impl = DesignBehaviours.Impl(struct {
     pub fn describe(self: *Impl) void {
         self.fields.r2 = self.fields.r1 + 1;
 
-        const r1 = self.fields.dialog.fields.r1 + self.fields.r1;
-        const c1 = self.fields.dialog.fields.c1 + self.fields.c1;
-        const c2 = self.fields.dialog.fields.c1 + self.fields.c2;
-
-        for (c1..c2) |c|
-            self.imtui.text_mode.write(r1, c, ".");
+        const x = self.coords();
+        for (x.c1..x.c2) |c|
+            self.imtui.text_mode.write(x.r1, c, ".");
     }
 });
 

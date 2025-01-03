@@ -18,16 +18,12 @@ pub const Impl = DesignBehaviours.Impl(struct {
     pub fn describe(self: *Impl) void {
         self.fields.r2 = self.fields.r1 + 1;
 
-        const r1 = self.fields.dialog.fields.r1 + self.fields.r1;
-        const c1 = self.fields.dialog.fields.c1 + self.fields.c1;
-        const r2 = self.fields.dialog.fields.r1 + self.fields.r2;
-        const c2 = self.fields.dialog.fields.c1 + self.fields.c2;
-
-        self.imtui.text_mode.paint(r1, c1, r2, c2, 0x70, .Horizontal);
+        const x = self.coords();
+        self.imtui.text_mode.paint(x.r1, x.c1, x.r2, x.c2, 0x70, .Horizontal);
         if (self.fields.c1 == 0)
-            self.imtui.text_mode.draw(r1, c1, 0x70, .VerticalRight);
+            self.imtui.text_mode.draw(x.r1, x.c1, 0x70, .VerticalRight);
         if (self.fields.c2 == self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1)
-            self.imtui.text_mode.draw(r1, c2 - 1, 0x70, .VerticalLeft);
+            self.imtui.text_mode.draw(x.r1, x.c2 - 1, 0x70, .VerticalLeft);
     }
 });
 

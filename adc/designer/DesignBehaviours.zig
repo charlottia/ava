@@ -6,15 +6,6 @@ const Imtui = imtuilib.Imtui;
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 
-fn corners(r1: usize, c1: usize, r2: usize, c2: usize) [4]struct { r: usize, c: usize } {
-    return .{
-        .{ .r = r1, .c = c1 },
-        .{ .r = r1, .c = c2 - 1 },
-        .{ .r = r2 - 1, .c = c1 },
-        .{ .r = r2 - 1, .c = c2 - 1 },
-    };
-}
-
 fn StateForBehaviours(comptime behaviours: anytype) type {
     const Move = struct { origin_row: usize, origin_col: usize };
     const MoveWithEdit = struct { origin_row: usize, origin_col: usize, edit_eligible: bool };
@@ -169,11 +160,7 @@ pub fn Impl(comptime Config: type) type {
         pub fn describe(self: *Self) void {
             Config.describe(self);
 
-            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
-            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
-            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
-            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
-
+            const x = self.coords();
             const c = self.control();
 
             if (!self.imtui.focused(self.control())) {
@@ -190,27 +177,27 @@ pub fn Impl(comptime Config: type) type {
                     if (Archetypes.sizing == .autosized) {
                         // nop
                     } else if (Archetypes.sizing == .width_resizable) {
-                        if (self.imtui.text_mode.mouse_row == r1 and self.imtui.text_mode.mouse_col == c1) {
-                            self.imtui.text_mode.paintColour(r1 - 1, c1 - 1, r1 + 2, c1 + 2, 0xd0, .outline);
+                        if (self.imtui.text_mode.mouse_row == x.r1 and self.imtui.text_mode.mouse_col == x.c1) {
+                            self.imtui.text_mode.paintColour(x.r1 - 1, x.c1 - 1, x.r1 + 2, x.c1 + 2, 0xd0, .outline);
                             return;
                         }
 
-                        if (self.imtui.text_mode.mouse_row == r1 and self.imtui.text_mode.mouse_col == c2 - 1) {
-                            self.imtui.text_mode.paintColour(r1 - 1, c2 - 2, r1 + 2, c2 + 1, 0xd0, .outline);
+                        if (self.imtui.text_mode.mouse_row == x.r1 and self.imtui.text_mode.mouse_col == x.c2 - 1) {
+                            self.imtui.text_mode.paintColour(x.r1 - 1, x.c2 - 2, x.r1 + 2, x.c2 + 1, 0xd0, .outline);
                             return;
                         }
                     } else if (Archetypes.sizing == .wh_resizable) {
-                        for (corners(r1, c1, r2, c2)) |corner|
+                        for (self.corners()) |corner|
                             if (self.imtui.text_mode.mouse_row == corner.r and self.imtui.text_mode.mouse_col == corner.c) {
                                 self.imtui.text_mode.paintColour(corner.r - 1, corner.c - 1, corner.r + 2, corner.c + 2, 0xd0, .outline);
                                 return;
                             };
 
-                        if (Archetypes.text_editable and self.imtui.text_mode.mouse_row == r1 and
+                        if (Archetypes.text_editable and self.imtui.text_mode.mouse_row == x.r1 and
                             self.imtui.text_mode.mouse_col >= self.fields.text_start - 1 and
                             self.imtui.text_mode.mouse_col < self.fields.text_start + self.fields.text.items.len + 1)
                         {
-                            self.imtui.text_mode.paintColour(r1, self.fields.text_start - 1, r1 + 1, self.fields.text_start + self.fields.text.items.len + 1, 0xd0, .fill);
+                            self.imtui.text_mode.paintColour(x.r1, self.fields.text_start - 1, x.r1 + 1, self.fields.text_start + self.fields.text.items.len + 1, 0xd0, .fill);
                             return;
                         }
                     } else {
@@ -224,7 +211,7 @@ pub fn Impl(comptime Config: type) type {
                     if (Archetypes.sizing != .autosized and tag == .resize)
                         return
                     else if (tag == .text_edit) {
-                        self.imtui.text_mode.cursor_row = r1;
+                        self.imtui.text_mode.cursor_row = x.r1;
                         self.imtui.text_mode.cursor_col = self.fields.text_start + Imtui.Controls.lenWithoutAccelerators(self.fields.text.items);
                         self.imtui.text_mode.cursor_inhibit = false;
                     } else {
@@ -322,18 +309,15 @@ pub fn Impl(comptime Config: type) type {
             if (Archetypes.text_editable and self.state == .text_edit)
                 return true;
 
-            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
-            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
-            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
-            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
+            const x = self.coords();
 
             return switch (Archetypes.sizing) {
-                .autosized, .width_resizable => self.imtui.mouse_row >= r1 and self.imtui.mouse_row < r2 and
-                    self.imtui.mouse_col >= c1 and self.imtui.mouse_col < c2,
-                .wh_resizable => self.imtui.mouse_row >= r1 and self.imtui.mouse_row < r2 and
-                    self.imtui.mouse_col >= c1 and self.imtui.mouse_col < c2 and
-                    (self.imtui.text_mode.mouse_row == r1 or self.imtui.text_mode.mouse_row == r2 - 1 or
-                    self.imtui.text_mode.mouse_col == c1 or self.imtui.text_mode.mouse_col == c2 - 1),
+                .autosized, .width_resizable => self.imtui.mouse_row >= x.r1 and self.imtui.mouse_row < x.r2 and
+                    self.imtui.mouse_col >= x.c1 and self.imtui.mouse_col < x.c2,
+                .wh_resizable => self.imtui.mouse_row >= x.r1 and self.imtui.mouse_row < x.r2 and
+                    self.imtui.mouse_col >= x.c1 and self.imtui.mouse_col < x.c2 and
+                    (self.imtui.text_mode.mouse_row == x.r1 or self.imtui.text_mode.mouse_row == x.r2 - 1 or
+                    self.imtui.text_mode.mouse_col == x.c1 or self.imtui.text_mode.mouse_col == x.c2 - 1),
             };
         }
 
@@ -341,11 +325,6 @@ pub fn Impl(comptime Config: type) type {
             const self: *Self = @ptrCast(@alignCast(ptr));
 
             const c = self.control();
-
-            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
-            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
-            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
-            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
 
             if (cm) return null;
 
@@ -376,22 +355,24 @@ pub fn Impl(comptime Config: type) type {
                 return c;
             }
 
+            const x = self.coords();
+
             switch (self.state) {
                 .idle => {
                     if (Archetypes.sizing == .autosized) {
                         // nop
                     } else if (Archetypes.sizing == .width_resizable) {
-                        if (self.imtui.text_mode.mouse_row == r1 and self.imtui.text_mode.mouse_col == c1) {
+                        if (self.imtui.text_mode.mouse_row == x.r1 and self.imtui.text_mode.mouse_col == x.c1) {
                             self.state = .{ .resize = .{ .end = 0 } };
                             return c;
                         }
 
-                        if (self.imtui.text_mode.mouse_row == r1 and self.imtui.text_mode.mouse_col == c2 - 1) {
+                        if (self.imtui.text_mode.mouse_row == x.r1 and self.imtui.text_mode.mouse_col == x.c2 - 1) {
                             self.state = .{ .resize = .{ .end = 1 } };
                             return c;
                         }
                     } else if (Archetypes.sizing == .wh_resizable) {
-                        for (corners(r1, c1, r2, c2), 0..) |corner, cix|
+                        for (self.corners(), 0..) |corner, cix|
                             if (self.imtui.text_mode.mouse_row == corner.r and
                                 self.imtui.text_mode.mouse_col == corner.c)
                             {
@@ -404,7 +385,7 @@ pub fn Impl(comptime Config: type) type {
 
                     if (Archetypes.text_editable) {
                         const edit_eligible = Archetypes.sizing == .autosized or
-                            (self.imtui.text_mode.mouse_row == r1 and
+                            (self.imtui.text_mode.mouse_row == x.r1 and
                             self.imtui.text_mode.mouse_col >= self.fields.text_start - 1 and
                             self.imtui.text_mode.mouse_col < self.fields.text_start + self.fields.text.items.len + 1);
 
@@ -427,7 +408,7 @@ pub fn Impl(comptime Config: type) type {
                     if (Archetypes.sizing != .autosized and tag == .resize)
                         return null
                     else if (tag == .text_edit) {
-                        if (!(self.imtui.text_mode.mouse_row == r1 and
+                        if (!(self.imtui.text_mode.mouse_row == x.r1 and
                             self.imtui.text_mode.mouse_col >= self.fields.text_start - 1 and
                             self.imtui.text_mode.mouse_col < self.fields.text_start + Imtui.Controls.lenWithoutAccelerators(self.fields.text.items) + 1))
                         {
@@ -590,16 +571,32 @@ pub fn Impl(comptime Config: type) type {
             try self.state.text_edit.appendSlice(self.imtui.allocator, self.fields.text.items);
         }
 
+        pub fn coords(self: *const Self) struct { r1: usize, c1: usize, r2: usize, c2: usize } {
+            return .{
+                .r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1,
+                .c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1,
+                .r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2,
+                .c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2,
+            };
+        }
+
+        fn corners(self: *const Self) [4]struct { r: usize, c: usize } {
+            const x = self.coords();
+            return .{
+                .{ .r = x.r1, .c = x.c1 },
+                .{ .r = x.r1, .c = x.c2 - 1 },
+                .{ .r = x.r2 - 1, .c = x.c1 },
+                .{ .r = x.r2 - 1, .c = x.c2 - 1 },
+            };
+        }
+
         fn border(self: *const Self, colour: u8) void {
-            const r1 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r1;
-            const c1 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c1;
-            const r2 = (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0) + self.fields.r2;
-            const c2 = (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0) + self.fields.c2;
+            const x = self.coords();
 
             switch (Archetypes.sizing) {
-                .autosized => self.imtui.text_mode.paintColour(r1, c1, r2, c2, colour, .fill),
-                .width_resizable => self.imtui.text_mode.paintColour(r1, c1, r2, c2, colour, .fill),
-                .wh_resizable => self.imtui.text_mode.paintColour(r1 - 1, c1 - 1, r2 + 1, c2 + 1, colour, .outline),
+                .autosized => self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .fill),
+                .width_resizable => self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .fill),
+                .wh_resizable => self.imtui.text_mode.paintColour(x.r1 - 1, x.c1 - 1, x.r2 + 1, x.c2 + 1, colour, .outline),
             }
         }
     };
