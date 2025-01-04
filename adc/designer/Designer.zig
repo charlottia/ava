@@ -6,6 +6,7 @@ const SDL = imtuilib.SDL;
 const ini = @import("ini");
 
 const Imtui = imtuilib.Imtui;
+const Preferences = ini.Preferences;
 
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
@@ -17,6 +18,10 @@ const DesignBox = @import("./DesignBox.zig");
 const DesignHrule = @import("./DesignHrule.zig");
 
 const Designer = @This();
+
+pub const Prefs = Preferences("net.lottia.textmode-designer", struct {
+    system_cursor: bool = false,
+});
 
 const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
@@ -76,6 +81,8 @@ const SaveFile = struct {
 const SerDes = ini.SerDes(SaveFile, struct {});
 
 imtui: *Imtui,
+prefs: Prefs,
+
 save_filename: ?[]const u8,
 underlay_filename: []const u8,
 underlay_texture: SDL.Texture,
@@ -84,13 +91,12 @@ controls: std.ArrayListUnmanaged(DesignControl),
 inhibit_underlay: bool = false,
 design_root: *DesignRoot.Impl = undefined,
 next_focus: ?usize = null,
-system_cursor: bool = false,
 
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog_open: bool = false,
 save_confirm_open: bool = false,
 
-pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: []const u8) !Designer {
+pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: []const u8) !Designer {
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
 
     var controls = std.ArrayListUnmanaged(DesignControl){};
@@ -108,6 +114,7 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: 
 
     return .{
         .imtui = imtui,
+        .prefs = prefs,
         .save_filename = null,
         .underlay_filename = try imtui.allocator.dupe(u8, underlay),
         .underlay_texture = texture,
@@ -115,7 +122,7 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, renderer: SDL.Renderer, underlay: 
     };
 }
 
-pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !Designer {
+pub fn initFromIni(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, inifile: []const u8) !Designer {
     const data = try std.fs.cwd().readFileAllocOptions(imtui.allocator, inifile, 10485760, null, @alignOf(u8), 0);
     defer imtui.allocator.free(data);
 
@@ -151,6 +158,7 @@ pub fn initFromIni(imtui: *Imtui, renderer: SDL.Renderer, inifile: []const u8) !
 
     return .{
         .imtui = imtui,
+        .prefs = prefs,
         .save_filename = try imtui.allocator.dupe(u8, inifile),
         .underlay_filename = save_file.underlay,
         .underlay_texture = texture,
@@ -364,11 +372,12 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             .design_only => .behind,
         };
     var system_cursor = (try view_menu.item("System &Cursor")).help("Toggles showing the system cursor");
-    if (self.system_cursor)
+    if (self.prefs.settings.system_cursor)
         system_cursor.bullet();
     if (system_cursor.chosen()) {
-        self.system_cursor = !self.system_cursor;
-        _ = try SDL.showCursor(self.system_cursor);
+        self.prefs.settings.system_cursor = !self.prefs.settings.system_cursor;
+        _ = try SDL.showCursor(self.prefs.settings.system_cursor);
+        try self.prefs.save();
     }
     if (builtin.mode == .Debug) {
         var dump_ids = (try view_menu.item("&Dump All IDs")).shortcut(.d, .ctrl).help("Dumps all Imtui IDs to stdout");

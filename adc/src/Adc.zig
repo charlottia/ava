@@ -1,11 +1,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const imtuilib = @import("imtui");
+const ini = @import("ini");
 
 const Imtui = imtuilib.Imtui;
-const Preferences = @import("./Preferences.zig").Preferences;
+const Preferences = ini.Preferences;
 
-pub const Prefs = Preferences(struct {
+const Adc = @This();
+
+pub const Prefs = Preferences("net.lottia.ava", struct {
     full_menus: bool = false,
     colours_normal: u8 = 0x17,
     colours_current: u8 = 0x1f,
@@ -13,8 +16,6 @@ pub const Prefs = Preferences(struct {
     scroll_bars: bool = true,
     tab_stops: u8 = 8,
 });
-
-const Adc = @This();
 
 imtui: *Imtui,
 prefs: Prefs,

@@ -20,6 +20,10 @@ pub fn main() !void {
     var args = try Args.parse(allocator);
     defer args.deinit();
 
+    var prefs = try Designer.Prefs.init(allocator);
+    try prefs.save();
+    defer prefs.deinit();
+
     const app = try App.init(allocator, .{
         .title = "TextMode Designer",
         .scale = args.scale,
@@ -31,10 +35,12 @@ pub fn main() !void {
     defer imtui.deinit();
 
     var designer: Designer = switch (args.mode) {
-        .new => |f| try Designer.initDefaultWithUnderlay(imtui, app.renderer, f),
-        .load => |f| try Designer.initFromIni(imtui, app.renderer, f),
+        .new => |f| try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, f),
+        .load => |f| try Designer.initFromIni(imtui, prefs, app.renderer, f),
     };
     defer designer.deinit();
+
+    _ = try SDL.showCursor(prefs.settings.system_cursor);
 
     while (imtui.running) {
         while (SDL.pollEvent()) |ev|
@@ -43,12 +49,6 @@ pub fn main() !void {
         try imtui.newFrame();
 
         try designer.render();
-
-        // TODO: work out a way to transparent only certain things (so we can
-        //       see through the dialog we've made)
-        //  - "in front" gives a poor man's version of this
-        // TODO: make DesignButton belong to DesignDialog etc. See if we should
-        //       be reusing real Dialog architecture.
 
         try app.renderer.setColorRGBA(0, 0, 0, 0);
         try app.renderer.clear();

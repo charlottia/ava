@@ -15,6 +15,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const known_folders_mod = b.dependency("known-folders", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("known-folders");
+    ini.root_module.addImport("known-folders", known_folders_mod);
 
     const ini_unit_tests = b.addTest(.{
         .name = "ini",
@@ -62,12 +67,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }).module("serial");
     adc.root_module.addImport("serial", serial_mod);
-
-    const known_folders_mod = b.dependency("known-folders", .{
-        .target = target,
-        .optimize = optimize,
-    }).module("known-folders");
-    adc.root_module.addImport("known-folders", known_folders_mod);
 
     b.installArtifact(adc);
 
