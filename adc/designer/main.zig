@@ -53,8 +53,15 @@ pub fn main() !void {
         try app.renderer.setColorRGBA(0, 0, 0, 0);
         try app.renderer.clear();
 
-        if (designer.display == .behind and !designer.inhibit_underlay)
-            try app.renderer.copy(designer.underlay_texture, null, null);
+        if (designer.display == .behind and !designer.inhibit_underlay) {
+            const r = SDL.Rectangle{
+                .x = 0,
+                .y = 0,
+                .width = 720,
+                .height = 16 * 25,
+            };
+            try app.renderer.copy(designer.underlay_texture, r, r);
+        }
 
         try imtui.render();
 

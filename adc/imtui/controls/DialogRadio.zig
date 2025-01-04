@@ -10,7 +10,7 @@ pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
 
-    parent: *Dialog.Impl,
+    dialog: *Dialog.Impl,
 
     // id
     ix: usize,
@@ -49,25 +49,25 @@ pub const Impl = struct {
     pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
         self.group_id = group_id;
         self.item_id = item_id;
-        self.r = self.parent.r1 + r;
-        self.c = self.parent.c1 + c;
+        self.r = self.dialog.r1 + r;
+        self.c = self.dialog.c1 + c;
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
 
-        self.parent.imtui.text_mode.write(self.r, self.c, "( ) ");
+        self.dialog.imtui.text_mode.write(self.r, self.c, "( ) ");
         if (self.selected)
-            self.parent.imtui.text_mode.draw(self.r, self.c + 1, 0x70, .Bullet);
-        self.parent.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.parent.show_acc);
+            self.dialog.imtui.text_mode.draw(self.r, self.c + 1, 0x70, .Bullet);
+        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
 
         if (self.imtui.focused(self.control())) {
-            self.parent.imtui.text_mode.cursor_row = self.r;
-            self.parent.imtui.text_mode.cursor_col = self.c + 1;
+            self.dialog.imtui.text_mode.cursor_row = self.r;
+            self.dialog.imtui.text_mode.cursor_col = self.c + 1;
         }
     }
 
     fn parent(ptr: *const anyopaque) ?Imtui.Control {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.parent.control();
+        return self.dialog.control();
     }
 
     pub fn deinit(ptr: *anyopaque) void {
@@ -88,7 +88,7 @@ pub const Impl = struct {
 
     fn accelerate(ptr: *anyopaque) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
-        for (self.parent.controls.items) |c|
+        for (self.dialog.controls.items) |c|
             if (c.is(Impl)) |b| if (b.group_id == self.group_id) {
                 b.selected = false;
             };
@@ -99,7 +99,7 @@ pub const Impl = struct {
     fn findKin(self: *Impl, id: usize) *Impl {
         var zero: ?*Impl = null;
         var high: ?*Impl = null;
-        for (self.parent.controls.items) |c|
+        for (self.dialog.controls.items) |c|
             if (c.is(Impl)) |b| if (b.group_id == self.group_id) {
                 if (b.item_id == 0)
                     zero = b
@@ -127,7 +127,7 @@ pub const Impl = struct {
                 self.selected = false;
                 try self.findKin(self.item_id + 1).select();
             },
-            else => try self.parent.commonKeyPress(self.ix, keycode, modifiers),
+            else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
         }
     }
 
@@ -135,14 +135,14 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.parent.imtui.mouse_row == self.r and
-            self.parent.imtui.mouse_col >= self.c and self.parent.imtui.mouse_col < self.c + self.label.len + 3;
+        return self.dialog.imtui.mouse_row == self.r and
+            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 3;
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         if (cm) return null;
-        if (!isMouseOver(ptr)) return self.parent.commonMouseDown(b, clicks, cm);
+        if (!isMouseOver(ptr)) return self.dialog.commonMouseDown(b, clicks, cm);
         if (b != .left) return null;
 
         try self.imtui.focus(self.control());
@@ -176,17 +176,17 @@ pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: 
     return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogRadio", dialog.title, ix });
 }
 
-pub fn create(imtui: *Imtui, parent: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
+pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
     var b = try imtui.allocator.create(Impl);
     b.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
-        .parent = parent,
+        .dialog = dialog,
         .ix = ix,
         .selected = item_id == 0,
     };
-    b.describe(parent, ix, group_id, item_id, r, c, label);
-    try parent.controls.append(imtui.allocator, b.control());
+    b.describe(dialog, ix, group_id, item_id, r, c, label);
+    try dialog.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }
 

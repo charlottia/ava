@@ -488,15 +488,13 @@ fn renderDisplayDialog(self: *Adc) !void {
     self.imtui.text_mode.paint(dialog.impl.r1 + 8, dialog.impl.c1 + 11, dialog.impl.r1 + 9, dialog.impl.c1 + 30, self.display_dialog_colours_breakpoint, .Blank);
     self.imtui.text_mode.write(dialog.impl.r1 + 8, dialog.impl.c1 + 12, "Breakpoint Lines");
 
-    self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 2, dialog.impl.c1 + 32, "&Foreground", dialog.impl.show_acc);
+    dialog.label(2, 32, "&Foreground");
     var fg = try dialog.select(3, 31, 13, 42, 0x70, self.display_dialog_colours_normal & 0x0f);
-    fg.accel('f');
     fg.items(COLOUR_NAMES);
     fg.end();
 
-    self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 2, dialog.impl.c1 + 45, "&Background", dialog.impl.show_acc);
+    dialog.label(2, 45, "&Background");
     var bg = try dialog.select(3, 44, 13, 55, 0x70, (self.display_dialog_colours_normal & 0xf0) >> 4);
-    bg.accel('b');
     bg.items(COLOUR_NAMES);
     bg.end();
 
@@ -530,9 +528,8 @@ fn renderDisplayDialog(self: *Adc) !void {
     if (scroll_bars.changed()) |v|
         self.display_dialog_scroll_bars = v;
 
-    self.imtui.text_mode.writeAccelerated(dialog.impl.r1 + 17, dialog.impl.c1 + 39, "&Tab Stops:", dialog.impl.show_acc);
+    dialog.label(17, 39, "&Tab Stops:");
     var tab_stops = try dialog.input(17, 50, 54);
-    tab_stops.accel('t');
     if (tab_stops.initial()) |buf|
         try buf.writer(self.imtui.allocator).print("{d}", .{self.display_dialog_tab_stops});
     if (tab_stops.changed()) |v| {
@@ -542,9 +539,7 @@ fn renderDisplayDialog(self: *Adc) !void {
         } else |_| {}
     }
 
-    self.imtui.text_mode.draw(dialog.impl.r1 + 19, dialog.impl.c1, 0x70, .VerticalRight);
-    self.imtui.text_mode.paint(dialog.impl.r1 + 19, dialog.impl.c1 + 1, dialog.impl.r1 + 19 + 1, dialog.impl.c1 + 60 - 1, 0x70, .Horizontal);
-    self.imtui.text_mode.draw(dialog.impl.r1 + 19, dialog.impl.c1 + 60 - 1, 0x70, .VerticalLeft);
+    dialog.hrule(19, 0, 60, 0x70);
 
     var ok = try dialog.button(20, 10, "OK");
     ok.default();

@@ -16,7 +16,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
     pub const behaviours = .{.text_editable};
 
     pub const Fields = struct {
-        primary: bool,
+        default: bool,
         cancel: bool,
     };
 
@@ -28,7 +28,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
         const x = self.coords();
         self.fields.text_start = x.c1 + 2;
 
-        if (self.fields.primary) {
+        if (self.fields.default) {
             self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c1 + 1, 0x7f, .fill);
             self.imtui.text_mode.paintColour(x.r1, x.c2 - 1, x.r2, x.c2, 0x7f, .fill);
         }
@@ -39,11 +39,11 @@ pub const Impl = DesignBehaviours.Impl(struct {
     }
 
     pub fn addToMenu(self: *Impl, menu: Imtui.Controls.Menu) !void {
-        var primary = (try menu.item("&Primary")).help("Toggles the button's primary status");
-        if (self.fields.primary)
-            primary.bullet();
-        if (primary.chosen())
-            self.fields.primary = !self.fields.primary;
+        var default = (try menu.item("&Default")).help("Toggles the button's default status");
+        if (self.fields.default)
+            default.bullet();
+        if (default.chosen())
+            self.fields.default = !self.fields.default;
 
         var cancel = (try menu.item("&Cancel")).help("Toggles the button's cancel status");
         if (self.fields.cancel)
@@ -55,7 +55,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
 
 impl: *Impl,
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, text: []const u8, primary: bool, cancel: bool) !DesignButton {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, text: []const u8, default: bool, cancel: bool) !DesignButton {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
@@ -67,7 +67,7 @@ pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl,
             .r1 = r1,
             .c1 = c1,
             .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, text)),
-            .primary = primary,
+            .default = default,
             .cancel = cancel,
         },
     };
@@ -80,7 +80,7 @@ pub const Schema = struct {
     r1: usize,
     c1: usize,
     text: []const u8,
-    primary: bool,
+    default: bool,
     cancel: bool,
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
@@ -100,6 +100,6 @@ pub fn sync(self: DesignButton, allocator: Allocator, schema: *Schema) !void {
         allocator.free(schema.text);
         schema.text = try allocator.dupe(u8, self.impl.fields.text.items);
     }
-    schema.primary = self.impl.fields.primary;
+    schema.default = self.impl.fields.default;
     schema.cancel = self.impl.fields.cancel;
 }

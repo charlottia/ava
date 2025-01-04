@@ -27,6 +27,7 @@ pub const Impl = struct {
     show_acc: bool = false,
     default_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
     cancel_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
+    pending_accel: ?u8 = null,
 
     pub fn control(self: *Impl) Imtui.Control {
         return .{
@@ -124,6 +125,11 @@ pub const Impl = struct {
                     return;
                 };
     }
+
+    pub fn pendingAccel(self: *Impl) ?u8 {
+        defer self.pending_accel = null;
+        return self.pending_accel;
+    }
 };
 
 impl: *Impl,
@@ -165,22 +171,38 @@ pub fn groupbox(self: Dialog, title: []const u8, r1: usize, c1: usize, r2: usize
     }
 }
 
-pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
-    return self.impl.imtui.dialogradio(self.impl, group_id, item_id, r, c, label);
+pub fn hrule(self: Dialog, r1: usize, c1: usize, c2: usize, colour: u8) void {
+    self.impl.imtui.text_mode.paint(self.impl.r1 + r1, self.impl.c1 + c1, self.impl.r1 + r1 + 1, self.impl.c1 + c2, colour, .Horizontal);
+    if (c1 == 0)
+        self.impl.imtui.text_mode.draw(self.impl.r1 + r1, self.impl.c1 + c1, colour, .VerticalRight);
+    if (c2 == self.impl.c2 - self.impl.c1)
+        self.impl.imtui.text_mode.draw(self.impl.r1 + r1, self.impl.c1 + c2 - 1, colour, .VerticalLeft);
+}
+
+pub fn label(self: Dialog, r: usize, c: usize, l: []const u8) void {
+    self.impl.imtui.text_mode.writeAccelerated(self.impl.r1 + r, self.impl.c1 + c, l, self.impl.show_acc);
+    if (Imtui.Controls.acceleratorFor(l)) |accel| {
+        std.debug.assert(self.impl.pending_accel == null);
+        self.impl.pending_accel = accel;
+    }
+}
+
+pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, l: []const u8) !Imtui.Controls.DialogRadio {
+    return self.impl.imtui.dialogradio(self.impl, group_id, item_id, r, c, l);
 }
 
 pub fn select(self: Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
     return self.impl.imtui.dialogselect(self.impl, r1, c1, r2, c2, colour, selected);
 }
 
-pub fn checkbox(self: Dialog, r: usize, c: usize, label: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
-    return self.impl.imtui.dialogcheckbox(self.impl, r, c, label, selected);
+pub fn checkbox(self: Dialog, r: usize, c: usize, l: []const u8, selected: bool) !Imtui.Controls.DialogCheckbox {
+    return self.impl.imtui.dialogcheckbox(self.impl, r, c, l, selected);
 }
 
 pub fn input(self: Dialog, r: usize, c1: usize, c2: usize) !Imtui.Controls.DialogInput {
     return self.impl.imtui.dialoginput(self.impl, r, c1, c2);
 }
 
-pub fn button(self: Dialog, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogButton {
-    return self.impl.imtui.dialogbutton(self.impl, r, c, label);
+pub fn button(self: Dialog, r: usize, c: usize, l: []const u8) !Imtui.Controls.DialogButton {
+    return self.impl.imtui.dialogbutton(self.impl, r, c, l);
 }
