@@ -13,6 +13,7 @@ const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
 const DesignInput = @import("./DesignInput.zig");
 const DesignRadio = @import("./DesignRadio.zig");
+const DesignCheckbox = @import("./DesignCheckbox.zig");
 const DesignLabel = @import("./DesignLabel.zig");
 const DesignBox = @import("./DesignBox.zig");
 const DesignHrule = @import("./DesignHrule.zig");
@@ -28,6 +29,7 @@ const DesignControl = union(enum) {
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
     input: struct { schema: DesignInput.Schema, impl: *DesignInput.Impl },
     radio: struct { schema: DesignRadio.Schema, impl: *DesignRadio.Impl },
+    checkbox: struct { schema: DesignCheckbox.Schema, impl: *DesignCheckbox.Impl },
     label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
     box: struct { schema: DesignBox.Schema, impl: *DesignBox.Impl },
     hrule: struct { schema: DesignHrule.Schema, impl: *DesignHrule.Impl },
@@ -221,16 +223,12 @@ pub fn render(self: *Designer) !void {
 
 fn renderItems(self: *Designer) !?DesignControl {
     // What a mess!
+    var focused: ?DesignControl = null;
 
     self.design_root = (try self.imtui.getOrPutControl(DesignRoot, .{self})).impl;
-    if (self.imtui.focus_stack.items.len == 0)
-        try self.imtui.focus_stack.append(self.imtui.allocator, self.design_root.control())
-    else
-        // Replaced when switching back from simulation.
-        self.imtui.focus_stack.items[0] = self.design_root.control();
-
-    var focused: ?DesignControl = null;
-    for (self.controls.items) |i|
+    if (self.imtui.focus_stack.items.len == 0) {
+        try self.imtui.focus_stack.append(self.imtui.allocator, self.design_root.control());
+    } else for (self.controls.items) |i|
         if (self.imtui.focusedAnywhere(i.control())) {
             i.informRoot();
             focused = i;
@@ -250,6 +248,7 @@ fn renderItems(self: *Designer) !?DesignControl {
     try dd.sync(self.imtui.allocator, &dp.schema);
 
     for (self.controls.items[1..], 1..) |*i, ix| {
+        // TODO: inline else this somehow :)
         switch (i.*) {
             .dialog => unreachable,
             .button => |*p| {
@@ -291,6 +290,23 @@ fn renderItems(self: *Designer) !?DesignControl {
             .radio => |*p| {
                 const b = try self.imtui.getOrPutControl(
                     DesignRadio,
+                    .{
+                        self.design_root,
+                        dd.impl,
+                        p.schema.id,
+                        p.schema.r1,
+                        p.schema.c1,
+                        p.schema.text,
+                    },
+                );
+                p.impl = b.impl;
+                try b.sync(self.imtui.allocator, &p.schema);
+                if (self.next_focus != null and self.next_focus == ix)
+                    try self.imtui.focus(b.impl.control());
+            },
+            .checkbox => |*p| {
+                const b = try self.imtui.getOrPutControl(
+                    DesignCheckbox,
                     .{
                         self.design_root,
                         dd.impl,
@@ -442,6 +458,20 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var radio = (try add_menu.item("&Radio")).help("Adds new radio to dialog");
     if (radio.chosen()) {
         try self.controls.append(self.imtui.allocator, .{ .radio = .{
+            .schema = .{
+                .id = self.nextDesignControlId(),
+                .r1 = 5,
+                .c1 = 5,
+                .text = try self.imtui.allocator.dupe(u8, "Dogll"),
+            },
+            .impl = undefined,
+        } });
+        self.next_focus = self.controls.items.len - 1;
+    }
+
+    var checkbox = (try add_menu.item("&Checkbox")).help("Adds new checkbox to dialog");
+    if (checkbox.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .checkbox = .{
             .schema = .{
                 .id = self.nextDesignControlId(),
                 .r1 = 5,
@@ -685,6 +715,7 @@ fn renderSimulation(self: *Designer) !void {
                 _ = try dialog.radio(0, rid, p.schema.r1, p.schema.c1, p.schema.text);
                 rid += 1;
             },
+            .checkbox => |p| _ = try dialog.checkbox(p.schema.r1, p.schema.c1, p.schema.text, false),
             .label => |p| dialog.label(p.schema.r1, p.schema.c1, p.schema.text),
             .box => |p| dialog.groupbox(p.schema.text, p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, 0x70),
             .hrule => |p| dialog.hrule(p.schema.r1, p.schema.c1, p.schema.c2, 0x70),
@@ -702,15 +733,19 @@ fn renderSimulation(self: *Designer) !void {
 
         var ok = try confirm_dialog.button(5, 17, "OK");
         ok.default();
+
+        try confirm_dialog.end();
+
+        // Ensure we clear the focus stack after drawing the dialog, thus
+        // causing regeneration of all impls. Bit of a HACK but it works.
         if (ok.chosen()) {
             self.imtui.allocator.free(msg);
             self.simulating_dialog = null;
             self.simulating = false;
             self.imtui.unfocus(confirm_dialog.impl.control());
             self.imtui.unfocus(dialog.impl.control());
+            self.imtui.focus_stack.clearRetainingCapacity();
         }
-
-        try confirm_dialog.end();
     }
 }
 

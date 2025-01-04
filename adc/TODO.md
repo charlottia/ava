@@ -1,3 +1,11 @@
+2025-01-04: designer is pretty nyonk
+
+* [x] checkbox
+* [ ] reorder elements
+* [ ] radio button ordering -- we can infer, but are there ever multiple groups?
+
+---
+
 2024-12-16: refactor done, now what
 
 * [x] fix 'blur'
