@@ -1,8 +1,15 @@
 2025-01-04: designer is pretty nyonk
 
+Last steps:
+
 * [x] checkbox
-* [ ] reorder elements
+* [ ] ability to reorder elements
 * [ ] radio button ordering -- we can infer, but are there ever multiple groups?
+  * I see no evidence of this.
+* [ ] DesignSelect, file/dir selection
+* [ ] "files not saved" dialog has oddly-sized buttons
+* [ ] new/open/save in designer itself
+* [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
 
 ---
 
