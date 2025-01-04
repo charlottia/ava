@@ -181,10 +181,8 @@ pub fn hrule(self: Dialog, r1: usize, c1: usize, c2: usize, colour: u8) void {
 
 pub fn label(self: Dialog, r: usize, c: usize, l: []const u8) void {
     self.impl.imtui.text_mode.writeAccelerated(self.impl.r1 + r, self.impl.c1 + c, l, self.impl.show_acc);
-    if (Imtui.Controls.acceleratorFor(l)) |accel| {
-        std.debug.assert(self.impl.pending_accel == null);
+    if (Imtui.Controls.acceleratorFor(l)) |accel|
         self.impl.pending_accel = accel;
-    }
 }
 
 pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, l: []const u8) !Imtui.Controls.DialogRadio {
