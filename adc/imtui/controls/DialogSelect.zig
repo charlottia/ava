@@ -208,7 +208,7 @@ pub const Impl = struct {
 impl: *Impl,
 
 pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: usize, _: usize, _: u8, _: usize) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogSelect", dialog.title, ix });
+    return try std.fmt.bufPrint(buf, "{s}/{d}/{d}", .{ "core.DialogSelect", dialog.id, ix });
 }
 
 pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !DialogSelect {

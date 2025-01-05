@@ -882,7 +882,7 @@ fn renderSimulation(self: *Designer) !void {
     try dialog.end();
 
     if (self.simulating_dialog) |msg| {
-        var confirm_dialog = try self.imtui.dialog("", 7, 40, .centred);
+        var confirm_dialog = try self.imtui.dialog("Simulation end", 7, 40, .centred);
 
         self.imtui.text_mode.write(confirm_dialog.impl.r1 + 2, confirm_dialog.impl.c1 + (confirm_dialog.impl.c2 - confirm_dialog.impl.c1 - msg.len) / 2, msg);
 

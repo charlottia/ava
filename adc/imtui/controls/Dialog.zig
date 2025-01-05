@@ -14,6 +14,7 @@ pub const Position = union(enum) {
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
+    id: usize,
 
     title: []const u8,
     r1: usize = undefined,
@@ -135,14 +136,22 @@ pub const Impl = struct {
 impl: *Impl,
 
 pub fn bufPrintImtuiId(buf: []u8, title: []const u8, _: usize, _: usize, _: Position) ![]const u8 {
+    // XXX: having two dialogs open at the same time with the same name will HURT.
+    // We've partially mitigated this by relying on dialog.id in children
+    // controls, but we don't have access to that ID when creating one. Nota
+    // bene.
     return try std.fmt.bufPrint(buf, "{s}/{s}", .{ "core.Dialog", title });
 }
 
+var dialog_id: usize = 0;
+
 pub fn create(imtui: *Imtui, title: []const u8, height: usize, width: usize, position: Position) !Dialog {
     var d = try imtui.allocator.create(Impl);
+    defer dialog_id += 1;
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
+        .id = dialog_id,
         .title = title,
     };
     d.describe(title, height, width, position);
