@@ -14,6 +14,7 @@ const DesignButton = @import("./DesignButton.zig");
 const DesignInput = @import("./DesignInput.zig");
 const DesignRadio = @import("./DesignRadio.zig");
 const DesignCheckbox = @import("./DesignCheckbox.zig");
+const DesignSelect = @import("./DesignSelect.zig");
 const DesignLabel = @import("./DesignLabel.zig");
 const DesignBox = @import("./DesignBox.zig");
 const DesignHrule = @import("./DesignHrule.zig");
@@ -30,6 +31,7 @@ const DesignControl = union(enum) {
     input: struct { schema: DesignInput.Schema, impl: *DesignInput.Impl },
     radio: struct { schema: DesignRadio.Schema, impl: *DesignRadio.Impl },
     checkbox: struct { schema: DesignCheckbox.Schema, impl: *DesignCheckbox.Impl },
+    select: struct { schema: DesignSelect.Schema, impl: *DesignSelect.Impl },
     label: struct { schema: DesignLabel.Schema, impl: *DesignLabel.Impl },
     box: struct { schema: DesignBox.Schema, impl: *DesignBox.Impl },
     hrule: struct { schema: DesignHrule.Schema, impl: *DesignHrule.Impl },
@@ -321,6 +323,24 @@ fn renderItems(self: *Designer) !?DesignControl {
                 if (self.next_focus != null and self.next_focus == ix)
                     try self.imtui.focus(b.impl.control());
             },
+            .select => |*p| {
+                const b = try self.imtui.getOrPutControl(
+                    DesignSelect,
+                    .{
+                        self.design_root,
+                        dd.impl,
+                        p.schema.id,
+                        p.schema.r1,
+                        p.schema.c1,
+                        p.schema.r2,
+                        p.schema.c2,
+                    },
+                );
+                p.impl = b.impl;
+                try b.sync(self.imtui.allocator, &p.schema);
+                if (self.next_focus != null and self.next_focus == ix)
+                    try self.imtui.focus(b.impl.control());
+            },
             .label => |*p| {
                 const l = try self.imtui.getOrPutControl(
                     DesignLabel,
@@ -477,6 +497,21 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .r1 = 5,
                 .c1 = 5,
                 .text = try self.imtui.allocator.dupe(u8, "Dogll"),
+            },
+            .impl = undefined,
+        } });
+        self.next_focus = self.controls.items.len - 1;
+    }
+
+    var select = (try add_menu.item("&Select")).help("Adds new select to dialog");
+    if (select.chosen()) {
+        try self.controls.append(self.imtui.allocator, .{ .select = .{
+            .schema = .{
+                .id = self.nextDesignControlId(),
+                .r1 = 3,
+                .c1 = 3,
+                .r2 = 7,
+                .c2 = 7,
             },
             .impl = undefined,
         } });
@@ -716,6 +751,11 @@ fn renderSimulation(self: *Designer) !void {
                 rid += 1;
             },
             .checkbox => |p| _ = try dialog.checkbox(p.schema.r1, p.schema.c1, p.schema.text, false),
+            .select => |p| {
+                var s = try dialog.select(p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, 0x70, 1);
+                s.items(&.{ "armadillo", "borboleta", "cachorro" });
+                s.end();
+            },
             .label => |p| dialog.label(p.schema.r1, p.schema.c1, p.schema.text),
             .box => |p| dialog.groupbox(p.schema.text, p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, 0x70),
             .hrule => |p| dialog.hrule(p.schema.r1, p.schema.c1, p.schema.c2, 0x70),

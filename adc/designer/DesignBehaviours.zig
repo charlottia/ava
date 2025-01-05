@@ -596,7 +596,7 @@ pub fn Impl(comptime Config: type) type {
             switch (Archetypes.sizing) {
                 .autosized => self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .fill),
                 .width_resizable => self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .fill),
-                .wh_resizable => self.imtui.text_mode.paintColour(x.r1 - 1, x.c1 - 1, x.r2 + 1, x.c2 + 1, colour, .outline),
+                .wh_resizable => self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .outline),
             }
         }
     };
