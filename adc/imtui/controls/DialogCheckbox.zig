@@ -50,12 +50,12 @@ pub const Impl = struct {
         self.label = label;
         self.accel = Imtui.Controls.acceleratorFor(label);
 
-        self.dialog.imtui.text_mode.write(self.r, self.c, if (self.selected) "[X] " else "[ ] ");
-        self.dialog.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
+        self.imtui.text_mode.write(self.r, self.c, if (self.selected) "[X] " else "[ ] ");
+        self.imtui.text_mode.writeAccelerated(self.r, self.c + 4, label, self.dialog.show_acc);
 
         if (self.imtui.focused(self.control())) {
-            self.dialog.imtui.text_mode.cursor_row = self.r;
-            self.dialog.imtui.text_mode.cursor_col = self.c + 1;
+            self.imtui.text_mode.cursor_row = self.r;
+            self.imtui.text_mode.cursor_col = self.c + 1;
         }
     }
 
@@ -105,8 +105,8 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.dialog.imtui.mouse_row == self.r and
-            self.dialog.imtui.mouse_col >= self.c and self.dialog.imtui.mouse_col < self.c + self.label.len + 4;
+        return self.imtui.mouse_row == self.r and
+            self.imtui.mouse_col >= self.c and self.imtui.mouse_col < self.c + self.label.len + 4;
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {

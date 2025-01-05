@@ -7,7 +7,7 @@ Last steps:
 * [x] radio button ordering -- we can infer, but are there ever multiple groups?
   * I see no evidence of this.
 * [x] DesignSelect
-* [ ] file/dir selection
+* [-] file/dir selection
 * [ ] "files not saved" dialog has oddly-sized buttons
 * [ ] new/open/save in designer itself
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)

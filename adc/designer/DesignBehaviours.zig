@@ -40,9 +40,7 @@ fn StateForBehaviours(comptime behaviours: anytype) type {
             StateUnionFields = StateUnionFields ++ [_]std.builtin.Type.UnionField{
                 .{ .name = "text_edit", .type = std.ArrayListUnmanaged(u8), .alignment = @alignOf(std.ArrayListUnmanaged(u8)) },
             };
-        } else if (b == .dialog) {
-            // nop
-        } else unreachable;
+        }
     }
 
     StateEnumFields = StateEnumFields ++ [_]std.builtin.Type.EnumField{
@@ -71,10 +69,12 @@ fn archetypesForBehaviours(comptime behaviours: anytype) struct {
     sizing: Sizing,
     text_editable: bool,
     dialog: bool,
+    flood_select: bool,
 } {
     var sizing: Sizing = .autosized;
     var text_editable = false;
     var dialog = false;
+    var flood_select = false;
 
     inline for (behaviours) |b|
         if (b == .wh_resizable) {
@@ -85,11 +85,18 @@ fn archetypesForBehaviours(comptime behaviours: anytype) struct {
             text_editable = true;
         } else if (b == .dialog) {
             dialog = true;
+        } else if (b == .flood_select) {
+            flood_select = true;
         } else {
             @compileError("unknown behaviour: " ++ @tagName(b));
         };
 
-    return .{ .sizing = sizing, .text_editable = text_editable, .dialog = dialog };
+    return .{
+        .sizing = sizing,
+        .text_editable = text_editable,
+        .dialog = dialog,
+        .flood_select = flood_select,
+    };
 }
 
 pub fn Impl(comptime Config: type) type {
@@ -310,6 +317,10 @@ pub fn Impl(comptime Config: type) type {
                 return true;
 
             const x = self.coords();
+
+            if (Archetypes.flood_select)
+                return self.imtui.mouse_row >= x.r1 and self.imtui.mouse_row < x.r2 and
+                    self.imtui.mouse_col >= x.c1 and self.imtui.mouse_col < x.c2;
 
             return switch (Archetypes.sizing) {
                 .autosized, .width_resizable => self.imtui.mouse_row >= x.r1 and self.imtui.mouse_row < x.r2 and
@@ -592,6 +603,9 @@ pub fn Impl(comptime Config: type) type {
 
         fn border(self: *const Self, colour: u8) void {
             const x = self.coords();
+
+            if (Archetypes.flood_select)
+                return self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .fill);
 
             switch (Archetypes.sizing) {
                 .autosized => self.imtui.text_mode.paintColour(x.r1, x.c1, x.r2, x.c2, colour, .fill),

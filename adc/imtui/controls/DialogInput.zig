@@ -116,8 +116,8 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.dialog.imtui.mouse_row == self.r and
-            self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
+        return self.imtui.mouse_row == self.r and
+            self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
@@ -143,7 +143,7 @@ pub const Impl = struct {
                 try self.imtui.focus(self.control())
             else
                 // clicking on already selected; set cursor where clicked.
-                self.el.cursor_col = self.el.scroll_col + self.dialog.imtui.mouse_col - self.c1;
+                self.el.cursor_col = self.el.scroll_col + self.imtui.mouse_col - self.c1;
 
             return self.control();
         }

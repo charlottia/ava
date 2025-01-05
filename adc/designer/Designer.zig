@@ -354,6 +354,7 @@ fn renderItems(self: *Designer) !?DesignControl {
                         p.schema.c1,
                         p.schema.r2,
                         p.schema.c2,
+                        p.schema.horizontal,
                     },
                 );
                 p.impl = b.impl;
@@ -532,6 +533,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .c1 = 3,
                 .r2 = 7,
                 .c2 = 7,
+                .horizontal = false,
             },
             .impl = undefined,
         } });
@@ -865,7 +867,9 @@ fn renderSimulation(self: *Designer) !void {
             .checkbox => |p| _ = try dialog.checkbox(p.schema.r1, p.schema.c1, p.schema.text, false),
             .select => |p| {
                 var s = try dialog.select(p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, 0x70, 1);
-                s.items(&.{ "armadillo", "borboleta", "cachorro" });
+                s.items(DesignSelect.ITEMS);
+                if (p.schema.horizontal)
+                    s.horizontal();
                 s.end();
             },
             .label => |p| dialog.label(p.schema.r1, p.schema.c1, p.schema.text),

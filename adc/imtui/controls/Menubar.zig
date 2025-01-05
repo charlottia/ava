@@ -274,7 +274,9 @@ pub fn create(imtui: *Imtui, r: usize, c1: usize, c2: usize) !Menubar {
 pub fn menu(self: Menubar, label: []const u8, width: usize) !Imtui.Controls.Menu {
     const impl = self.impl;
     if (std.mem.eql(u8, label, "&Help")) // XXX
-        impl.offset = impl.imtui.text_mode.W - 7;
+        impl.offset = impl.imtui.text_mode.W - 7
+    else if (std.mem.eql(u8, label, "Debu&g")) // XXX
+        impl.offset = impl.imtui.text_mode.W - 8;
 
     const m = if (impl.menus_at == impl.menus.items.len) m: {
         const m = try Imtui.Controls.Menu.create(impl, impl.r, impl.c1 + impl.offset, label, impl.menus.items.len, width);

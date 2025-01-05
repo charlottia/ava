@@ -7,6 +7,8 @@ const Dialog = @import("./Dialog.zig");
 
 const DialogSelect = @This();
 
+pub const HORIZONTAL_WIDTH = 12; // <- usable characters; 1 padding on each side added. TODO: multiple widths
+
 pub const Impl = struct {
     imtui: *Imtui,
     generation: usize,
@@ -23,11 +25,13 @@ pub const Impl = struct {
     c2: usize = undefined,
     colour: u8 = undefined,
     items: []const []const u8 = undefined,
+    horizontal: bool = undefined,
 
     // state
     selected_ix: usize,
-    scroll_row: usize = 0,
+    scroll_dim: usize = 0,
     vscrollbar: TextMode(25, 80).Vscrollbar = .{},
+    hscrollbar: TextMode(25, 80).Hscrollbar = .{},
     cmt: ?TextMode(25, 80).ScrollbarTarget = null,
     accel: ?u8 = undefined,
 
@@ -56,14 +60,10 @@ pub const Impl = struct {
         self.c2 = self.dialog.c1 + c2;
         self.colour = colour;
         self.items = &.{};
+        self.horizontal = false;
         self.accel = self.dialog.pendingAccel();
 
-        self.dialog.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, colour);
-
-        if (self.imtui.focused(self.control())) {
-            self.dialog.imtui.text_mode.cursor_row = self.r1 + 1 + self.selected_ix - self.scroll_row;
-            self.dialog.imtui.text_mode.cursor_col = self.c1 + 2;
-        }
+        self.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, colour);
     }
 
     fn parent(ptr: *const anyopaque) ?Imtui.Control {
@@ -88,10 +88,34 @@ pub const Impl = struct {
 
     pub fn value(self: *Impl, ix: usize) void {
         self.selected_ix = ix;
-        if (self.scroll_row > ix)
-            self.scroll_row = ix
-        else if (ix >= self.scroll_row + self.r2 - self.r1 - 2)
-            self.scroll_row = ix + self.r1 + 3 - self.r2;
+        if (self.horizontal) {
+            while (ix < self.scroll_dim * (self.r2 - self.r1 - 2))
+                self.scroll_dim -= 1;
+            const cols = (self.c2 - self.c1 - 3) / (HORIZONTAL_WIDTH + 2);
+            while (ix >= (cols + self.scroll_dim) * (self.r2 - self.r1 - 2))
+                self.scroll_dim += 1;
+        } else {
+            if (self.scroll_dim > ix)
+                self.scroll_dim = ix
+            else if (ix >= self.scroll_dim + self.r2 - self.r1 - 2)
+                self.scroll_dim = ix + self.r1 + 3 - self.r2;
+        }
+    }
+
+    fn up(self: *Impl) void {
+        self.value(self.selected_ix -| 1);
+    }
+
+    fn left(self: *Impl) void {
+        self.value(self.selected_ix -| (self.r2 - self.r1 - 2));
+    }
+
+    fn right(self: *Impl) void {
+        self.value(@min(self.items.len - 1, self.selected_ix + (self.r2 - self.r1 - 2)));
+    }
+
+    fn down(self: *Impl) void {
+        self.value(@min(self.items.len - 1, self.selected_ix + 1));
     }
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -113,8 +137,10 @@ pub const Impl = struct {
         }
 
         switch (keycode) {
-            .up, .left => self.value(self.selected_ix -| 1),
-            .down, .right => self.value(@min(self.items.len - 1, self.selected_ix + 1)),
+            .up => self.up(),
+            .left => if (self.horizontal) self.left() else self.up(),
+            .down => self.down(),
+            .right => if (self.horizontal) self.right() else self.down(),
             else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
         }
     }
@@ -123,8 +149,8 @@ pub const Impl = struct {
 
     fn isMouseOver(ptr: *const anyopaque) bool {
         const self: *const Impl = @ptrCast(@alignCast(ptr));
-        return self.dialog.imtui.mouse_row >= self.r1 and self.dialog.imtui.mouse_row < self.r2 and
-            self.dialog.imtui.mouse_col >= self.c1 and self.dialog.imtui.mouse_col < self.c2;
+        return self.imtui.mouse_row >= self.r1 and self.imtui.mouse_row < self.r2 and
+            self.imtui.mouse_col >= self.c1 and self.imtui.mouse_col < self.c2;
     }
 
     fn handleMouseDown(ptr: *anyopaque, b: SDL.MouseButton, clicks: u8, cm: bool) !?Imtui.Control {
@@ -137,33 +163,58 @@ pub const Impl = struct {
             self.cmt = null;
         }
 
-        if (self.dialog.imtui.mouse_col == self.c2 - 1 or (cm and self.cmt != null and self.cmt.?.isVscr())) {
-            if (self.vscrollbar.hit(self.dialog.imtui.mouse_row, cm, self.cmt)) |hit| {
+        if (self.horizontal and (self.imtui.mouse_row == self.r2 - 1 or (cm and self.cmt != null and self.cmt.?.isHscr()))) {
+            if (self.hscrollbar.hit(self.imtui.mouse_col, cm, self.cmt)) |hit| {
+                switch (hit) {
+                    .left => {
+                        self.cmt = .hscr_left;
+                        self.left();
+                    },
+                    .toward_left => {
+                        self.cmt = .hscr_toward_left;
+                        // self.scroll_dim -|= self.r2 - self.r1 - 2;
+                    },
+                    .thumb => {
+                        // self.scroll_dim = (self.vscrollbar.thumb * self.vscrollbar.highest + (self.vscrollbar.r2 - self.vscrollbar.r1 - 4)) / (self.vscrollbar.r2 - self.vscrollbar.r1 - 3);
+                    },
+                    .toward_right => {
+                        self.cmt = .hscr_toward_right;
+                        // self.scroll_dim = @min(self.scroll_dim + (self.r2 - self.r1 - 2), self.items.len - (self.r2 - self.r1 - 2));
+                    },
+                    .right => {
+                        self.cmt = .hscr_right;
+                        self.right();
+                    },
+                }
+                // TODO: wonks
+            }
+        } else if (!self.horizontal and (self.imtui.mouse_col == self.c2 - 1 or (cm and self.cmt != null and self.cmt.?.isVscr()))) {
+            if (self.vscrollbar.hit(self.imtui.mouse_row, cm, self.cmt)) |hit| {
                 switch (hit) {
                     .up => {
                         self.cmt = .vscr_up;
-                        self.scroll_row -|= 1;
+                        self.scroll_dim -|= 1;
                     },
                     .toward_up => {
                         self.cmt = .vscr_toward_up;
-                        self.scroll_row -|= self.r2 - self.r1 - 2;
+                        self.scroll_dim -|= self.r2 - self.r1 - 2;
                     },
                     .thumb => {
-                        self.scroll_row = (self.vscrollbar.thumb * self.vscrollbar.highest + (self.vscrollbar.r2 - self.vscrollbar.r1 - 4)) / (self.vscrollbar.r2 - self.vscrollbar.r1 - 3);
+                        self.scroll_dim = (self.vscrollbar.thumb * self.vscrollbar.highest + (self.vscrollbar.r2 - self.vscrollbar.r1 - 4)) / (self.vscrollbar.r2 - self.vscrollbar.r1 - 3);
                     },
                     .toward_down => {
                         self.cmt = .vscr_toward_down;
-                        self.scroll_row = @min(self.scroll_row + (self.r2 - self.r1 - 2), self.items.len - (self.r2 - self.r1 - 2));
+                        self.scroll_dim = @min(self.scroll_dim + (self.r2 - self.r1 - 2), self.items.len - (self.r2 - self.r1 - 2));
                     },
                     .down => {
                         self.cmt = .vscr_down;
-                        self.scroll_row = @min(self.scroll_row + 1, self.items.len - (self.r2 - self.r1 - 2));
+                        self.scroll_dim = @min(self.scroll_dim + 1, self.items.len - (self.r2 - self.r1 - 2));
                     },
                 }
-                if (self.selected_ix < self.scroll_row)
-                    self.selected_ix = self.scroll_row
-                else if (self.selected_ix > self.scroll_row + (self.r2 - self.r1 - 3))
-                    self.selected_ix = self.scroll_row + (self.r2 - self.r1 - 3);
+                if (self.selected_ix < self.scroll_dim)
+                    self.selected_ix = self.scroll_dim
+                else if (self.selected_ix > self.scroll_dim + (self.r2 - self.r1 - 3))
+                    self.selected_ix = self.scroll_dim + (self.r2 - self.r1 - 3);
                 return self.control();
             }
         }
@@ -178,28 +229,77 @@ pub const Impl = struct {
 
         if (self.cmt != null) return;
 
+        // For default (vertical) selects:
         // - If click is on top row, or left column before the bottom row, we just
-        //   shift the selection up by one, as if pressing up() when focused.
+        //   shift the selection up by one, as if pressing up when focused.
         // - If click is on bottom row, or right column after the top row, we just
-        //   shift the selection down by one, as if pressing down() when focused.
+        //   shift the selection down by one, as if pressing down when focused.
         // - If it's elsewhere, we focus the selectbox and select the item under
         //   cursor.
-        if (self.dialog.imtui.mouse_row <= self.r1 or
-            (self.dialog.imtui.mouse_col == self.c1 and self.dialog.imtui.mouse_row < self.r2 - 1))
-        {
-            self.value(self.selected_ix -| 1);
-            return;
-        }
+        // For horizontal selects:
+        // - The entire top row is up.
+        // - The two non-hscrollbar cells of the bottom row are down.
+        // - The non-upper/lower parts of the left and right column go left
+        //   and right.
+        // - Anywhere else focuses and selects.
 
-        if (self.dialog.imtui.mouse_row >= self.r2 - 1 or
-            (self.dialog.imtui.mouse_col == self.c2 - 1 and self.dialog.imtui.mouse_row > self.r1))
-        {
-            self.value(@min(self.items.len - 1, self.selected_ix + 1));
-            return;
-        }
+        if (self.horizontal) {
+            if (self.imtui.mouse_row <= self.r1) {
+                self.up();
+                return;
+            }
 
-        try self.imtui.focus(self.control());
-        self.selected_ix = self.dialog.imtui.mouse_row - self.r1 - 1 + self.scroll_row;
+            if (self.imtui.mouse_row >= self.r2 - 1) {
+                self.down();
+                return;
+            }
+
+            if (self.imtui.mouse_col <= self.c1) {
+                self.left();
+                return;
+            }
+
+            if (self.imtui.mouse_col >= self.c2 - 1) {
+                self.right();
+                return;
+            }
+
+            try self.imtui.focus(self.control());
+
+            // can't be bothered doing arithmetic zzzzzzzzzz XXX
+            var r = self.r1;
+            var c = self.c1 + 1;
+            const offset = self.scroll_dim * (self.r2 - self.r1 - 2);
+
+            for (self.items[offset..], 0..) |_, ix| {
+                r += 1;
+                if (r == self.r2 - 1) {
+                    r = self.r1 + 1;
+                    c += HORIZONTAL_WIDTH + 2;
+                    if (c + HORIZONTAL_WIDTH + 3 > self.c2 - 1)
+                        break;
+                }
+                if (self.imtui.mouse_row == r and self.imtui.mouse_col >= c and self.imtui.mouse_col < c + HORIZONTAL_WIDTH + 3)
+                    self.selected_ix = offset + ix;
+            }
+        } else {
+            if (self.imtui.mouse_row <= self.r1 or
+                (self.imtui.mouse_col == self.c1 and self.imtui.mouse_row < self.r2 - 1))
+            {
+                self.up();
+                return;
+            }
+
+            if (self.imtui.mouse_row >= self.r2 - 1 or
+                (self.imtui.mouse_col == self.c2 - 1 and self.imtui.mouse_row > self.r1))
+            {
+                self.down();
+                return;
+            }
+
+            try self.imtui.focus(self.control());
+            self.selected_ix = self.imtui.mouse_row - self.r1 - 1 + self.scroll_dim;
+        }
     }
 
     fn handleMouseUp(_: *anyopaque, _: SDL.MouseButton, _: u8) !void {}
@@ -229,31 +329,81 @@ pub fn items(self: DialogSelect, it: []const []const u8) void {
     self.impl.items = it;
 }
 
-pub fn end(self: DialogSelect) void {
-    for (self.impl.items[self.impl.scroll_row..], 0..) |it, ix| {
-        const r = self.impl.r1 + 1 + ix;
-        if (r == self.impl.r2 - 1) break;
-        if (ix + self.impl.scroll_row == self.impl.selected_ix)
-            self.impl.dialog.imtui.text_mode.paint(
-                r,
-                self.impl.c1 + 1,
-                r + 1,
-                self.impl.c2 - 1,
-                ((self.impl.colour & 0x0f) << 4) | ((self.impl.colour & 0xf0) >> 4),
-                .Blank,
-            );
-        self.impl.dialog.imtui.text_mode.write(
-            r,
-            self.impl.c1 + 2,
-            it,
-        );
-    }
+pub fn horizontal(self: DialogSelect) void {
+    self.impl.horizontal = true;
+}
 
-    self.impl.vscrollbar = self.impl.dialog.imtui.text_mode.vscrollbar(
-        self.impl.c2 - 1,
-        self.impl.r1 + 1,
-        self.impl.r2 - 1,
-        self.impl.scroll_row,
-        self.impl.items.len -| (self.impl.r2 - self.impl.r1 - 2),
-    );
+pub fn end(self: DialogSelect) void {
+    const impl = self.impl;
+
+    if (impl.horizontal) {
+        {
+            var r = impl.r1;
+            var c = impl.c1 + 1;
+            const offset = impl.scroll_dim * (impl.r2 - impl.r1 - 2);
+
+            for (impl.items[offset..], 0..) |it, ix| {
+                r += 1;
+                if (r == impl.r2 - 1) {
+                    r = impl.r1 + 1;
+                    c += HORIZONTAL_WIDTH + 2;
+                    if (c + HORIZONTAL_WIDTH + 3 > impl.c2 - 1)
+                        break;
+                }
+                if (ix + offset == impl.selected_ix)
+                    impl.imtui.text_mode.paint(
+                        r,
+                        c,
+                        r + 1,
+                        c + HORIZONTAL_WIDTH + 3,
+                        ((impl.colour & 0x0f) << 4) | ((impl.colour & 0xf0) >> 4),
+                        .Blank,
+                    );
+                impl.imtui.text_mode.write(r, c + 1, it);
+            }
+        }
+
+        impl.hscrollbar = impl.imtui.text_mode.hscrollbar(
+            impl.r2 - 1,
+            impl.c1 + 1,
+            impl.c2 - 1,
+            impl.scroll_dim,
+            (impl.items.len - 1) / (impl.r2 - impl.r1 - 2),
+        );
+
+        if (impl.imtui.focused(impl.control())) {
+            const r = impl.selected_ix % (impl.r2 - impl.r1 - 2);
+            const c = impl.selected_ix / (impl.r2 - impl.r1 - 2);
+            impl.imtui.text_mode.cursor_row = impl.r1 + 1 + r;
+            impl.imtui.text_mode.cursor_col = impl.c1 + 2 + ((c - impl.scroll_dim) * (HORIZONTAL_WIDTH + 2));
+        }
+    } else {
+        for (impl.items[impl.scroll_dim..], 0..) |it, ix| {
+            const r = impl.r1 + 1 + ix;
+            if (r == impl.r2 - 1) break;
+            if (ix + impl.scroll_dim == impl.selected_ix)
+                impl.imtui.text_mode.paint(
+                    r,
+                    impl.c1 + 1,
+                    r + 1,
+                    impl.c2 - 1,
+                    ((impl.colour & 0x0f) << 4) | ((impl.colour & 0xf0) >> 4),
+                    .Blank,
+                );
+            impl.imtui.text_mode.write(r, impl.c1 + 2, it);
+        }
+
+        impl.vscrollbar = impl.imtui.text_mode.vscrollbar(
+            impl.c2 - 1,
+            impl.r1 + 1,
+            impl.r2 - 1,
+            impl.scroll_dim,
+            impl.items.len -| (impl.r2 - impl.r1 - 2),
+        );
+
+        if (impl.imtui.focused(impl.control())) {
+            impl.imtui.text_mode.cursor_row = impl.r1 + 1 + impl.selected_ix - impl.scroll_dim;
+            impl.imtui.text_mode.cursor_col = impl.c1 + 2;
+        }
+    }
 }
