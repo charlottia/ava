@@ -60,7 +60,8 @@ pub fn main() !void {
                 .width = 720,
                 .height = 16 * 25,
             };
-            try app.renderer.copy(designer.underlay_texture, r, r);
+            if (designer.underlay_texture) |t|
+                try app.renderer.copy(t, r, r);
         }
 
         try imtui.render();
@@ -72,7 +73,8 @@ pub fn main() !void {
                 .width = 720,
                 .height = 16 * 23,
             };
-            try app.renderer.copy(designer.underlay_texture, r, r);
+            if (designer.underlay_texture) |t|
+                try app.renderer.copy(t, r, r);
         }
 
         app.renderer.present();

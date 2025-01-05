@@ -84,12 +84,25 @@ const SaveFile = struct {
 };
 const SerDes = ini.SerDes(SaveFile, struct {});
 
+const ReorderDialogState = struct {
+    ixs: std.ArrayListUnmanaged(usize),
+    items: std.ArrayListUnmanaged([]const u8),
+    selected_ix: usize,
+
+    fn deinit(self: *ReorderDialogState, allocator: Allocator) void {
+        for (self.items.items) |i|
+            allocator.free(i);
+        self.items.deinit(allocator);
+        self.ixs.deinit(allocator);
+    }
+};
+
 imtui: *Imtui,
 prefs: Prefs,
 
 save_filename: ?[]const u8,
 underlay_filename: []const u8,
-underlay_texture: SDL.Texture,
+underlay_texture: ?SDL.Texture,
 controls: std.ArrayListUnmanaged(DesignControl),
 
 inhibit_underlay: bool = false,
@@ -101,6 +114,7 @@ simulating_dialog: ?[]const u8 = null,
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog_open: bool = false,
 save_confirm_open: bool = false,
+reorder_dialog_open: ?ReorderDialogState = null,
 
 pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: []const u8) !Designer {
     const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
@@ -173,12 +187,14 @@ pub fn initFromIni(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, inifile:
 }
 
 pub fn deinit(self: *Designer) void {
+    if (self.reorder_dialog_open) |*s|
+        s.deinit(self.imtui.allocator);
     if (self.simulating_dialog) |text|
         self.imtui.allocator.free(text);
     for (self.controls.items) |c|
         c.deinit(self.imtui);
     self.controls.deinit(self.imtui.allocator);
-    self.underlay_texture.destroy();
+    if (self.underlay_texture) |t| t.destroy();
     self.imtui.allocator.free(self.underlay_filename);
     if (self.save_filename) |f| self.imtui.allocator.free(f);
 }
@@ -192,7 +208,9 @@ pub fn dump(self: *const Designer, writer: anytype) !void {
     }
 }
 
-fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: []const u8) !SDL.Texture {
+fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: []const u8) !?SDL.Texture {
+    if (filename.len == 0)
+        return null;
     const data = try std.fs.cwd().readFileAllocOptions(allocator, filename, 10485760, null, @alignOf(u8), 0);
     defer allocator.free(data);
     const texture = try SDL.image.loadTextureMem(renderer, data, .png);
@@ -220,6 +238,8 @@ pub fn render(self: *Designer) !void {
             try self.renderSaveDialog();
         if (self.save_confirm_open)
             try self.renderSaveConfirm();
+        if (self.reorder_dialog_open) |*s|
+            try self.renderReorderDialog(s);
     }
 }
 
@@ -567,6 +587,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     try add_menu.end();
 
     var controls_menu = try menubar.menu("&Controls", 0);
+
     var buf: [100]u8 = undefined;
     for (self.controls.items) |c|
         switch (c) {
@@ -585,6 +606,41 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                     try self.imtui.focus(p.impl.control());
             },
         };
+
+    if (self.controls.items.len > 1) {
+        try controls_menu.separator();
+
+        var reorder = (try controls_menu.item("&Reorder...")).shortcut(.r, .ctrl).help("Changes the order of controls used for tabbing");
+        if (reorder.chosen()) {
+            var ixs = std.ArrayListUnmanaged(usize){};
+            var items = std.ArrayListUnmanaged([]const u8){};
+            var selected_ix: usize = 0;
+
+            for (self.controls.items[1..], 1..) |c, ix| {
+                try ixs.append(self.imtui.allocator, ix);
+                const item_label = switch (c) {
+                    inline else => |p, tag| l: {
+                        if (focused_dc) |f|
+                            switch (f) {
+                                tag => |d| if (d.impl == p.impl) {
+                                    selected_ix = ix - 1;
+                                },
+                                else => {},
+                            };
+                        break :l try p.schema.bufPrintFocusLabel(&buf);
+                    },
+                };
+                try items.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, item_label));
+            }
+
+            self.reorder_dialog_open = .{
+                .ixs = ixs,
+                .items = items,
+                .selected_ix = selected_ix,
+            };
+        }
+    }
+
     try controls_menu.end();
 
     if (focused_dc) |f|
@@ -718,6 +774,67 @@ fn renderSaveConfirm(self: *Designer) !void {
     ok.default();
     if (ok.chosen()) {
         self.save_confirm_open = false;
+        self.imtui.unfocus(dialog.impl.control());
+    }
+
+    try dialog.end();
+}
+
+fn renderReorderDialog(self: *Designer, s: *ReorderDialogState) !void {
+    self.dialogPrep();
+
+    var dialog = try self.imtui.dialog("Reorder", 20, 47, .centred);
+
+    dialog.label(1, 11, "&Controls");
+
+    var controls = try dialog.select(2, 2, 17, 28, 0x70, s.selected_ix);
+    controls.items(s.items.items);
+    controls.end();
+
+    const six = controls.impl.selected_ix;
+
+    var move_up = try dialog.button(7, 32, "Move &Up");
+    if (move_up.chosen()) {
+        if (six > 0) {
+            std.mem.swap(usize, &s.ixs.items[six], &s.ixs.items[six - 1]);
+            std.mem.swap([]const u8, &s.items.items[six], &s.items.items[six - 1]);
+            controls.impl.selected_ix -= 1;
+        }
+        try self.imtui.focus(controls.impl.control());
+    }
+
+    var move_down = try dialog.button(10, 31, "Move &Down");
+    if (move_down.chosen()) {
+        if (six < s.items.items.len - 1) {
+            std.mem.swap(usize, &s.ixs.items[six], &s.ixs.items[six + 1]);
+            std.mem.swap([]const u8, &s.items.items[six], &s.items.items[six + 1]);
+            controls.impl.selected_ix += 1;
+        }
+        try self.imtui.focus(controls.impl.control());
+    }
+
+    dialog.hrule(17, 0, 47, 0x70);
+
+    var ok = try dialog.button(18, 12, "OK");
+    ok.default();
+    if (ok.chosen()) {
+        var new_controls = try std.ArrayListUnmanaged(DesignControl).initCapacity(self.imtui.allocator, self.controls.items.len);
+        new_controls.appendAssumeCapacity(self.controls.items[0]);
+        for (s.ixs.items) |ix|
+            new_controls.appendAssumeCapacity(self.controls.items[ix]);
+        self.controls.replaceRangeAssumeCapacity(0, self.controls.items.len, new_controls.items);
+        new_controls.deinit(self.imtui.allocator);
+
+        s.deinit(self.imtui.allocator);
+        self.reorder_dialog_open = null;
+        self.imtui.unfocus(dialog.impl.control());
+    }
+
+    var cancel = try dialog.button(18, 27, "Cancel");
+    cancel.cancel();
+    if (cancel.chosen()) {
+        s.deinit(self.imtui.allocator);
+        self.reorder_dialog_open = null;
         self.imtui.unfocus(dialog.impl.control());
     }
 

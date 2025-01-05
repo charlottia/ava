@@ -3,7 +3,7 @@
 Last steps:
 
 * [x] checkbox
-* [ ] ability to reorder elements
+* [x] ability to reorder elements
 * [ ] radio button ordering -- we can infer, but are there ever multiple groups?
   * I see no evidence of this.
 * [x] DesignSelect
