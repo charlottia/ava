@@ -4,7 +4,7 @@ Last steps:
 
 * [x] checkbox
 * [x] ability to reorder elements
-* [ ] radio button ordering -- we can infer, but are there ever multiple groups?
+* [x] radio button ordering -- we can infer, but are there ever multiple groups?
   * I see no evidence of this.
 * [x] DesignSelect
 * [ ] file/dir selection

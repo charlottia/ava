@@ -848,8 +848,6 @@ fn renderSimulation(self: *Designer) !void {
 
     var dialog = try self.imtui.dialog(dp.schema.text, dp.schema.r2 - dp.schema.r1, dp.schema.c2 - dp.schema.c1, .centred);
 
-    var rid: usize = 0;
-
     for (self.controls.items[1..]) |i| {
         switch (i) {
             .dialog => unreachable,
@@ -863,10 +861,7 @@ fn renderSimulation(self: *Designer) !void {
                     self.simulating_dialog = try std.fmt.allocPrint(self.imtui.allocator, "\"{s}\" button pressed.", .{p.schema.text});
             },
             .input => |p| _ = try dialog.input(p.schema.r1, p.schema.c1, p.schema.c2),
-            .radio => |p| {
-                _ = try dialog.radio(0, rid, p.schema.r1, p.schema.c1, p.schema.text);
-                rid += 1;
-            },
+            .radio => |p| _ = try dialog.radio(p.schema.r1, p.schema.c1, p.schema.text),
             .checkbox => |p| _ = try dialog.checkbox(p.schema.r1, p.schema.c1, p.schema.text, false),
             .select => |p| {
                 var s = try dialog.select(p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, 0x70, 1);

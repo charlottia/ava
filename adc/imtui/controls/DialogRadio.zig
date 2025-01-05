@@ -16,8 +16,6 @@ pub const Impl = struct {
     ix: usize,
 
     // config
-    group_id: usize = undefined,
-    item_id: usize = undefined,
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
@@ -46,9 +44,7 @@ pub const Impl = struct {
         };
     }
 
-    pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) void {
-        self.group_id = group_id;
-        self.item_id = item_id;
+    pub fn describe(self: *Impl, _: *Dialog.Impl, _: usize, r: usize, c: usize, label: []const u8) void {
         self.r = self.dialog.r1 + r;
         self.c = self.dialog.c1 + c;
         self.label = label;
@@ -89,28 +85,26 @@ pub const Impl = struct {
     fn accelerate(ptr: *anyopaque) !void {
         const self: *Impl = @ptrCast(@alignCast(ptr));
         for (self.dialog.controls.items) |c|
-            if (c.is(Impl)) |b| if (b.group_id == self.group_id) {
+            if (c.is(Impl)) |b| {
                 b.selected = false;
             };
 
         try self.select();
     }
 
-    fn findKin(self: *Impl, id: usize) *Impl {
-        var zero: ?*Impl = null;
-        var high: ?*Impl = null;
-        for (self.dialog.controls.items) |c|
-            if (c.is(Impl)) |b| if (b.group_id == self.group_id) {
-                if (b.item_id == 0)
-                    zero = b
-                else if (b.item_id == id)
-                    return b
-                else if (high) |h|
-                    high = if (b.item_id > h.item_id) b else h
-                else
-                    high = b;
+    fn findKin(self: *Impl, dir: enum { before, after }) *Impl {
+        var ix = self.ix;
+        while (true) {
+            ix = switch (dir) {
+                .before => if (ix == 0) self.dialog.controls.items.len - 1 else ix - 1,
+                .after => if (ix == self.dialog.controls.items.len - 1) 0 else ix + 1,
             };
-        return if (id == std.math.maxInt(usize)) high.? else zero.?;
+
+            if (self.dialog.controls.items[ix].is(Impl)) |b| {
+                std.debug.assert(b.ix != self.ix);
+                return b;
+            }
+        }
     }
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -120,12 +114,12 @@ pub const Impl = struct {
             .up, .left => {
                 std.debug.assert(self.selected);
                 self.selected = false;
-                try self.findKin(self.item_id -% 1).select();
+                try self.findKin(.before).select();
             },
             .down, .right => {
                 std.debug.assert(self.selected);
                 self.selected = false;
-                try self.findKin(self.item_id + 1).select();
+                try self.findKin(.after).select();
             },
             else => try self.dialog.commonKeyPress(self.ix, keycode, modifiers),
         }
@@ -172,20 +166,21 @@ pub const Impl = struct {
 
 impl: *Impl,
 
-pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
+pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{s}/{d}/{d}", .{ "core.DialogRadio", dialog.id, ix });
 }
 
-pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
+pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogRadio {
     var b = try imtui.allocator.create(Impl);
+    defer dialog.radio_index += 1;
     b.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .dialog = dialog,
         .ix = ix,
-        .selected = item_id == 0,
+        .selected = dialog.radio_index == 0,
     };
-    b.describe(dialog, ix, group_id, item_id, r, c, label);
+    b.describe(dialog, ix, r, c, label);
     try dialog.controls.append(imtui.allocator, b.control());
     return .{ .impl = b };
 }

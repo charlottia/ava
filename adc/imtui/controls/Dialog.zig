@@ -29,6 +29,7 @@ pub const Impl = struct {
     default_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
     cancel_button: ?*Imtui.Controls.DialogButton.Impl = undefined,
     pending_accel: ?u8 = null,
+    radio_index: usize = 0,
 
     pub fn control(self: *Impl) Imtui.Control {
         return .{
@@ -83,10 +84,9 @@ pub const Impl = struct {
                 const inc = if (reverse) self.controls.items.len - 1 else 1;
 
                 var nix = ix;
-                if (self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl)) |s| {
+                if (self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl)) |_| {
                     while (true) {
-                        const r = self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl) orelse break;
-                        if (r.group_id != s.group_id) break;
+                        _ = self.controls.items[nix].is(Imtui.Controls.DialogRadio.Impl) orelse break;
                         nix = (nix + inc) % self.controls.items.len;
                     }
                 } else {
@@ -194,8 +194,8 @@ pub fn label(self: Dialog, r: usize, c: usize, l: []const u8) void {
         self.impl.pending_accel = accel;
 }
 
-pub fn radio(self: Dialog, group_id: usize, item_id: usize, r: usize, c: usize, l: []const u8) !Imtui.Controls.DialogRadio {
-    return self.impl.imtui.dialogradio(self.impl, group_id, item_id, r, c, l);
+pub fn radio(self: Dialog, r: usize, c: usize, l: []const u8) !Imtui.Controls.DialogRadio {
+    return self.impl.imtui.dialogradio(self.impl, r, c, l);
 }
 
 pub fn select(self: Dialog, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {

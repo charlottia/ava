@@ -299,9 +299,9 @@ pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize, posi
     return self.getOrPutControl(Controls.Dialog, .{ title, height, width, position });
 }
 
-pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, group_id: usize, item_id: usize, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
+pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {
     defer parent.controls_at += 1;
-    return self.getOrPutControl(Controls.DialogRadio, .{ parent, parent.controls_at, group_id, item_id, r, c, label });
+    return self.getOrPutControl(Controls.DialogRadio, .{ parent, parent.controls_at, r, c, label });
 }
 
 pub fn dialogselect(self: *Imtui, parent: *Controls.Dialog.Impl, r1: usize, c1: usize, r2: usize, c2: usize, colour: u8, selected: usize) !Imtui.Controls.DialogSelect {
