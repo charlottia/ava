@@ -321,7 +321,15 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
         }
     }
     _ = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
+
     try file_menu.separator();
+
+    var export_zig = (try file_menu.item("Export &Zig")).help("Exports current dialog as Zig code to stdout");
+    if (export_zig.chosen())
+        try self.exportZig();
+
+    try file_menu.separator();
+
     var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to OS");
     if (exit.chosen())
         self.imtui.running = false;
@@ -796,6 +804,84 @@ fn renderSimulation(self: *Designer) !void {
             self.imtui.focus_stack.clearRetainingCapacity();
         }
     }
+}
+
+fn exportZig(self: *const Designer) !void {
+    const out = std.io.getStdOut().writer();
+
+    const dp = &self.controls.items[0].dialog;
+    var vc: usize = 0;
+
+    try out.writeAll("----8<----CUT--HERE----8<----\n");
+    try out.writeAll("\n");
+    try out.writeAll("fn renderDialog(self: *T) !void {\n");
+    try std.fmt.format(
+        out,
+        "    var dialog = try self.imtui.dialog(\"{}\", {d}, {d}, .centred);\n",
+        .{ std.zig.fmtEscapes(dp.schema.text), dp.schema.r2 - dp.schema.r1, dp.schema.c2 - dp.schema.c1 },
+    );
+    for (self.controls.items[1..]) |i| {
+        switch (i) {
+            .dialog => unreachable,
+            .button => |p| {
+                vc += 1;
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    var button{d} = try dialog.button({d}, {d}, \"{}\");\n", .{ vc, p.schema.r1, p.schema.c1, std.zig.fmtEscapes(p.schema.text) });
+                if (p.schema.default)
+                    try std.fmt.format(out, "    button{d}.default();\n", .{vc});
+                if (p.schema.cancel)
+                    try std.fmt.format(out, "    button{d}.cancel();\n", .{vc});
+                if (p.schema.padding != 1)
+                    try std.fmt.format(out, "    button{d}.padding({d});\n", .{ vc, p.schema.padding });
+                try std.fmt.format(out, "    if (button{d}.chosen()) {{\n", .{vc});
+                try out.writeAll("        // TODO\n");
+                try out.writeAll("    }\n");
+            },
+            .input => |p| {
+                vc += 1;
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    var input{d} = try dialog.input({d}, {d}, {d});\n", .{ vc, p.schema.r1, p.schema.c1, p.schema.c2 });
+            },
+            .radio => |p| {
+                vc += 1;
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    var radio{d} = try dialog.radio({d}, {d}, \"{}\");\n", .{ vc, p.schema.r1, p.schema.c1, std.zig.fmtEscapes(p.schema.text) });
+            },
+            .checkbox => |p| {
+                vc += 1;
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    const checkbox{d}_chosen = false;\n", .{vc});
+                try std.fmt.format(out, "    var checkbox{d} = try dialog.checkbox({d}, {d}, \"{}\", checkbox{d}_chosen);\n", .{ vc, p.schema.r1, p.schema.c1, std.zig.fmtEscapes(p.schema.text), vc });
+            },
+            .select => |p| {
+                vc += 1;
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    const select{d}_selected: usize = 0;\n", .{vc});
+                try std.fmt.format(out, "    var select{d} = try dialog.select({d}, {d}, {d}, {d}, 0x70, select{d}_selected);\n", .{ vc, p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2, vc });
+                try std.fmt.format(out, "    select{d}.items(&.{{\"a\", \"b\", \"c\"}});\n", .{vc});
+                if (p.schema.horizontal)
+                    try std.fmt.format(out, "    select{d}.horizontal();\n", .{vc});
+                try std.fmt.format(out, "    select{d}.end();\n", .{vc});
+            },
+            .label => |p| {
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    dialog.label({d}, {d}, \"{}\");\n", .{ p.schema.r1, p.schema.c1, std.zig.fmtEscapes(p.schema.text) });
+            },
+            .box => |p| {
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    dialog.groupbox(\"{}\", {d}, {d}, {d}, {d}, 0x70);\n", .{ std.zig.fmtEscapes(p.schema.text), p.schema.r1, p.schema.c1, p.schema.r2, p.schema.c2 });
+            },
+            .hrule => |p| {
+                try out.writeAll("\n");
+                try std.fmt.format(out, "    dialog.hrule({d}, {d}, {d}, 0x70);\n", .{ p.schema.r1, p.schema.c1, p.schema.c2 });
+            },
+        }
+    }
+    try out.writeAll("\n");
+    try out.writeAll("    try dialog.end();\n");
+    try out.writeAll("}\n");
+    try out.writeAll("\n");
+    try out.writeAll("----8<----CUT--HERE----8<----\n");
 }
 
 fn nextDesignControlId(self: *const Designer) usize {
