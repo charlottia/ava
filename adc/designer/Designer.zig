@@ -102,7 +102,9 @@ const SerDes = ini.SerDes(SaveFile, struct {});
 imtui: *Imtui,
 prefs: Prefs,
 
+event: ?enum { new } = null,
 save_filename: ?[]const u8, // TODO: need directory here too; SaveDialog has it.
+dirty: bool = false,
 underlay_filename: ?[]const u8,
 underlay_texture: ?SDL.Texture,
 controls: std.ArrayListUnmanaged(DesignControl),
@@ -200,6 +202,7 @@ pub fn deinit(self: *Designer) void {
     if (self.underlay_texture) |t| t.destroy();
     if (self.underlay_filename) |n| self.imtui.allocator.free(n);
     if (self.save_filename) |f| self.imtui.allocator.free(f);
+    self.imtui.focus_stack.clearRetainingCapacity();
 }
 
 pub fn dump(self: *const Designer, writer: anytype) !void {
@@ -312,8 +315,20 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     var file_menu = try menubar.menu("&File", 16);
 
-    _ = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
+    var new = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
+    if (new.chosen()) {
+        if (!self.dirty) {
+            self.event = .new;
+        } else {
+            // TODO NEXT: set dirty flag everywhere, this should pop up "unsaved
+            // changes", note we'll need that to be dispatched to/from a number
+            // of places!
+            std.log.debug("bwark", .{});
+            self.event = .new;
+        }
+    }
 
+    // TODO NEXT NEXT: per above.
     _ = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
 
     var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");

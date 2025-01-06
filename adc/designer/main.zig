@@ -79,5 +79,16 @@ pub fn main() !void {
         }
 
         app.renderer.present();
+
+        if (designer.event) |ev| switch (ev) {
+            .new => {
+                designer.deinit();
+                designer = try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, null);
+                // Ensure we have a control hierarchy before possibly looping
+                // and passing any events to Imtui.
+                try imtui.newFrame();
+                try designer.render();
+            },
+        };
     }
 }
