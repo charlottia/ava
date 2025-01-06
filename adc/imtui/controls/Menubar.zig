@@ -128,11 +128,16 @@ pub const Impl = struct {
                     break;
                 },
                 .escape => self.unfocus(),
-                .@"return" => self.menus.items[d.index].menu_items.items[d.item].?.chosen = true,
+                .@"return" => {
+                    var item = self.menus.items[d.index].menu_items.items[d.item].?;
+                    if (item.enabled)
+                        item.chosen = true;
+                },
                 else => if (Imtui.keycodeAlphanum(keycode)) {
                     for (self.menus.items[d.index].menu_items.items) |mi|
                         if (mi != null and Imtui.acceleratorMatch(mi.?.label, keycode)) {
-                            mi.?.chosen = true;
+                            if (mi.?.enabled)
+                                mi.?.chosen = true;
                             return;
                         };
                 },

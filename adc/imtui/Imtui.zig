@@ -381,7 +381,8 @@ pub fn fallbackKeyPress(self: *Imtui, keycode: SDL.Keycode, modifiers: SDL.KeyMo
     for ((try self.getMenubar()).menus.items) |m|
         for (m.menu_items.items) |mi| {
             if (mi != null) if (mi.?.shortcut) |s| if (s.matches(keycode, modifiers)) {
-                mi.?.chosen = true;
+                if (mi.?.enabled)
+                    mi.?.chosen = true;
                 return;
             };
         };

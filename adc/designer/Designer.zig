@@ -9,6 +9,8 @@ const Imtui = imtuilib.Imtui;
 const Preferences = ini.Preferences;
 
 const SaveDialog = @import("./SaveDialog.zig");
+const ReorderDialog = @import("./ReorderDialog.zig");
+pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { save, simulation });
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
@@ -38,7 +40,7 @@ const mapping = .{
     .hrule = DesignHrule,
 };
 
-const DesignControl = union(enum) {
+pub const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
     input: struct { schema: DesignInput.Schema, impl: *DesignInput.Impl },
@@ -97,19 +99,6 @@ const SaveFile = struct {
 };
 const SerDes = ini.SerDes(SaveFile, struct {});
 
-const ReorderDialogState = struct {
-    ixs: std.ArrayListUnmanaged(usize),
-    items: std.ArrayListUnmanaged([]const u8),
-    selected_ix: usize,
-
-    fn deinit(self: *ReorderDialogState, allocator: Allocator) void {
-        for (self.items.items) |i|
-            allocator.free(i);
-        self.items.deinit(allocator);
-        self.ixs.deinit(allocator);
-    }
-};
-
 imtui: *Imtui,
 prefs: Prefs,
 
@@ -123,11 +112,10 @@ design_root: *DesignRoot.Impl = undefined,
 next_focus: ?usize = null,
 
 simulating: bool = false,
-simulating_dialog: ?[]const u8 = null,
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog: ?SaveDialog = null,
-save_confirm_open: bool = false,
-reorder_dialog_open: ?ReorderDialogState = null,
+reorder_dialog: ?ReorderDialog = null,
+confirm_dialog: ?ConfirmDialog = null,
 
 pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: ?[]const u8) !Designer {
     const texture = if (underlay) |n| try loadTextureFromFile(imtui.allocator, renderer, n) else null;
@@ -200,12 +188,12 @@ pub fn initFromIni(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, inifile:
 }
 
 pub fn deinit(self: *Designer) void {
-    if (self.reorder_dialog_open) |*s|
-        s.deinit(self.imtui.allocator);
-    if (self.save_dialog) |*s|
-        s.deinit();
-    if (self.simulating_dialog) |text|
-        self.imtui.allocator.free(text);
+    if (self.confirm_dialog) |*d|
+        d.deinit();
+    if (self.reorder_dialog) |*d|
+        d.deinit();
+    if (self.save_dialog) |*d|
+        d.deinit();
     for (self.controls.items) |c|
         c.deinit(self.imtui);
     self.controls.deinit(self.imtui.allocator);
@@ -249,17 +237,27 @@ pub fn render(self: *Designer) !void {
         try self.renderHelpLine(focused_dc, menubar);
 
         self.inhibit_underlay = false;
-        if (self.save_dialog) |*sd| {
+
+        if (self.save_dialog) |*d| {
             self.dialogPrep();
-            if (!try sd.render()) {
-                sd.deinit();
+            if (!try d.render()) {
+                d.deinit();
                 self.save_dialog = null;
             }
         }
-        if (self.save_confirm_open)
-            try self.renderSaveConfirm();
-        if (self.reorder_dialog_open) |*s|
-            try self.renderReorderDialog(s);
+
+        if (self.reorder_dialog) |*d| {
+            self.dialogPrep();
+            if (!try d.render()) {
+                d.deinit();
+                self.reorder_dialog = null;
+            }
+        }
+    }
+
+    if (self.confirm_dialog) |*d| {
+        self.dialogPrep();
+        try d.render();
     }
 }
 
@@ -326,11 +324,15 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
             try self.dump(h.writer());
 
-            self.save_confirm_open = true;
+            self.confirm_dialog = try ConfirmDialog.init(self, .save, "", "Saved to \"{s}\".", .{f});
         } else {
             self.save_dialog = try SaveDialog.init(self, null);
         }
     }
+
+    if (self.confirm_dialog) |*cd| if (cd.finish(.save)) {
+        self.confirm_dialog = null;
+    };
 
     var save_as = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
     if (save_as.chosen())
@@ -353,9 +355,9 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var view_menu = try menubar.menu("&View", 0);
 
     var simulate = (try view_menu.item("&Simulate")).shortcut(.f5, null).help("Simulates the dialog design");
+    if (!self.designSimulatable())
+        _ = simulate.disabled();
     if (simulate.chosen())
-        // TODO: assert dialog has at least one focusable, since Dialogs
-        // themselves don't receive focus.
         self.simulating = true;
 
     try view_menu.separator();
@@ -521,38 +523,12 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             },
         };
 
-    if (self.controls.items.len > 1) {
+    if (self.controls.items.len > 2) { // Dialog and one other.
         try controls_menu.separator();
 
         var reorder = (try controls_menu.item("&Reorder...")).shortcut(.r, .ctrl).help("Changes the order of controls used for tabbing");
-        if (reorder.chosen()) {
-            var ixs = std.ArrayListUnmanaged(usize){};
-            var items = std.ArrayListUnmanaged([]const u8){};
-            var selected_ix: usize = 0;
-
-            for (self.controls.items[1..], 1..) |c, ix| {
-                try ixs.append(self.imtui.allocator, ix);
-                const item_label = switch (c) {
-                    inline else => |p, tag| l: {
-                        if (focused_dc) |f|
-                            switch (f) {
-                                tag => |d| if (d.impl == p.impl) {
-                                    selected_ix = ix - 1;
-                                },
-                                else => {},
-                            };
-                        break :l try p.schema.bufPrintFocusLabel(&buf);
-                    },
-                };
-                try items.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, item_label));
-            }
-
-            self.reorder_dialog_open = .{
-                .ixs = ixs,
-                .items = items,
-                .selected_ix = selected_ix,
-            };
-        }
+        if (reorder.chosen())
+            self.reorder_dialog = try ReorderDialog.init(self, focused_dc);
     }
 
     try controls_menu.end();
@@ -637,90 +613,6 @@ fn dialogPrep(self: *Designer) void {
             self.imtui.text_mode.shadow(r, c);
 }
 
-// TODO: generic, use elsewhere
-fn renderSaveConfirm(self: *Designer) !void {
-    self.dialogPrep();
-
-    var dialog = try self.imtui.dialog("", 7, 40, .centred);
-
-    var buf: [100]u8 = undefined;
-    const msg = try std.fmt.bufPrint(&buf, "Saved to \"{s}\".", .{self.save_filename.?});
-    self.imtui.text_mode.write(dialog.impl.r1 + 2, dialog.impl.c1 + (dialog.impl.c2 - dialog.impl.c1 - msg.len) / 2, msg);
-
-    dialog.hrule(4, 0, 40, 0x70);
-
-    var ok = try dialog.button(5, 17, "OK");
-    ok.default();
-    if (ok.chosen()) {
-        self.save_confirm_open = false;
-        self.imtui.unfocus(dialog.impl.control());
-    }
-
-    try dialog.end();
-}
-
-// TODO: own module
-fn renderReorderDialog(self: *Designer, s: *ReorderDialogState) !void {
-    self.dialogPrep();
-
-    var dialog = try self.imtui.dialog("Reorder", 20, 47, .centred);
-
-    dialog.label(1, 11, "&Controls");
-
-    var controls = try dialog.select(2, 2, 17, 28, 0x70, s.selected_ix);
-    controls.items(s.items.items);
-    controls.end();
-
-    const six = controls.impl.selected_ix;
-
-    var move_up = try dialog.button(7, 32, "Move &Up");
-    if (move_up.chosen()) {
-        if (six > 0) {
-            std.mem.swap(usize, &s.ixs.items[six], &s.ixs.items[six - 1]);
-            std.mem.swap([]const u8, &s.items.items[six], &s.items.items[six - 1]);
-            controls.impl.selected_ix -= 1;
-        }
-        try self.imtui.focus(controls.impl.control());
-    }
-
-    var move_down = try dialog.button(10, 31, "Move &Down");
-    if (move_down.chosen()) {
-        if (six < s.items.items.len - 1) {
-            std.mem.swap(usize, &s.ixs.items[six], &s.ixs.items[six + 1]);
-            std.mem.swap([]const u8, &s.items.items[six], &s.items.items[six + 1]);
-            controls.impl.selected_ix += 1;
-        }
-        try self.imtui.focus(controls.impl.control());
-    }
-
-    dialog.hrule(17, 0, 47, 0x70);
-
-    var ok = try dialog.button(18, 12, "OK");
-    ok.default();
-    if (ok.chosen()) {
-        var new_controls = try std.ArrayListUnmanaged(DesignControl).initCapacity(self.imtui.allocator, self.controls.items.len);
-        new_controls.appendAssumeCapacity(self.controls.items[0]);
-        for (s.ixs.items) |ix|
-            new_controls.appendAssumeCapacity(self.controls.items[ix]);
-        self.controls.replaceRangeAssumeCapacity(0, self.controls.items.len, new_controls.items);
-        new_controls.deinit(self.imtui.allocator);
-
-        s.deinit(self.imtui.allocator);
-        self.reorder_dialog_open = null;
-        self.imtui.unfocus(dialog.impl.control());
-    }
-
-    var cancel = try dialog.button(18, 27, "Cancel");
-    cancel.cancel();
-    if (cancel.chosen()) {
-        s.deinit(self.imtui.allocator);
-        self.reorder_dialog_open = null;
-        self.imtui.unfocus(dialog.impl.control());
-    }
-
-    try dialog.end();
-}
-
 fn renderSimulation(self: *Designer) !void {
     self.imtui.text_mode.cursor_inhibit = false;
 
@@ -739,7 +631,7 @@ fn renderSimulation(self: *Designer) !void {
                     b.cancel();
                 b.padding(p.schema.padding);
                 if (b.chosen())
-                    self.simulating_dialog = try std.fmt.allocPrint(self.imtui.allocator, "\"{s}\" button pressed.", .{p.schema.text});
+                    self.confirm_dialog = try ConfirmDialog.init(self, .simulation, "Simulation end", "\"{s}\" button pressed.", .{p.schema.text});
             },
             .input => |p| _ = try dialog.input(p.schema.r1, p.schema.c1, p.schema.c2),
             .radio => |p| _ = try dialog.radio(p.schema.r1, p.schema.c1, p.schema.text),
@@ -761,29 +653,13 @@ fn renderSimulation(self: *Designer) !void {
 
     try dialog.end();
 
-    if (self.simulating_dialog) |msg| {
-        var confirm_dialog = try self.imtui.dialog("Simulation end", 7, 40, .centred);
+    if (self.confirm_dialog) |*cd| if (cd.finish(.simulation)) {
+        self.confirm_dialog = null;
+        self.simulating = false;
 
-        self.imtui.text_mode.write(confirm_dialog.impl.r1 + 2, confirm_dialog.impl.c1 + (confirm_dialog.impl.c2 - confirm_dialog.impl.c1 - msg.len) / 2, msg);
-
-        confirm_dialog.hrule(4, 0, 40, 0x70);
-
-        var ok = try confirm_dialog.button(5, 17, "OK");
-        ok.default();
-
-        try confirm_dialog.end();
-
-        // Ensure we clear the focus stack after drawing the dialog, thus
-        // causing regeneration of all impls. Bit of a HACK but it works.
-        if (ok.chosen()) {
-            self.imtui.allocator.free(msg);
-            self.simulating_dialog = null;
-            self.simulating = false;
-            self.imtui.unfocus(confirm_dialog.impl.control());
-            self.imtui.unfocus(dialog.impl.control());
-            self.imtui.focus_stack.clearRetainingCapacity();
-        }
-    }
+        self.imtui.unfocus(dialog.impl.control());
+        self.imtui.focus_stack.clearRetainingCapacity();
+    };
 }
 
 fn exportZig(self: *const Designer) !void {
@@ -904,4 +780,13 @@ fn findDesignControlIxById(self: *const Designer, id: usize) usize {
             return i;
 
     unreachable;
+}
+
+fn designSimulatable(self: *const Designer) bool {
+    for (self.controls.items) |i|
+        switch (i) {
+            .dialog, .label, .box, .hrule => {},
+            .button, .input, .radio, .checkbox, .select => return true,
+        };
+    return false;
 }

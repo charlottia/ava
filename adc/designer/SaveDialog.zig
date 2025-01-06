@@ -22,7 +22,7 @@ fn stringSort(_: void, lhs: []const u8, rhs: []const u8) bool {
 pub fn init(designer: *Designer, initial_name: ?[]const u8) !SaveDialog {
     const imtui = designer.imtui;
 
-    var s = SaveDialog{
+    var d = SaveDialog{
         .imtui = imtui,
         .designer = designer,
         .initial_name = initial_name,
@@ -30,8 +30,8 @@ pub fn init(designer: *Designer, initial_name: ?[]const u8) !SaveDialog {
         .cwd_name = undefined,
         .dirs = undefined,
     };
-    try s.setCwd(try std.fs.cwd().openDir(".", .{ .iterate = true }));
-    return s;
+    try d.setCwd(try std.fs.cwd().openDir(".", .{ .iterate = true }));
+    return d;
 }
 
 fn setCwd(self: *SaveDialog, cwd: std.fs.Dir) !void {
@@ -149,6 +149,6 @@ fn process(self: *SaveDialog, dialog: Imtui.Controls.Dialog, input: *std.ArrayLi
     self.designer.save_filename = try self.imtui.allocator.dupe(u8, input.items);
 
     self.imtui.unfocus(dialog.impl.control());
-    self.designer.save_confirm_open = true;
+    self.designer.confirm_dialog = try Designer.ConfirmDialog.init(self.designer, .save, "", "Saved to \"{s}\".", .{input.items});
     return false;
 }

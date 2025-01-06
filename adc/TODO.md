@@ -11,6 +11,7 @@ Last steps:
 * [x] "files not saved" dialog has oddly-sized buttons
 * [x] Zig export
 * [-] new/open/save in designer itself
+* [ ] fix re-save in other directory
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
 * [x] Select doesn't show selection until you actually force/make one, and doing
       so un-'selects' all other Selects on the dialog; pressing up or down just
