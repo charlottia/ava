@@ -8,6 +8,7 @@ const ini = @import("ini");
 const Imtui = imtuilib.Imtui;
 const Preferences = ini.Preferences;
 
+const SaveDialog = @import("./SaveDialog.zig");
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
@@ -112,8 +113,8 @@ const ReorderDialogState = struct {
 imtui: *Imtui,
 prefs: Prefs,
 
-save_filename: ?[]const u8,
-underlay_filename: []const u8,
+save_filename: ?[]const u8, // TODO: need directory here too; SaveDialog has it.
+underlay_filename: ?[]const u8,
 underlay_texture: ?SDL.Texture,
 controls: std.ArrayListUnmanaged(DesignControl),
 
@@ -124,12 +125,12 @@ next_focus: ?usize = null,
 simulating: bool = false,
 simulating_dialog: ?[]const u8 = null,
 display: enum { behind, design_only, in_front } = .behind,
-save_dialog_open: bool = false,
+save_dialog: ?SaveDialog = null,
 save_confirm_open: bool = false,
 reorder_dialog_open: ?ReorderDialogState = null,
 
-pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: []const u8) !Designer {
-    const texture = try loadTextureFromFile(imtui.allocator, renderer, underlay);
+pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: ?[]const u8) !Designer {
+    const texture = if (underlay) |n| try loadTextureFromFile(imtui.allocator, renderer, n) else null;
 
     var controls = std.ArrayListUnmanaged(DesignControl){};
     try controls.append(imtui.allocator, .{ .dialog = .{
@@ -148,7 +149,7 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Render
         .imtui = imtui,
         .prefs = prefs,
         .save_filename = null,
-        .underlay_filename = try imtui.allocator.dupe(u8, underlay),
+        .underlay_filename = if (underlay) |n| try imtui.allocator.dupe(u8, n) else null,
         .underlay_texture = texture,
         .controls = controls,
     };
@@ -201,18 +202,20 @@ pub fn initFromIni(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, inifile:
 pub fn deinit(self: *Designer) void {
     if (self.reorder_dialog_open) |*s|
         s.deinit(self.imtui.allocator);
+    if (self.save_dialog) |*s|
+        s.deinit();
     if (self.simulating_dialog) |text|
         self.imtui.allocator.free(text);
     for (self.controls.items) |c|
         c.deinit(self.imtui);
     self.controls.deinit(self.imtui.allocator);
     if (self.underlay_texture) |t| t.destroy();
-    self.imtui.allocator.free(self.underlay_filename);
+    if (self.underlay_filename) |n| self.imtui.allocator.free(n);
     if (self.save_filename) |f| self.imtui.allocator.free(f);
 }
 
 pub fn dump(self: *const Designer, writer: anytype) !void {
-    try SerDes.save(writer, .{ .underlay = self.underlay_filename });
+    try SerDes.save(writer, .{ .underlay = self.underlay_filename orelse "" });
 
     for (self.controls.items) |c| {
         try std.fmt.format(writer, "\n[{s}]\n", .{@tagName(c)});
@@ -246,8 +249,13 @@ pub fn render(self: *Designer) !void {
         try self.renderHelpLine(focused_dc, menubar);
 
         self.inhibit_underlay = false;
-        if (self.save_dialog_open)
-            try self.renderSaveDialog();
+        if (self.save_dialog) |*sd| {
+            self.dialogPrep();
+            if (!try sd.render()) {
+                sd.deinit();
+                self.save_dialog = null;
+            }
+        }
         if (self.save_confirm_open)
             try self.renderSaveConfirm();
         if (self.reorder_dialog_open) |*s|
@@ -305,8 +313,11 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var menubar = try self.imtui.menubar(0, 0, 80);
 
     var file_menu = try menubar.menu("&File", 16);
+
     _ = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
+
     _ = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
+
     var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");
     if (save.chosen()) {
         if (self.save_filename) |f| {
@@ -317,10 +328,13 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
             self.save_confirm_open = true;
         } else {
-            self.save_dialog_open = true;
+            self.save_dialog = try SaveDialog.init(self, null);
         }
     }
-    _ = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
+
+    var save_as = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
+    if (save_as.chosen())
+        self.save_dialog = try SaveDialog.init(self, self.save_filename);
 
     try file_menu.separator();
 
@@ -333,6 +347,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to OS");
     if (exit.chosen())
         self.imtui.running = false;
+
     try file_menu.end();
 
     var view_menu = try menubar.menu("&View", 0);
@@ -374,8 +389,6 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .r1 = 5,
                 .c1 = 5,
                 .text = try self.imtui.allocator.dupe(u8, "OK"),
-                .default = false,
-                .cancel = false,
             },
             .impl = undefined,
         } });
@@ -433,7 +446,6 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                 .c1 = 3,
                 .r2 = 7,
                 .c2 = 7,
-                .horizontal = false,
             },
             .impl = undefined,
         } });
@@ -625,42 +637,7 @@ fn dialogPrep(self: *Designer) void {
             self.imtui.text_mode.shadow(r, c);
 }
 
-fn renderSaveDialog(self: *Designer) !void {
-    self.dialogPrep();
-
-    var dialog = try self.imtui.dialog("Save As", 10, 60, .centred);
-
-    dialog.groupbox("", 1, 1, 4, 30, 0x70);
-
-    var input = try dialog.input(2, 2, 40);
-    if (input.initial()) |init|
-        try init.appendSlice(self.imtui.allocator, "dialog.ini");
-
-    var ok = try dialog.button(4, 4, "OK");
-    ok.default();
-    if (ok.chosen()) {
-        self.save_filename = try self.imtui.allocator.dupe(u8, input.impl.value.items);
-        const h = try std.fs.cwd().createFile(input.impl.value.items, .{});
-        defer h.close();
-
-        try self.dump(h.writer());
-
-        self.save_dialog_open = false;
-        self.imtui.unfocus(dialog.impl.control());
-
-        self.save_confirm_open = true;
-    }
-
-    var cancel = try dialog.button(4, 30, "Cancel");
-    cancel.cancel();
-    if (cancel.chosen()) {
-        self.save_dialog_open = false;
-        self.imtui.unfocus(dialog.impl.control());
-    }
-
-    try dialog.end();
-}
-
+// TODO: generic, use elsewhere
 fn renderSaveConfirm(self: *Designer) !void {
     self.dialogPrep();
 
@@ -682,6 +659,7 @@ fn renderSaveConfirm(self: *Designer) !void {
     try dialog.end();
 }
 
+// TODO: own module
 fn renderReorderDialog(self: *Designer, s: *ReorderDialogState) !void {
     self.dialogPrep();
 
@@ -771,6 +749,8 @@ fn renderSimulation(self: *Designer) !void {
                 s.items(DesignSelect.ITEMS);
                 if (p.schema.horizontal)
                     s.horizontal();
+                if (p.schema.select_focus)
+                    s.select_focus();
                 s.end();
             },
             .label => |p| dialog.label(p.schema.r1, p.schema.c1, p.schema.text),
@@ -861,6 +841,8 @@ fn exportZig(self: *const Designer) !void {
                 try std.fmt.format(out, "    select{d}.items(&.{{\"a\", \"b\", \"c\"}});\n", .{vc});
                 if (p.schema.horizontal)
                     try std.fmt.format(out, "    select{d}.horizontal();\n", .{vc});
+                if (p.schema.select_focus)
+                    try std.fmt.format(out, "    select{d}.select_focus();\n", .{vc});
                 try std.fmt.format(out, "    select{d}.end();\n", .{vc});
             },
             .label => |p| {

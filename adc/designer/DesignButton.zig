@@ -96,8 +96,8 @@ pub const Schema = struct {
     c1: usize,
     text: []const u8,
     padding: usize = 1,
-    default: bool,
-    cancel: bool,
+    default: bool = false,
+    cancel: bool = false,
 
     pub fn deinit(self: Schema, allocator: Allocator) void {
         allocator.free(self.text);

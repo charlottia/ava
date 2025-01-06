@@ -35,6 +35,7 @@ pub fn main() !void {
     defer imtui.deinit();
 
     var designer: Designer = switch (args.mode) {
+        .empty => try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, null),
         .new => |f| try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, f),
         .load => |f| try Designer.initFromIni(imtui, prefs, app.renderer, f),
     };

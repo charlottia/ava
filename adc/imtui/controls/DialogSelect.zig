@@ -26,9 +26,12 @@ pub const Impl = struct {
     colour: u8 = undefined,
     items: []const []const u8 = undefined,
     horizontal: bool = undefined,
+    select_focus: bool = undefined,
 
     // state
     selected_ix: usize,
+    selected_ix_focused: bool = false,
+    changed: bool = false,
     scroll_dim: usize = 0,
     vscrollbar: TextMode(25, 80).Vscrollbar = .{},
     hscrollbar: TextMode(25, 80).Hscrollbar = .{},
@@ -61,6 +64,7 @@ pub const Impl = struct {
         self.colour = colour;
         self.items = &.{};
         self.horizontal = false;
+        self.select_focus = false;
         self.accel = self.dialog.pendingAccel();
 
         self.imtui.text_mode.box(self.r1, self.c1, self.r2, self.c2, colour);
@@ -88,6 +92,15 @@ pub const Impl = struct {
 
     pub fn value(self: *Impl, ix: usize) void {
         self.selected_ix = ix;
+        self.changed = true;
+        if (self.select_focus) {
+            for (self.dialog.controls.items) |c|
+                if (c.is(Impl)) |b| {
+                    b.selected_ix_focused = false;
+                };
+            self.selected_ix_focused = true;
+        }
+
         if (self.horizontal) {
             while (ix < self.scroll_dim * (self.r2 - self.r1 - 2))
                 self.scroll_dim -= 1;
@@ -103,7 +116,10 @@ pub const Impl = struct {
     }
 
     fn up(self: *Impl) void {
-        self.value(self.selected_ix -| 1);
+        if (self.select_focus and !self.selected_ix_focused)
+            self.value(self.selected_ix)
+        else
+            self.value(self.selected_ix -| 1);
     }
 
     fn left(self: *Impl) void {
@@ -115,7 +131,10 @@ pub const Impl = struct {
     }
 
     fn down(self: *Impl) void {
-        self.value(@min(self.items.len - 1, self.selected_ix + 1));
+        if (self.select_focus and !self.selected_ix_focused)
+            self.value(self.selected_ix)
+        else
+            self.value(@min(self.items.len - 1, self.selected_ix + 1));
     }
 
     fn handleKeyPress(ptr: *anyopaque, keycode: SDL.Keycode, modifiers: SDL.KeyModifierSet) !void {
@@ -347,6 +366,10 @@ pub fn horizontal(self: DialogSelect) void {
     self.impl.horizontal = true;
 }
 
+pub fn select_focus(self: DialogSelect) void {
+    self.impl.select_focus = true;
+}
+
 pub fn end(self: DialogSelect) void {
     const impl = self.impl;
 
@@ -364,7 +387,7 @@ pub fn end(self: DialogSelect) void {
                     if (c + HORIZONTAL_WIDTH + 3 > impl.c2 - 1)
                         break;
                 }
-                if (ix + offset == impl.selected_ix)
+                if (ix + offset == impl.selected_ix and (!impl.select_focus or impl.selected_ix_focused))
                     impl.imtui.text_mode.paint(
                         r,
                         c,
@@ -373,7 +396,7 @@ pub fn end(self: DialogSelect) void {
                         ((impl.colour & 0x0f) << 4) | ((impl.colour & 0xf0) >> 4),
                         .Blank,
                     );
-                impl.imtui.text_mode.write(r, c + 1, it);
+                impl.imtui.text_mode.write(r, c + 1, it[0..@min(HORIZONTAL_WIDTH, it.len)]);
             }
         }
 
@@ -395,7 +418,7 @@ pub fn end(self: DialogSelect) void {
         for (impl.items[impl.scroll_dim..], 0..) |it, ix| {
             const r = impl.r1 + 1 + ix;
             if (r == impl.r2 - 1) break;
-            if (ix + impl.scroll_dim == impl.selected_ix)
+            if (ix + impl.scroll_dim == impl.selected_ix and (!impl.select_focus or impl.selected_ix_focused))
                 impl.imtui.text_mode.paint(
                     r,
                     impl.c1 + 1,
@@ -404,7 +427,7 @@ pub fn end(self: DialogSelect) void {
                     ((impl.colour & 0x0f) << 4) | ((impl.colour & 0xf0) >> 4),
                     .Blank,
                 );
-            impl.imtui.text_mode.write(r, impl.c1 + 2, it);
+            impl.imtui.text_mode.write(r, impl.c1 + 2, it[0..@min(impl.c2 - impl.c1 - 3, it.len)]);
         }
 
         impl.vscrollbar = impl.imtui.text_mode.vscrollbar(
@@ -420,4 +443,9 @@ pub fn end(self: DialogSelect) void {
             impl.imtui.text_mode.cursor_col = impl.c1 + 2;
         }
     }
+}
+
+pub fn changed(self: DialogSelect) ?usize {
+    defer self.impl.changed = false;
+    return if (self.impl.changed) self.impl.selected_ix else null;
 }

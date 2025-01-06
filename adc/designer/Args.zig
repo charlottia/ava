@@ -3,6 +3,7 @@ const std = @import("std");
 const Args = @This();
 
 const Mode = union(enum) {
+    empty,
     new: []const u8,
     load: []const u8,
 };
@@ -18,7 +19,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
 
     const argv0 = argv.next().?;
 
-    var mode: ?Mode = null;
+    var mode: Mode = .empty;
     var scale: ?f32 = null;
 
     var state: enum { root, scale, new, load } = .root;
@@ -41,36 +42,37 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                 state = .root;
             },
             .new => {
-                std.debug.assert(mode == null);
+                std.debug.assert(mode == .empty);
                 mode = .{ .new = try allocator.dupe(u8, arg) };
                 state = .root;
             },
             .load => {
-                std.debug.assert(mode == null);
+                std.debug.assert(mode == .empty);
                 mode = .{ .load = try allocator.dupe(u8, arg) };
                 state = .root;
             },
         }
     }
 
-    if (state != .root or mode == null)
+    if (state != .root)
         usage(argv0);
 
     return .{
         .allocator = allocator,
-        .mode = mode.?,
+        .mode = mode,
         .scale = scale,
     };
 }
 
 pub fn deinit(self: Args) void {
     switch (self.mode) {
+        .empty => {},
         .new => |f| self.allocator.free(f),
         .load => |f| self.allocator.free(f),
     }
 }
 
 fn usage(argv0: []const u8) noreturn {
-    std.debug.print("usage: {s} [--scale SCALE] {{--new UNDERLAY | --load INI}}\n", .{argv0});
+    std.debug.print("usage: {s} [--scale SCALE] [--new UNDERLAY | --load INI]\n", .{argv0});
     std.process.exit(1);
 }

@@ -48,6 +48,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
 
     pub const Fields = struct {
         horizontal: bool, // TODO: multiple widths
+        select_focus: bool,
     };
 
     pub fn describe(self: *Impl) void {
@@ -68,7 +69,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
                     if (c + width + 3 > x.c2 - 1)
                         break;
                 }
-                if (ix == 19)
+                if (!self.fields.select_focus and ix == 19)
                     self.imtui.text_mode.paint(r, c, r + 1, c + width + 3, 0x07, .Blank);
                 self.imtui.text_mode.write(r, c + 1, n);
             }
@@ -78,7 +79,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
             for (ITEMS, 0..) |n, ix| {
                 const r = x.r1 + 1 + ix;
                 if (r == x.r2 - 1) break;
-                if (ix == 1)
+                if (!self.fields.select_focus and ix == 1)
                     self.imtui.text_mode.paint(r, x.c1 + 1, r + 1, x.c2 - 1, 0x07, .Blank);
                 self.imtui.text_mode.write(r, x.c1 + 2, n);
             }
@@ -93,6 +94,12 @@ pub const Impl = DesignBehaviours.Impl(struct {
             horizontal.bullet();
         if (horizontal.chosen())
             self.fields.horizontal = !self.fields.horizontal;
+
+        var select_focus = (try menu.item("Select &Focus")).help("Toggles the select's focus mode");
+        if (self.fields.select_focus)
+            select_focus.bullet();
+        if (select_focus.chosen())
+            self.fields.select_focus = !self.fields.select_focus;
     }
 });
 
@@ -112,6 +119,7 @@ pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl,
             .r2 = schema.r2,
             .c2 = schema.c2,
             .horizontal = schema.horizontal,
+            .select_focus = schema.select_focus,
         },
     };
     d.describe();
@@ -124,7 +132,8 @@ pub const Schema = struct {
     c1: usize,
     r2: usize,
     c2: usize,
-    horizontal: bool,
+    horizontal: bool = false,
+    select_focus: bool = false,
 
     pub fn deinit(_: Schema, _: Allocator) void {}
 
@@ -140,4 +149,5 @@ pub fn sync(self: DesignSelect, _: Allocator, schema: *Schema) !void {
     schema.r2 = self.impl.fields.r2;
     schema.c2 = self.impl.fields.c2;
     schema.horizontal = self.impl.fields.horizontal;
+    schema.select_focus = self.impl.fields.select_focus;
 }
