@@ -9,7 +9,7 @@ Last steps:
 * [x] DesignSelect
 * [x] file/dir selection
 * [x] "files not saved" dialog has oddly-sized buttons
-* [ ] new/open/save in designer itself
+* [-] new/open/save in designer itself
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
 
 ---

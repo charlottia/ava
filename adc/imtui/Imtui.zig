@@ -333,7 +333,7 @@ pub fn getOrPutControl(self: *Imtui, comptime T: type, args: anytype) !T {
         try @call(.auto, T.bufPrintImtuiId, .{&buf} ++ args)
     else
         // HACK: This is bad and you should feel bad.
-        try @call(.auto, T.Impl.bufPrintImtuiId, .{ &buf, args[2] }); // .{root, dialog, id, ...}
+        try @call(.auto, T.Impl.bufPrintImtuiId, .{ &buf, args[2].id });
 
     var e = try self.controls.getOrPut(self.allocator, id);
 

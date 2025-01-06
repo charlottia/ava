@@ -68,28 +68,22 @@ pub fn create(
     imtui: *Imtui,
     root: *DesignRoot.Impl,
     dialog: *DesignDialog.Impl,
-    id: usize,
-    r1: usize,
-    c1: usize,
-    text: []const u8,
-    padding: usize,
-    default: bool,
-    cancel: bool,
+    schema: Schema,
 ) !DesignButton {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
-        .id = id,
+        .id = schema.id,
         .fields = .{
             .dialog = dialog,
-            .r1 = r1,
-            .c1 = c1,
-            .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, text)),
-            .padding = padding,
-            .default = default,
-            .cancel = cancel,
+            .r1 = schema.r1,
+            .c1 = schema.c1,
+            .text = std.ArrayListUnmanaged(u8).fromOwnedSlice(try imtui.allocator.dupe(u8, schema.text)),
+            .padding = schema.padding,
+            .default = schema.default,
+            .cancel = schema.cancel,
         },
     };
     d.describe();

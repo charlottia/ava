@@ -25,6 +25,18 @@ pub const Prefs = Preferences("net.lottia.textmode-designer", struct {
     system_cursor: bool = false,
 });
 
+const mapping = .{
+    .dialog = DesignDialog,
+    .button = DesignButton,
+    .input = DesignInput,
+    .radio = DesignRadio,
+    .checkbox = DesignCheckbox,
+    .select = DesignSelect,
+    .label = DesignLabel,
+    .box = DesignBox,
+    .hrule = DesignHrule,
+};
+
 const DesignControl = union(enum) {
     dialog: struct { schema: DesignDialog.Schema, impl: *DesignDialog.Impl },
     button: struct { schema: DesignButton.Schema, impl: *DesignButton.Impl },
@@ -269,141 +281,20 @@ fn renderItems(self: *Designer) !?DesignControl {
     dp.impl = dd.impl;
     try dd.sync(self.imtui.allocator, &dp.schema);
 
-    for (self.controls.items[1..], 1..) |*i, ix| {
-        // TODO: inline else this somehow :)
+    for (self.controls.items[1..], 1..) |*i, ix|
         switch (i.*) {
             .dialog => unreachable,
-            .button => |*p| {
+            inline else => |*p, tag| {
                 const b = try self.imtui.getOrPutControl(
-                    DesignButton,
-                    .{
-                        self.design_root,
-                        dd.impl,
-                        p.schema.id,
-                        p.schema.r1,
-                        p.schema.c1,
-                        p.schema.text,
-                        p.schema.padding,
-                        p.schema.default,
-                        p.schema.cancel,
-                    },
+                    @field(mapping, @tagName(tag)),
+                    .{ self.design_root, dd.impl, p.schema },
                 );
                 p.impl = b.impl;
                 try b.sync(self.imtui.allocator, &p.schema);
                 if (self.next_focus != null and self.next_focus == ix)
                     try self.imtui.focus(b.impl.control());
             },
-            .input => |*p| {
-                const b = try self.imtui.getOrPutControl(
-                    DesignInput,
-                    .{
-                        self.design_root,
-                        dd.impl,
-                        p.schema.id,
-                        p.schema.r1,
-                        p.schema.c1,
-                        p.schema.c2,
-                    },
-                );
-                p.impl = b.impl;
-                try b.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(b.impl.control());
-            },
-            .radio => |*p| {
-                const b = try self.imtui.getOrPutControl(
-                    DesignRadio,
-                    .{
-                        self.design_root,
-                        dd.impl,
-                        p.schema.id,
-                        p.schema.r1,
-                        p.schema.c1,
-                        p.schema.text,
-                    },
-                );
-                p.impl = b.impl;
-                try b.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(b.impl.control());
-            },
-            .checkbox => |*p| {
-                const b = try self.imtui.getOrPutControl(
-                    DesignCheckbox,
-                    .{
-                        self.design_root,
-                        dd.impl,
-                        p.schema.id,
-                        p.schema.r1,
-                        p.schema.c1,
-                        p.schema.text,
-                    },
-                );
-                p.impl = b.impl;
-                try b.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(b.impl.control());
-            },
-            .select => |*p| {
-                const b = try self.imtui.getOrPutControl(
-                    DesignSelect,
-                    .{
-                        self.design_root,
-                        dd.impl,
-                        p.schema.id,
-                        p.schema.r1,
-                        p.schema.c1,
-                        p.schema.r2,
-                        p.schema.c2,
-                        p.schema.horizontal,
-                    },
-                );
-                p.impl = b.impl;
-                try b.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(b.impl.control());
-            },
-            .label => |*p| {
-                const l = try self.imtui.getOrPutControl(
-                    DesignLabel,
-                    .{ self.design_root, dd.impl, p.schema.id, p.schema.r1, p.schema.c1, p.schema.text },
-                );
-                p.impl = l.impl;
-                try l.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(l.impl.control());
-            },
-            .box => |*p| {
-                const l = try self.imtui.getOrPutControl(
-                    DesignBox,
-                    .{
-                        self.design_root,
-                        dd.impl,
-                        p.schema.id,
-                        p.schema.r1,
-                        p.schema.c1,
-                        p.schema.r2,
-                        p.schema.c2,
-                        p.schema.text,
-                    },
-                );
-                p.impl = l.impl;
-                try l.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(l.impl.control());
-            },
-            .hrule => |*p| {
-                const l = try self.imtui.getOrPutControl(
-                    DesignHrule,
-                    .{ self.design_root, dd.impl, p.schema.id, p.schema.r1, p.schema.c1, p.schema.c2 },
-                );
-                p.impl = l.impl;
-                try l.sync(self.imtui.allocator, &p.schema);
-                if (self.next_focus != null and self.next_focus == ix)
-                    try self.imtui.focus(l.impl.control());
-            },
-        }
-    }
+        };
 
     self.next_focus = null;
 

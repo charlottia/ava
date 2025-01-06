@@ -98,20 +98,20 @@ pub const Impl = DesignBehaviours.Impl(struct {
 
 impl: *Impl,
 
-pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, id: usize, r1: usize, c1: usize, r2: usize, c2: usize, horizontal: bool) !DesignSelect {
+pub fn create(imtui: *Imtui, root: *DesignRoot.Impl, dialog: *DesignDialog.Impl, schema: Schema) !DesignSelect {
     var d = try imtui.allocator.create(Impl);
     d.* = .{
         .imtui = imtui,
         .generation = imtui.generation,
         .root = root,
-        .id = id,
+        .id = schema.id,
         .fields = .{
             .dialog = dialog,
-            .r1 = r1,
-            .c1 = c1,
-            .r2 = r2,
-            .c2 = c2,
-            .horizontal = horizontal,
+            .r1 = schema.r1,
+            .c1 = schema.c1,
+            .r2 = schema.r2,
+            .c2 = schema.c2,
+            .horizontal = schema.horizontal,
         },
     };
     d.describe();
