@@ -283,6 +283,7 @@ fn renderItems(self: *Designer) !?DesignControl {
                         p.schema.r1,
                         p.schema.c1,
                         p.schema.text,
+                        p.schema.padding,
                         p.schema.default,
                         p.schema.cancel,
                     },
@@ -859,6 +860,7 @@ fn renderSimulation(self: *Designer) !void {
                     b.default();
                 if (p.schema.cancel)
                     b.cancel();
+                b.padding(p.schema.padding);
                 if (b.chosen())
                     self.simulating_dialog = try std.fmt.allocPrint(self.imtui.allocator, "\"{s}\" button pressed.", .{p.schema.text});
             },

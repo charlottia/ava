@@ -163,7 +163,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
 
         // XXX: for now, only loadGroup asserts all its fields are actually
         // found. Hence we can use `= undefined' and not require defaults from
-        // the type.
+        // the type -- but we do allow them!
         pub fn loadGroup(allocator: Allocator, p: *Parser) (Error || Parser.Error || DeserializeError)!Schema {
             var s: Schema = undefined;
             var load_state: LoadState = .{};
@@ -189,8 +189,12 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                 };
 
             inline for (std.meta.fields(Schema)) |f|
-                if (!@field(load_state, f.name))
-                    return Error.MissingField;
+                if (!@field(load_state, f.name)) {
+                    if (f.default_value) |default|
+                        @field(s, f.name) = @as(*const f.type, @ptrCast(@alignCast(default))).*
+                    else
+                        return Error.MissingField;
+                };
 
             return s;
         }

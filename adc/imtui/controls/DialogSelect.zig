@@ -165,6 +165,7 @@ pub const Impl = struct {
 
         if (self.horizontal and (self.imtui.mouse_row == self.r2 - 1 or (cm and self.cmt != null and self.cmt.?.isHscr()))) {
             if (self.hscrollbar.hit(self.imtui.mouse_col, cm, self.cmt)) |hit| {
+                const cols = (self.c2 - self.c1 - 3) / (HORIZONTAL_WIDTH + 2);
                 switch (hit) {
                     .left => {
                         self.cmt = .hscr_left;
@@ -172,21 +173,34 @@ pub const Impl = struct {
                     },
                     .toward_left => {
                         self.cmt = .hscr_toward_left;
-                        // self.scroll_dim -|= self.r2 - self.r1 - 2;
+                        // Apparently equivalent to pressing left as many times
+                        // as needed to move one page (i.e. cols=3 times with
+                        // our current view).
+                        for (0..cols) |_|
+                            self.left();
                     },
                     .thumb => {
-                        // self.scroll_dim = (self.vscrollbar.thumb * self.vscrollbar.highest + (self.vscrollbar.r2 - self.vscrollbar.r1 - 4)) / (self.vscrollbar.r2 - self.vscrollbar.r1 - 3);
+                        // Align to correct column (only).
+                        const target_col = (self.hscrollbar.thumb * self.hscrollbar.highest + (self.hscrollbar.c2 - self.hscrollbar.c1 - 4)) /
+                            (self.hscrollbar.c2 - self.hscrollbar.c1 - 3) * cols;
+                        while (self.selected_ix / (self.r2 - self.r1 - 2) < target_col)
+                            self.right();
+                        while (self.selected_ix / (self.r2 - self.r1 - 2) > target_col)
+                            self.left();
                     },
                     .toward_right => {
                         self.cmt = .hscr_toward_right;
-                        // self.scroll_dim = @min(self.scroll_dim + (self.r2 - self.r1 - 2), self.items.len - (self.r2 - self.r1 - 2));
+                        for (0..cols) |_|
+                            self.right();
                     },
                     .right => {
                         self.cmt = .hscr_right;
                         self.right();
                     },
                 }
-                // TODO: wonks
+                // left/right do the selection and scrolling, thanks to
+                // hscrollbars' weirdness in QB.
+                return self.control();
             }
         } else if (!self.horizontal and (self.imtui.mouse_col == self.c2 - 1 or (cm and self.cmt != null and self.cmt.?.isVscr()))) {
             if (self.vscrollbar.hit(self.imtui.mouse_row, cm, self.cmt)) |hit| {

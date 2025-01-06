@@ -19,6 +19,7 @@ pub const Impl = struct {
     r: usize = undefined,
     c: usize = undefined,
     label: []const u8 = undefined,
+    padding: usize = undefined,
     accel: ?u8 = undefined,
 
     // state
@@ -47,6 +48,7 @@ pub const Impl = struct {
         self.r = self.dialog.r1 + r;
         self.c = self.dialog.c1 + c;
         self.label = label;
+        self.padding = 1;
         self.accel = Imtui.Controls.acceleratorFor(label);
     }
 
@@ -85,16 +87,16 @@ pub const Impl = struct {
             textcolour = 0x07;
         }
 
-        const ec = self.c + 2 + Imtui.Controls.lenWithoutAccelerators(self.label) + 1;
+        const ec = self.c + 1 + self.padding + Imtui.Controls.lenWithoutAccelerators(self.label) + self.padding;
         self.imtui.text_mode.paint(self.r, self.c + 1, self.r + 1, ec, textcolour, .Blank);
 
         self.imtui.text_mode.paint(self.r, self.c, self.r + 1, self.c + 1, arrowcolour, '<');
-        self.imtui.text_mode.writeAccelerated(self.r, self.c + 2, self.label, self.dialog.show_acc and !self.inverted);
+        self.imtui.text_mode.writeAccelerated(self.r, self.c + 1 + self.padding, self.label, self.dialog.show_acc and !self.inverted);
         self.imtui.text_mode.paint(self.r, ec, self.r + 1, ec + 1, arrowcolour, '>');
 
         if (self.imtui.focused(self.control())) {
             self.imtui.text_mode.cursor_row = self.r;
-            self.imtui.text_mode.cursor_col = self.c + 2;
+            self.imtui.text_mode.cursor_col = self.c + 1 + self.padding;
         }
     }
 
@@ -181,6 +183,10 @@ pub fn default(self: DialogButton) void {
 
 pub fn cancel(self: DialogButton) void {
     self.impl.dialog.cancel_button = self.impl;
+}
+
+pub fn padding(self: DialogButton, n: usize) void {
+    self.impl.padding = n;
 }
 
 pub fn chosen(self: DialogButton) bool {
