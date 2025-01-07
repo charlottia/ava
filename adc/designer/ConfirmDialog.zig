@@ -4,11 +4,11 @@ const imtuilib = @import("imtui");
 const Imtui = imtuilib.Imtui;
 const Designer = @import("./Designer.zig");
 
-pub fn WithTag(comptime Tag: type) type {
+pub fn WithTag(comptime Tag_: type) type {
     return struct {
         const ConfirmDialog = @This();
 
-        comptime Tag: type = Tag,
+        pub const Tag = Tag_;
 
         imtui: *Imtui,
         tag: Tag,

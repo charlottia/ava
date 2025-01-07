@@ -8,7 +8,7 @@ const ini = @import("ini");
 const Imtui = imtuilib.Imtui;
 const Preferences = ini.Preferences;
 
-pub const SaveDialog = @import("./SaveDialog.zig").WithTag(enum { new, save, open, exit });
+pub const SaveDialog = @import("./SaveDialog.zig").WithTag(enum { new, save, save_as, open, exit });
 const ReorderDialog = @import("./ReorderDialog.zig");
 pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { new_save, save_save, open_save, simulation_end });
 pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new });
@@ -331,93 +331,28 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var file_menu = try menubar.menu("&File", 16);
 
     var new = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
-    if (new.chosen()) {
-        if (!try self.dirtyCheck())
-            self.event = .new
-        else
-            self.unsaved_dialog = UnsavedDialog.init(self, .new);
-    }
+    if (new.chosen())
+        if (try self.startUnsaved(.new)) {
+            self.event = .new;
+        };
 
-    if (self.unsaved_dialog) |*ud| if (ud.finish(.new)) |r| {
-        self.unsaved_dialog = null;
-        switch (r) {
-            .save => {
-                // TODO: refactor w/ below
-                if (self.save_filename) |f| {
-                    // TODO: fix path/dir thing, see SaveDialog
-                    const h = try std.fs.cwd().createFile(f, .{});
-                    defer h.close();
-
-                    try self.dump(h.writer());
-
-                    self.confirm_dialog = try ConfirmDialog.init(self, .new_save, "", "Saved to \"{s}\".", .{f});
-                    if (self.snapshot) |s| self.imtui.allocator.free(s);
-                    self.snapshot = try self.dumpAlloc();
-                } else {
-                    self.save_dialog = try SaveDialog.init(self, .new, null);
-                }
-            },
-            .discard => self.event = .new,
-            .cancel => {},
-        }
-    };
-
-    if (self.save_dialog) |*sd| if (sd.finish(.new)) |r| {
-        self.save_dialog = null;
-        switch (r) {
-            .saved => {
-                self.confirm_dialog = try ConfirmDialog.init(self, .new_save, "", "Saved to \"{s}\".", .{self.save_filename.?});
-                if (self.snapshot) |s| self.imtui.allocator.free(s);
-                self.snapshot = try self.dumpAlloc();
-            },
-            .canceled => {},
-        }
-    };
-
-    if (self.confirm_dialog) |*cd| if (cd.finish(.new_save)) {
-        self.confirm_dialog = null;
+    if (try self.checkUnsaved(.new, .new_save))
         self.event = .new;
-    };
 
     // TODO NEXT NEXT: per above.
     _ = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
 
     var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");
-    if (save.chosen()) {
-        if (self.save_filename) |f| {
-            // TODO: fix path/dir thing, see SaveDialog
-            const h = try std.fs.cwd().createFile(f, .{});
-            defer h.close();
+    if (save.chosen())
+        try self.startSave(.save, .save_save);
 
-            try self.dump(h.writer());
-
-            self.confirm_dialog = try ConfirmDialog.init(self, .save_save, "", "Saved to \"{s}\".", .{f});
-            if (self.snapshot) |s| self.imtui.allocator.free(s);
-            self.snapshot = try self.dumpAlloc();
-        } else {
-            self.save_dialog = try SaveDialog.init(self, .save, null);
-        }
-    }
-
-    if (self.save_dialog) |*sd| if (sd.finish(.save)) |r| {
-        self.save_dialog = null;
-        switch (r) {
-            .saved => {
-                self.confirm_dialog = try ConfirmDialog.init(self, .save_save, "", "Saved to \"{s}\".", .{self.save_filename.?});
-                if (self.snapshot) |s| self.imtui.allocator.free(s);
-                self.snapshot = try self.dumpAlloc();
-            },
-            .canceled => {},
-        }
-    };
-
-    if (self.confirm_dialog) |*cd| if (cd.finish(.save_save)) {
-        self.confirm_dialog = null;
-    };
+    _ = try self.checkSave(.save, .save_save);
 
     var save_as = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
     if (save_as.chosen())
-        self.save_dialog = try SaveDialog.init(self, .save, self.save_filename);
+        self.save_dialog = try SaveDialog.init(self, .save_as, self.save_filename);
+
+    _ = try self.checkSave(.save_as, .save_save);
 
     try file_menu.separator();
 
@@ -876,4 +811,85 @@ fn dirtyCheck(self: *Designer) !bool {
     const compare = try self.dumpAlloc();
     defer self.imtui.allocator.free(compare);
     return !std.mem.eql(u8, self.snapshot.?, compare);
+}
+
+fn startUnsaved(self: *Designer, comptime unsaved_tag: UnsavedDialog.Tag) !bool {
+    if (!try self.dirtyCheck())
+        return true;
+    self.unsaved_dialog = UnsavedDialog.init(self, unsaved_tag);
+    return false;
+}
+
+fn checkUnsaved(
+    self: *Designer,
+    comptime unsaved_tag: UnsavedDialog.Tag,
+    comptime confirm_tag: ConfirmDialog.Tag,
+) !bool {
+    const save_tag = @field(SaveDialog.Tag, @tagName(unsaved_tag));
+
+    if (self.unsaved_dialog) |*ud| if (ud.finish(unsaved_tag)) |r| {
+        self.unsaved_dialog = null;
+        switch (r) {
+            .save => {
+                try self.startSave(save_tag, confirm_tag);
+                return false;
+            },
+            .discard => return true,
+            .cancel => return false,
+        }
+    };
+
+    return self.checkSave(save_tag, confirm_tag);
+}
+
+fn startSave(
+    self: *Designer,
+    comptime save_tag: SaveDialog.Tag,
+    comptime confirm_tag: ConfirmDialog.Tag,
+) !void {
+    const f = self.save_filename orelse {
+        self.save_dialog = try SaveDialog.init(self, save_tag, null);
+        return;
+    };
+
+    // TODO: fix path/dir thing, see SaveDialog
+    const h = try std.fs.cwd().createFile(f, .{});
+    defer h.close();
+
+    try self.dump(h.writer());
+
+    try self.confirmSaveAndSnapshot(confirm_tag);
+}
+
+fn confirmSaveAndSnapshot(self: *Designer, comptime confirm_tag: ConfirmDialog.Tag) !void {
+    self.confirm_dialog = try ConfirmDialog.init(
+        self,
+        confirm_tag,
+        "",
+        "Saved to \"{s}\".",
+        .{self.save_filename.?},
+    );
+    if (self.snapshot) |s| self.imtui.allocator.free(s);
+    self.snapshot = try self.dumpAlloc();
+}
+
+fn checkSave(
+    self: *Designer,
+    comptime save_tag: SaveDialog.Tag,
+    comptime confirm_tag: ConfirmDialog.Tag,
+) !bool {
+    if (self.save_dialog) |*sd| if (sd.finish(save_tag)) |r| {
+        self.save_dialog = null;
+        switch (r) {
+            .saved => try self.confirmSaveAndSnapshot(confirm_tag),
+            .canceled => return false,
+        }
+    };
+
+    if (self.confirm_dialog) |*cd| if (cd.finish(confirm_tag)) {
+        self.confirm_dialog = null;
+        return true;
+    };
+
+    return false;
 }

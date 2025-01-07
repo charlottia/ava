@@ -4,15 +4,14 @@ const imtuilib = @import("imtui");
 const Imtui = imtuilib.Imtui;
 const Designer = @import("./Designer.zig");
 
-pub fn WithTag(comptime Tag: type) type {
+pub fn WithTag(comptime Tag_: type) type {
     return struct {
         const SaveDialog = @This();
 
         pub const Result = enum { saved, canceled };
+        pub const Tag = Tag_;
 
         // TODO: Windows support!
-
-        comptime Tag: type = Tag,
 
         imtui: *Imtui,
         designer: *Designer,
@@ -81,7 +80,13 @@ pub fn WithTag(comptime Tag: type) type {
         }
 
         pub fn render(self: *SaveDialog) !void {
-            var dialog = try self.imtui.dialog("Save As", 19, 37, .centred);
+            // XXX
+            const title = switch (self.tag) {
+                .save => "Save",
+                .save_as => "Save As",
+                else => "",
+            };
+            var dialog = try self.imtui.dialog(title, 19, 37, .centred);
             self.rendered = dialog;
 
             dialog.label(2, 2, "File &Name:");
