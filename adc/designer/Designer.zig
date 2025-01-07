@@ -8,9 +8,10 @@ const ini = @import("ini");
 const Imtui = imtuilib.Imtui;
 const Preferences = ini.Preferences;
 
-const SaveDialog = @import("./SaveDialog.zig");
+pub const SaveDialog = @import("./SaveDialog.zig").WithTag(enum { new, save, open, exit });
 const ReorderDialog = @import("./ReorderDialog.zig");
-pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { save, simulation });
+pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { new_save, save_save, open_save, simulation_end });
+pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new });
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
@@ -104,10 +105,10 @@ prefs: Prefs,
 
 event: ?enum { new } = null,
 save_filename: ?[]const u8, // TODO: need directory here too; SaveDialog has it.
-dirty: bool = false,
 underlay_filename: ?[]const u8,
 underlay_texture: ?SDL.Texture,
 controls: std.ArrayListUnmanaged(DesignControl),
+snapshot: ?[]u8 = null,
 
 inhibit_underlay: bool = false,
 design_root: *DesignRoot.Impl = undefined,
@@ -118,6 +119,7 @@ display: enum { behind, design_only, in_front } = .behind,
 save_dialog: ?SaveDialog = null,
 reorder_dialog: ?ReorderDialog = null,
 confirm_dialog: ?ConfirmDialog = null,
+unsaved_dialog: ?UnsavedDialog = null,
 
 pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: ?[]const u8) !Designer {
     const texture = if (underlay) |n| try loadTextureFromFile(imtui.allocator, renderer, n) else null;
@@ -196,6 +198,8 @@ pub fn deinit(self: *Designer) void {
         d.deinit();
     if (self.save_dialog) |*d|
         d.deinit();
+    if (self.snapshot) |s|
+        self.imtui.allocator.free(s);
     for (self.controls.items) |c|
         c.deinit(self.imtui);
     self.controls.deinit(self.imtui.allocator);
@@ -214,6 +218,12 @@ pub fn dump(self: *const Designer, writer: anytype) !void {
     }
 }
 
+fn dumpAlloc(self: *const Designer) ![]u8 {
+    var buf = std.ArrayListUnmanaged(u8){};
+    try self.dump(buf.writer(self.imtui.allocator));
+    return try buf.toOwnedSlice(self.imtui.allocator);
+}
+
 fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: []const u8) !?SDL.Texture {
     if (filename.len == 0)
         return null;
@@ -226,6 +236,9 @@ fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: [
 }
 
 pub fn render(self: *Designer) !void {
+    if (self.snapshot == null)
+        self.snapshot = try self.dumpAlloc();
+
     self.imtui.text_mode.cursor_inhibit = true;
 
     if (self.simulating) {
@@ -243,10 +256,7 @@ pub fn render(self: *Designer) !void {
 
         if (self.save_dialog) |*d| {
             self.dialogPrep();
-            if (!try d.render()) {
-                d.deinit();
-                self.save_dialog = null;
-            }
+            try d.render();
         }
 
         if (self.reorder_dialog) |*d| {
@@ -255,6 +265,11 @@ pub fn render(self: *Designer) !void {
                 d.deinit();
                 self.reorder_dialog = null;
             }
+        }
+
+        if (self.unsaved_dialog) |*d| {
+            self.dialogPrep();
+            try d.render();
         }
     }
 
@@ -317,16 +332,52 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     var new = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
     if (new.chosen()) {
-        if (!self.dirty) {
-            self.event = .new;
-        } else {
-            // TODO NEXT: set dirty flag everywhere, this should pop up "unsaved
-            // changes", note we'll need that to be dispatched to/from a number
-            // of places!
-            std.log.debug("bwark", .{});
-            self.event = .new;
-        }
+        if (!try self.dirtyCheck())
+            self.event = .new
+        else
+            self.unsaved_dialog = UnsavedDialog.init(self, .new);
     }
+
+    if (self.unsaved_dialog) |*ud| if (ud.finish(.new)) |r| {
+        self.unsaved_dialog = null;
+        switch (r) {
+            .save => {
+                // TODO: refactor w/ below
+                if (self.save_filename) |f| {
+                    // TODO: fix path/dir thing, see SaveDialog
+                    const h = try std.fs.cwd().createFile(f, .{});
+                    defer h.close();
+
+                    try self.dump(h.writer());
+
+                    self.confirm_dialog = try ConfirmDialog.init(self, .new_save, "", "Saved to \"{s}\".", .{f});
+                    if (self.snapshot) |s| self.imtui.allocator.free(s);
+                    self.snapshot = try self.dumpAlloc();
+                } else {
+                    self.save_dialog = try SaveDialog.init(self, .new, null);
+                }
+            },
+            .discard => self.event = .new,
+            .cancel => {},
+        }
+    };
+
+    if (self.save_dialog) |*sd| if (sd.finish(.new)) |r| {
+        self.save_dialog = null;
+        switch (r) {
+            .saved => {
+                self.confirm_dialog = try ConfirmDialog.init(self, .new_save, "", "Saved to \"{s}\".", .{self.save_filename.?});
+                if (self.snapshot) |s| self.imtui.allocator.free(s);
+                self.snapshot = try self.dumpAlloc();
+            },
+            .canceled => {},
+        }
+    };
+
+    if (self.confirm_dialog) |*cd| if (cd.finish(.new_save)) {
+        self.confirm_dialog = null;
+        self.event = .new;
+    };
 
     // TODO NEXT NEXT: per above.
     _ = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
@@ -334,24 +385,39 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");
     if (save.chosen()) {
         if (self.save_filename) |f| {
+            // TODO: fix path/dir thing, see SaveDialog
             const h = try std.fs.cwd().createFile(f, .{});
             defer h.close();
 
             try self.dump(h.writer());
 
-            self.confirm_dialog = try ConfirmDialog.init(self, .save, "", "Saved to \"{s}\".", .{f});
+            self.confirm_dialog = try ConfirmDialog.init(self, .save_save, "", "Saved to \"{s}\".", .{f});
+            if (self.snapshot) |s| self.imtui.allocator.free(s);
+            self.snapshot = try self.dumpAlloc();
         } else {
-            self.save_dialog = try SaveDialog.init(self, null);
+            self.save_dialog = try SaveDialog.init(self, .save, null);
         }
     }
 
-    if (self.confirm_dialog) |*cd| if (cd.finish(.save)) {
+    if (self.save_dialog) |*sd| if (sd.finish(.save)) |r| {
+        self.save_dialog = null;
+        switch (r) {
+            .saved => {
+                self.confirm_dialog = try ConfirmDialog.init(self, .save_save, "", "Saved to \"{s}\".", .{self.save_filename.?});
+                if (self.snapshot) |s| self.imtui.allocator.free(s);
+                self.snapshot = try self.dumpAlloc();
+            },
+            .canceled => {},
+        }
+    };
+
+    if (self.confirm_dialog) |*cd| if (cd.finish(.save_save)) {
         self.confirm_dialog = null;
     };
 
     var save_as = (try file_menu.item("Save &As...")).help("Saves current dialog with specified name");
     if (save_as.chosen())
-        self.save_dialog = try SaveDialog.init(self, self.save_filename);
+        self.save_dialog = try SaveDialog.init(self, .save, self.save_filename);
 
     try file_menu.separator();
 
@@ -646,7 +712,7 @@ fn renderSimulation(self: *Designer) !void {
                     b.cancel();
                 b.padding(p.schema.padding);
                 if (b.chosen())
-                    self.confirm_dialog = try ConfirmDialog.init(self, .simulation, "Simulation end", "\"{s}\" button pressed.", .{p.schema.text});
+                    self.confirm_dialog = try ConfirmDialog.init(self, .simulation_end, "Simulation end", "\"{s}\" button pressed.", .{p.schema.text});
             },
             .input => |p| _ = try dialog.input(p.schema.r1, p.schema.c1, p.schema.c2),
             .radio => |p| _ = try dialog.radio(p.schema.r1, p.schema.c1, p.schema.text),
@@ -668,7 +734,7 @@ fn renderSimulation(self: *Designer) !void {
 
     try dialog.end();
 
-    if (self.confirm_dialog) |*cd| if (cd.finish(.simulation)) {
+    if (self.confirm_dialog) |*cd| if (cd.finish(.simulation_end)) {
         self.confirm_dialog = null;
         self.simulating = false;
 
@@ -804,4 +870,10 @@ fn designSimulatable(self: *const Designer) bool {
             .button, .input, .radio, .checkbox, .select => return true,
         };
     return false;
+}
+
+fn dirtyCheck(self: *Designer) !bool {
+    const compare = try self.dumpAlloc();
+    defer self.imtui.allocator.free(compare);
+    return !std.mem.eql(u8, self.snapshot.?, compare);
 }

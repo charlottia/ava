@@ -83,6 +83,9 @@ pub fn main() !void {
         if (designer.event) |ev| switch (ev) {
             .new => {
                 designer.deinit();
+                // Flush Imtui.
+                try imtui.newFrame();
+                try imtui.newFrame();
                 designer = try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, null);
                 // Ensure we have a control hierarchy before possibly looping
                 // and passing any events to Imtui.
