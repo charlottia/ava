@@ -6,8 +6,6 @@ const Designer = @import("./Designer.zig");
 
 const ReorderDialog = @This();
 
-// TODO: Windows support!
-
 imtui: *Imtui,
 designer: *Designer,
 ixs: std.ArrayListUnmanaged(usize),

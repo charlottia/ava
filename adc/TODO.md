@@ -13,18 +13,20 @@ Last steps:
 * [x] new/open/save in designer itself
   * [x] XXX Current crash: start program no args, move dialog 1px, File > New
         Program, Yes.
-* [ ] fix re-save in other directory
-* [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
-  * [-] don't crash on bad open
+* [x] fix re-save in other directory
 * [x] Select doesn't show selection until you actually force/make one, and doing
       so un-'selects' all other Selects on the dialog; pressing up or down just
       focuses the horizontal control, but left or right focuses and moves. u/d/l/r
       just focus the vertical control. note difference in behaviour between these
       and the Display Options colour pickers, which always show their selected
       item.
-* [ ] showing the current filename somewhere would be nice
-* [ ] horizontal select focus needs to focus on click
+* [x] showing the current filename somewhere would be nice
+* [x] horizontal select focus needs to focus on click
 * [ ] a way to choose an underlay
+* [ ] double-click on dir/file should action
+* [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
+  * [ ] don't crash on bad open
+* [ ] OpenDialog patterns
 
 ---
 

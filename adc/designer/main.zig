@@ -80,6 +80,7 @@ pub fn main() !void {
 
         app.renderer.present();
 
+        // This is quite the hack, but I don't really mind having it here for now.
         if (designer.event) |ev| switch (ev) {
             .new => {
                 designer.deinit();

@@ -90,7 +90,7 @@ pub const Impl = struct {
         try self.imtui.focus(self.control());
     }
 
-    pub fn value(self: *Impl, ix: usize) void {
+    fn setSelectedIx(self: *Impl, ix: usize) void {
         self.selected_ix = ix;
         self.changed = true;
         if (self.select_focus) {
@@ -100,6 +100,10 @@ pub const Impl = struct {
                 };
             self.selected_ix_focused = true;
         }
+    }
+
+    pub fn value(self: *Impl, ix: usize) void {
+        self.setSelectedIx(ix);
 
         if (self.horizontal) {
             while (ix < self.scroll_dim * (self.r2 - self.r1 - 2))
@@ -245,9 +249,9 @@ pub const Impl = struct {
                     },
                 }
                 if (self.selected_ix < self.scroll_dim)
-                    self.selected_ix = self.scroll_dim
+                    self.setSelectedIx(self.scroll_dim)
                 else if (self.selected_ix > self.scroll_dim + (self.r2 - self.r1 - 3))
-                    self.selected_ix = self.scroll_dim + (self.r2 - self.r1 - 3);
+                    self.setSelectedIx(self.scroll_dim + (self.r2 - self.r1 - 3));
                 return self.control();
             }
         }
@@ -313,7 +317,7 @@ pub const Impl = struct {
                         break;
                 }
                 if (self.imtui.mouse_row == r and self.imtui.mouse_col >= c and self.imtui.mouse_col < c + HORIZONTAL_WIDTH + 3)
-                    self.selected_ix = offset + ix;
+                    self.setSelectedIx(offset + ix);
             }
         } else {
             if (self.imtui.mouse_row <= self.r1 or
@@ -331,7 +335,7 @@ pub const Impl = struct {
             }
 
             try self.imtui.focus(self.control());
-            self.selected_ix = self.imtui.mouse_row - self.r1 - 1 + self.scroll_dim;
+            self.setSelectedIx(self.imtui.mouse_row - self.r1 - 1 + self.scroll_dim);
         }
     }
 

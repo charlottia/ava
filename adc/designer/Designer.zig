@@ -112,7 +112,7 @@ event: ?union(enum) {
     new,
     open: []u8,
 } = null,
-save_filename: ?[]const u8, // TODO: need directory here too; SaveDialog has it.
+save_filename: ?[]const u8,
 underlay_filename: ?[]const u8,
 underlay_texture: ?SDL.Texture,
 controls: std.ArrayListUnmanaged(DesignControl),
@@ -194,7 +194,7 @@ pub fn initFromIni(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, inifile:
     return .{
         .imtui = imtui,
         .prefs = prefs,
-        .save_filename = try imtui.allocator.dupe(u8, inifile),
+        .save_filename = try std.fs.cwd().realpathAlloc(imtui.allocator, inifile),
         .underlay_filename = save_file.underlay,
         .underlay_texture = texture,
         .controls = controls,
@@ -662,6 +662,10 @@ fn renderHelpLine(self: *Designer, focused_dc: ?DesignControl, menubar: Imtui.Co
         if (unfocus_shortcut.chosen())
             self.imtui.unfocus(f.control());
     } else {
+        if (self.save_filename) |f|
+            self.imtui.text_mode.write(24, 1, f)
+        else
+            self.imtui.text_mode.write(24, 1, "Untitled");
         var next_button = try self.imtui.button(24, 61, 0x30, "<Tab=Focus Dialog>");
         var next_shortcut = try self.imtui.shortcut(.tab, null);
         if (next_button.chosen() or next_shortcut.chosen())
@@ -908,7 +912,6 @@ fn startSave(
         return;
     };
 
-    // TODO: fix path/dir thing, see SaveDialog
     const h = try std.fs.cwd().createFile(f, .{});
     defer h.close();
 

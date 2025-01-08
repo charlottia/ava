@@ -93,7 +93,6 @@ pub fn deinit(self: Control) void {
     self.vtable.deinit(self.ptr);
 }
 
-// TODO: merge below two, only used by Dialog itself
 pub fn accelGet(self: Control) ?u8 {
     return self.vtable.accelGet.?(self.ptr);
 }
