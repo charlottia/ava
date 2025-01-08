@@ -9,6 +9,7 @@ const Imtui = imtuilib.Imtui;
 const Preferences = ini.Preferences;
 
 pub const SaveDialog = @import("./SaveDialog.zig").WithTag(enum { new, save, save_as, open, exit });
+const OpenDialog = @import("./OpenDialog.zig");
 const ReorderDialog = @import("./ReorderDialog.zig");
 pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { new_save, save_save, open_save, simulation_end });
 pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new });
@@ -117,6 +118,7 @@ next_focus: ?usize = null,
 simulating: bool = false,
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog: ?SaveDialog = null,
+open_dialog: ?OpenDialog = null,
 reorder_dialog: ?ReorderDialog = null,
 confirm_dialog: ?ConfirmDialog = null,
 unsaved_dialog: ?UnsavedDialog = null,
@@ -339,8 +341,10 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     if (try self.checkUnsaved(.new, .new_save))
         self.event = .new;
 
-    // TODO NEXT NEXT: per above.
-    _ = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
+    var open = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
+    if (open.chosen()) {
+        // TODO
+    }
 
     var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");
     if (save.chosen())
@@ -634,7 +638,13 @@ fn renderSimulation(self: *Designer) !void {
 
     const dp = &self.controls.items[0].dialog;
 
-    var dialog = try self.imtui.dialog(dp.schema.text, dp.schema.r2 - dp.schema.r1, dp.schema.c2 - dp.schema.c1, .centred);
+    var dialog = try self.imtui.dialog(
+        "designer.SimulationDialog",
+        dp.schema.text,
+        dp.schema.r2 - dp.schema.r1,
+        dp.schema.c2 - dp.schema.c1,
+        .centred,
+    );
 
     for (self.controls.items[1..]) |i| {
         switch (i) {
@@ -689,7 +699,7 @@ fn exportZig(self: *const Designer) !void {
     try out.writeAll("fn renderDialog(self: *T) !void {\n");
     try std.fmt.format(
         out,
-        "    var dialog = try self.imtui.dialog(\"{}\", {d}, {d}, .centred);\n",
+        "    var dialog = try self.imtui.dialog(\"TODO\", \"{}\", {d}, {d}, .centred);\n",
         .{ std.zig.fmtEscapes(dp.schema.text), dp.schema.r2 - dp.schema.r1, dp.schema.c2 - dp.schema.c1 },
     );
     for (self.controls.items[1..]) |i| {

@@ -167,7 +167,7 @@ pub const Impl = struct {
 impl: *Impl,
 
 pub fn bufPrintImtuiId(buf: []u8, dialog: *Dialog.Impl, ix: usize, _: usize, _: usize, _: []const u8) ![]const u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d}/{d}", .{ "core.DialogRadio", dialog.id, ix });
+    return try std.fmt.bufPrint(buf, "{s}/{s}/{d}", .{ "core.DialogRadio", dialog.ident, ix });
 }
 
 pub fn create(imtui: *Imtui, dialog: *Dialog.Impl, ix: usize, r: usize, c: usize, label: []const u8) !DialogRadio {

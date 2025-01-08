@@ -45,7 +45,7 @@ pub fn WithTag(comptime Tag_: type) type {
         pub fn render(self: *ConfirmDialog) !void {
             const w = @max(self.text.len + 6, 12);
 
-            var dialog = try self.imtui.dialog(self.title, 7, w, .centred);
+            var dialog = try self.imtui.dialog("designer.ConfirmDialog", self.title, 7, w, .centred);
             self.rendered = dialog;
 
             self.imtui.text_mode.write(

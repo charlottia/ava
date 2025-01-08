@@ -58,7 +58,7 @@ pub fn deinit(self: *ReorderDialog) void {
 pub fn render(self: *ReorderDialog) !bool {
     var open = true;
 
-    var dialog = try self.imtui.dialog("Reorder", 20, 47, .centred);
+    var dialog = try self.imtui.dialog("designer.ReorderDialog", "Reorder", 20, 47, .centred);
 
     dialog.label(1, 11, "&Controls");
 

@@ -80,13 +80,12 @@ pub fn WithTag(comptime Tag_: type) type {
         }
 
         pub fn render(self: *SaveDialog) !void {
-            // XXX
             const title = switch (self.tag) {
                 .save => "Save",
                 .save_as => "Save As",
                 else => "",
             };
-            var dialog = try self.imtui.dialog(title, 19, 37, .centred);
+            var dialog = try self.imtui.dialog("designer.SaveDialog", title, 19, 37, .centred);
             self.rendered = dialog;
 
             dialog.label(2, 2, "File &Name:");
@@ -120,13 +119,21 @@ pub fn WithTag(comptime Tag_: type) type {
             var ok = try dialog.button(17, 9, "OK");
             ok.default();
             if (ok.chosen()) {
-                const stay_open = try self.process(input.impl.value);
-                dirs_drives.impl.selected_ix = 0;
-                dirs_drives.impl.selected_ix_focused = false;
-                if (stay_open)
-                    try self.imtui.focus(input.impl.control())
-                else
+                if (std.mem.endsWith(u8, input.impl.value.items, "/")) {
+                    const new_cwd = try self.cwd.openDir(input.impl.value.items, .{ .iterate = true });
+                    self.clearCwd();
+                    try self.setCwd(new_cwd);
+
+                    input.impl.value.clearRetainingCapacity();
+                    dirs_drives.impl.selected_ix = 0;
+                    dirs_drives.impl.selected_ix_focused = false;
+                    try self.imtui.focus(input.impl.control());
+                } else if (input.impl.value.items.len == 0) {
+                    // TODO: "Must specify name"
+                } else {
+                    try self.process(input.impl.value.items);
                     self.finished = .saved;
+                }
             }
 
             var cancel = try dialog.button(17, 18, "Cancel");
@@ -137,24 +144,11 @@ pub fn WithTag(comptime Tag_: type) type {
             try dialog.end();
         }
 
-        fn process(self: *SaveDialog, input: *std.ArrayListUnmanaged(u8)) !bool {
-            if (std.mem.endsWith(u8, input.items, "/")) {
-                const new_cwd = try self.cwd.openDir(input.items, .{ .iterate = true });
-                self.clearCwd();
-                try self.setCwd(new_cwd);
-
-                input.clearRetainingCapacity();
-                return true;
-            }
-
-            if (input.items.len == 0)
-                // TODO: "Must specify name"
-                return true;
-
-            const h = self.cwd.createFile(input.items, .{}) catch |e| {
-                // TODO: register this somehow
-                std.log.debug("failed to open file for writing '{s}': {any}", .{ input.items, e });
-                return true;
+        fn process(self: *SaveDialog, filename: []const u8) !void {
+            const h = self.cwd.createFile(filename, .{}) catch |e| {
+                // TODO: dialog and don't mark as saved
+                std.log.debug("failed to open file for writing '{s}': {any}", .{ filename, e });
+                return;
             };
             {
                 defer h.close();
@@ -166,9 +160,7 @@ pub fn WithTag(comptime Tag_: type) type {
                 self.imtui.allocator.free(n);
                 self.designer.save_filename = null;
             }
-            self.designer.save_filename = try self.imtui.allocator.dupe(u8, input.items);
-
-            return false;
+            self.designer.save_filename = try self.imtui.allocator.dupe(u8, filename);
         }
     };
 }

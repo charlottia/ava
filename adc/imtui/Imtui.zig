@@ -295,8 +295,8 @@ pub fn shortcut(self: *Imtui, keycode: SDL.Keycode, modifier: ?ShortcutModifier)
     return self.getOrPutControl(Controls.Shortcut, .{ keycode, modifier });
 }
 
-pub fn dialog(self: *Imtui, title: []const u8, height: usize, width: usize, position: Controls.Dialog.Position) !Controls.Dialog {
-    return self.getOrPutControl(Controls.Dialog, .{ title, height, width, position });
+pub fn dialog(self: *Imtui, ident: []const u8, title: []const u8, height: usize, width: usize, position: Controls.Dialog.Position) !Controls.Dialog {
+    return self.getOrPutControl(Controls.Dialog, .{ ident, title, height, width, position });
 }
 
 pub fn dialogradio(self: *Imtui, parent: *Controls.Dialog.Impl, r: usize, c: usize, label: []const u8) !Imtui.Controls.DialogRadio {

@@ -30,7 +30,7 @@ pub fn WithTag(comptime Tag_: type) type {
         }
 
         pub fn render(self: *UnsavedDialog) !void {
-            var dialog = try self.imtui.dialog("", 7, 60, .centred);
+            var dialog = try self.imtui.dialog("designer.UnsavedDialog", "", 7, 60, .centred);
             self.rendered = dialog;
 
             dialog.label(2, 3, "One or more loaded files are not saved. Save them now?");
