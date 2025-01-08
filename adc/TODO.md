@@ -26,7 +26,9 @@ Last steps:
 * [x] prompt for unsaved changes on exit
   * [x] even when invoked by window decoration/system
 * [x] double-click on dir/file should action
-* [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
+* [x] some edge cases, some crashing (usually element resize where r2<r1 etc.)
+  * Got some bad ones out of the way. Can still resize the dialog to maroon its
+    controls, and then drag the dialog so the controls become OOB.
   * [ ] don't crash on bad open
 * [ ] OpenDialog patterns
 

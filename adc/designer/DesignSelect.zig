@@ -63,7 +63,7 @@ pub const Impl = DesignBehaviours.Impl(struct {
             var c = x.c1 + 1;
             for (ITEMS, 0..) |n, ix| {
                 r += 1;
-                if (r == x.r2 - 1) {
+                if (r >= x.r2 - 1) {
                     r = x.r1 + 1;
                     c += width + 2;
                     if (c + width + 3 > x.c2 - 1)
@@ -74,7 +74,9 @@ pub const Impl = DesignBehaviours.Impl(struct {
                 self.imtui.text_mode.write(r, c + 1, n);
             }
 
-            _ = self.imtui.text_mode.hscrollbar(x.r2 - 1, x.c1 + 1, x.c2 - 1, 0, 0);
+            // NOTE: we make such allowances here, but not in DialogSelect yet!
+            if (x.c2 - 1 > x.c1 + 1 + 2)
+                _ = self.imtui.text_mode.hscrollbar(x.r2 - 1, x.c1 + 1, x.c2 - 1, 0, 0);
         } else {
             for (ITEMS, 0..) |n, ix| {
                 const r = x.r1 + 1 + ix;
@@ -84,7 +86,8 @@ pub const Impl = DesignBehaviours.Impl(struct {
                 self.imtui.text_mode.write(r, x.c1 + 2, n);
             }
 
-            _ = self.imtui.text_mode.vscrollbar(x.c2 - 1, x.r1 + 1, x.r2 - 1, 0, 0);
+            if (x.r2 - 1 > x.r1 + 1 + 2)
+                _ = self.imtui.text_mode.vscrollbar(x.c2 - 1, x.r1 + 1, x.r2 - 1, 0, 0);
         }
     }
 

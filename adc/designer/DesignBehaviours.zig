@@ -258,22 +258,24 @@ pub fn Impl(comptime Config: type) type {
             switch (self.state) {
                 .idle => switch (keycode) {
                     .up => if (Archetypes.sizing == .wh_resizable and shift) {
-                        self.fields.r2 -|= 1;
+                        self.fields.r2 = @max(self.fields.r1 + 2, self.fields.r2 -| 1);
                     } else {
                         _ = self.adjustRow(-1);
                     },
                     .down => if (Archetypes.sizing == .wh_resizable and shift) {
-                        self.fields.r2 += 1;
+                        const max_r2 = if (Archetypes.dialog) self.imtui.text_mode.H else self.fields.dialog.fields.r2 - self.fields.dialog.fields.r1;
+                        self.fields.r2 = @min(max_r2, self.fields.r2 + 1);
                     } else {
                         _ = self.adjustRow(1);
                     },
                     .left => if (Archetypes.sizing != .autosized and shift) {
-                        self.fields.c2 -|= 1;
+                        self.fields.c2 = @max(self.fields.c1 + 2, self.fields.c2 -| 1);
                     } else {
                         _ = self.adjustCol(-1);
                     },
                     .right => if (Archetypes.sizing != .autosized and shift) {
-                        self.fields.c2 += 1;
+                        const max_c2 = if (Archetypes.dialog) self.imtui.text_mode.W else self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1;
+                        self.fields.c2 = @min(max_c2, self.fields.c2 + 1);
                     } else {
                         _ = self.adjustCol(1);
                     },
@@ -458,17 +460,45 @@ pub fn Impl(comptime Config: type) type {
                     if (Archetypes.sizing != .autosized and tag == .resize) {
                         if (Archetypes.sizing == .width_resizable)
                             switch (d.end) {
-                                0 => self.fields.c1 = self.imtui.text_mode.mouse_col -| self.fields.dialog.fields.c1,
-                                1 => self.fields.c2 = @min(self.imtui.text_mode.mouse_col + 1 -| self.fields.dialog.fields.c1, self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1),
+                                0 => self.fields.c1 = @min(
+                                    self.imtui.text_mode.mouse_col -| self.fields.dialog.fields.c1,
+                                    self.fields.c2 - 1,
+                                ),
+                                1 => self.fields.c2 = @max(self.fields.c1 + 1, @min(
+                                    self.imtui.text_mode.mouse_col + 1 -| self.fields.dialog.fields.c1,
+                                    self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1,
+                                )),
                             }
                         else if (Archetypes.sizing == .wh_resizable) {
                             switch (d.cix) {
-                                0, 1 => self.fields.r1 = self.imtui.text_mode.mouse_row - (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0),
-                                2, 3 => self.fields.r2 = self.imtui.text_mode.mouse_row + 1 -| (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0),
+                                0, 1 => {
+                                    self.fields.r1 = @min(
+                                        self.fields.r2 - 2,
+                                        self.imtui.text_mode.mouse_row -| (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0),
+                                    );
+                                },
+                                2, 3 => {
+                                    const max_r2 = if (Archetypes.dialog) self.imtui.text_mode.H else self.fields.dialog.fields.r2 - self.fields.dialog.fields.r1;
+                                    self.fields.r2 = @min(max_r2, @max(
+                                        self.fields.r1 + 2,
+                                        self.imtui.text_mode.mouse_row + 1 -| (if (!Archetypes.dialog) self.fields.dialog.fields.r1 else 0),
+                                    ));
+                                },
                             }
                             switch (d.cix) {
-                                0, 2 => self.fields.c1 = self.imtui.text_mode.mouse_col - (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0),
-                                1, 3 => self.fields.c2 = self.imtui.text_mode.mouse_col + 1 -| (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0),
+                                0, 2 => {
+                                    self.fields.c1 = @min(
+                                        self.fields.c2 - 2,
+                                        self.imtui.text_mode.mouse_col -| (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0),
+                                    );
+                                },
+                                1, 3 => {
+                                    const max_c2 = if (Archetypes.dialog) self.imtui.text_mode.W else self.fields.dialog.fields.c2 - self.fields.dialog.fields.c1;
+                                    self.fields.c2 = @min(max_c2, @max(
+                                        self.fields.c1 + 2,
+                                        self.imtui.text_mode.mouse_col + 1 -| (if (!Archetypes.dialog) self.fields.dialog.fields.c1 else 0),
+                                    ));
+                                },
                             }
                         } else unreachable;
                     } else {
