@@ -216,103 +216,62 @@ fn acceptFactor(self: *Parser) !?Expr {
     return null;
 }
 
-// TODO: comptime wonk to define accept(Term,Expr,Cond) in common?
-fn acceptTerm(self: *Parser) !?Expr {
-    var f = try self.acceptFactor() orelse return null;
-    errdefer f.deinit(self.allocator);
-
-    while (true) {
-        const op = op: {
-            if (self.accept(.asterisk)) |o|
-                break :op WithRange(Expr.Op).init(.mul, o.range)
-            else if (self.accept(.fslash)) |o|
-                break :op WithRange(Expr.Op).init(.fdiv, o.range)
-            else if (self.accept(.bslash)) |o|
-                break :op WithRange(Expr.Op).init(.idiv, o.range);
-            return f;
-        };
-
-        const f2 = try self.acceptFactor() orelse return Error.UnexpectedToken;
-        errdefer f2.deinit(self.allocator);
-
-        const lhs = try self.allocator.create(Expr);
-        errdefer self.allocator.destroy(lhs);
-        lhs.* = f;
-
-        const rhs = try self.allocator.create(Expr);
-        rhs.* = f2;
-
-        f = Expr.init(.{ .binop = .{
-            .lhs = lhs,
-            .op = op,
-            .rhs = rhs,
-        } }, Range.initEnds(f.range, f2.range));
-    }
-}
-
-fn acceptExpr(self: *Parser) (Allocator.Error || Error)!?Expr {
-    var t = try self.acceptTerm() orelse return null;
+fn acceptTEC(self: *Parser, next: *const fn (*Parser) (Allocator.Error || Error)!?Expr, mappings: anytype) (Allocator.Error || Error)!?Expr {
+    var t = try next(self) orelse return null;
     errdefer t.deinit(self.allocator);
 
     while (true) {
         const op = op: {
-            if (self.accept(.plus)) |o|
-                break :op WithRange(Expr.Op).init(.add, o.range)
-            else if (self.accept(.minus)) |o|
-                break :op WithRange(Expr.Op).init(.sub, o.range)
-            else if (self.accept(.kw_mod)) |o| // XXX
-                break :op WithRange(Expr.Op).init(.mod, o.range);
+            inline for (std.meta.fields(@TypeOf(mappings))) |f| {
+                if (self.accept(@field(Token.Tag, f.name))) |o|
+                    break :op WithRange(Expr.Op).init(@field(mappings, f.name), o.range);
+            }
             return t;
         };
-        const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
-        errdefer t2.deinit(self.allocator);
+
+        const f2 = try next(self) orelse return Error.UnexpectedToken;
+        errdefer f2.deinit(self.allocator);
 
         const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
         lhs.* = t;
+
         const rhs = try self.allocator.create(Expr);
-        rhs.* = t2;
+        rhs.* = f2;
 
         t = Expr.init(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
-        } }, Range.initEnds(t.range, t2.range));
+        } }, Range.initEnds(t.range, f2.range));
     }
 }
 
+fn acceptTerm(self: *Parser) !?Expr {
+    return self.acceptTEC(acceptFactor, .{
+        .asterisk = .mul,
+        .fslash = .fdiv,
+        .bslash = .idiv,
+    });
+}
+
+fn acceptExpr(self: *Parser) (Allocator.Error || Error)!?Expr {
+    return self.acceptTEC(acceptTerm, .{
+        .plus = .add,
+        .minus = .sub,
+        .kw_mod = .mod, // XXX (not sure why; old)
+    });
+}
+
 fn acceptCond(self: *Parser) !?Expr {
-    const e = try self.acceptExpr() orelse return null;
-    errdefer e.deinit(self.allocator);
-    const op = op: {
-        if (self.accept(.equals)) |o|
-            break :op WithRange(Expr.Op).init(.eq, o.range)
-        else if (self.accept(.diamond)) |o|
-            break :op WithRange(Expr.Op).init(.neq, o.range)
-        else if (self.accept(.angleo)) |o|
-            break :op WithRange(Expr.Op).init(.lt, o.range)
-        else if (self.accept(.anglec)) |o|
-            break :op WithRange(Expr.Op).init(.gt, o.range)
-        else if (self.accept(.lte)) |o|
-            break :op WithRange(Expr.Op).init(.lte, o.range)
-        else if (self.accept(.gte)) |o|
-            break :op WithRange(Expr.Op).init(.gte, o.range);
-        return e;
-    };
-    const e2 = try self.acceptExpr() orelse return Error.UnexpectedToken;
-    errdefer e2.deinit(self.allocator);
-
-    const lhs = try self.allocator.create(Expr);
-    errdefer self.allocator.destroy(lhs);
-    lhs.* = e;
-    const rhs = try self.allocator.create(Expr);
-    rhs.* = e2;
-
-    return Expr.init(.{ .binop = .{
-        .lhs = lhs,
-        .op = op,
-        .rhs = rhs,
-    } }, Range.initEnds(e.range, e2.range));
+    return self.acceptTEC(acceptExpr, .{
+        .equals = .eq,
+        .diamond = .neq,
+        .angleo = .lt,
+        .anglec = .gt,
+        .lte = .lte,
+        .gte = .gte,
+    });
 }
 
 fn acceptExprList(self: *Parser, comptime septoks: []const Token.Tag, separators: ?*std.ArrayListUnmanaged(Token), trailing: bool) !?[]Expr {
