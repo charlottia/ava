@@ -1,3 +1,5 @@
+2025-01-08: designer is probably done-ish?
+
 2025-01-04: designer is pretty nyonk
 
 Last steps:
@@ -30,7 +32,8 @@ Last steps:
   * Got some bad ones out of the way. Can still resize the dialog to maroon its
     controls, and then drag the dialog so the controls become OOB.
   * [ ] don't crash on bad open
-* [ ] OpenDialog patterns
+    * eh later
+* [x] OpenDialog patterns
 
 ---
 

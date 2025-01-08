@@ -91,7 +91,12 @@ pub const Impl = struct {
     }
 
     fn setSelectedIx(self: *Impl, ix: usize) void {
-        self.selected_ix = ix;
+        if (self.items.len == 0) {
+            self.selected_ix = 0;
+            return;
+        }
+
+        self.selected_ix = @min(ix, self.items.len - 1);
         self.changed = true;
         if (self.select_focus) {
             for (self.dialog.controls.items) |c|
@@ -131,7 +136,7 @@ pub const Impl = struct {
     }
 
     fn right(self: *Impl) void {
-        self.value(@min(self.items.len - 1, self.selected_ix + (self.r2 - self.r1 - 2)));
+        self.value(@min(self.items.len -| 1, self.selected_ix + (self.r2 - self.r1 - 2)));
     }
 
     fn down(self: *Impl) void {
@@ -147,6 +152,9 @@ pub const Impl = struct {
             @intFromEnum(keycode) >= @intFromEnum(SDL.Keycode.a) and
             @intFromEnum(keycode) <= @intFromEnum(SDL.Keycode.z))
         {
+            if (self.items.len == 0)
+                return;
+
             // advance to next item starting with pressed key (if any)
             var next = (self.selected_ix + 1) % self.items.len;
             while (next != self.selected_ix) : (next = (next + 1) % self.items.len) {
@@ -415,7 +423,7 @@ pub fn end(self: DialogSelect) void {
             impl.c1 + 1,
             impl.c2 - 1,
             impl.scroll_dim,
-            (impl.items.len - 1) / (impl.r2 - impl.r1 - 2),
+            (impl.items.len -| 1) / (impl.r2 - impl.r1 - 2),
         );
 
         if (impl.imtui.focused(impl.control())) {

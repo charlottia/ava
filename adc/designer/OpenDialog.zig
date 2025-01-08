@@ -19,6 +19,7 @@ pub fn WithTag(comptime Tag_: type) type {
         imtui: *Imtui,
         designer: *Designer,
         tag: Tag,
+        filter: []u8,
         cwd: std.fs.Dir = undefined,
         cwd_name: []u8 = undefined,
         files: std.ArrayListUnmanaged([]u8) = undefined,
@@ -31,21 +32,24 @@ pub fn WithTag(comptime Tag_: type) type {
         }
 
         pub fn init(designer: *Designer, tag: Tag, ext: ?[]const u8) !OpenDialog {
-            // TODO
-            _ = ext;
-
             const imtui = designer.imtui;
 
             var d = OpenDialog{
                 .imtui = imtui,
                 .designer = designer,
                 .tag = tag,
+                .filter = if (ext) |e|
+                    try std.fmt.allocPrint(imtui.allocator, "*.{s}", .{e})
+                else
+                    try imtui.allocator.dupe(u8, "*.*"),
             };
             try d.setCwd(try std.fs.cwd().openDir(".", .{ .iterate = true }));
             return d;
         }
 
         fn setCwd(self: *OpenDialog, cwd: std.fs.Dir) !void {
+            std.debug.assert(std.mem.startsWith(u8, self.filter, "*."));
+
             self.cwd = cwd;
             self.cwd_name = try self.cwd.realpathAlloc(self.imtui.allocator, ".");
 
@@ -61,7 +65,8 @@ pub fn WithTag(comptime Tag_: type) type {
                 if (e.kind == .directory) {
                     try self.dirs.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, e.name));
                 } else if (e.kind == .file) {
-                    try self.files.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, e.name));
+                    if (std.mem.eql(u8, self.filter, "*.*") or std.ascii.endsWithIgnoreCase(e.name, self.filter[1..]))
+                        try self.files.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, e.name));
                 }
             }
 
@@ -82,6 +87,7 @@ pub fn WithTag(comptime Tag_: type) type {
 
         pub fn deinit(self: *OpenDialog) void {
             self.clearCwd();
+            self.imtui.allocator.free(self.filter);
         }
 
         pub fn finish(self: *OpenDialog, tag: Tag) ?Result {
@@ -103,6 +109,8 @@ pub fn WithTag(comptime Tag_: type) type {
             dialog.groupbox("", 1, 13, 4, 65, 0x70);
 
             var input = try dialog.input(2, 14, 64);
+            if (input.initial()) |v|
+                try v.appendSlice(self.imtui.allocator, self.filter);
 
             dialog.label(5, 2, self.cwd_name);
 
@@ -114,13 +122,15 @@ pub fn WithTag(comptime Tag_: type) type {
             files.horizontal();
             files.end();
 
-            if (files.changed()) |v|
+            if (files.changed()) |v| {
                 try input.impl.value.replaceRange(
                     self.imtui.allocator,
                     0,
                     input.impl.value.items.len,
                     self.files.items[v],
                 );
+                input.impl.el.cursor_col = self.files.items[v].len;
+            }
 
             dialog.label(6, 51, "&Dirs/Drives");
 
@@ -133,8 +143,8 @@ pub fn WithTag(comptime Tag_: type) type {
                 input.impl.value.clearRetainingCapacity();
                 try std.fmt.format(
                     input.impl.value.writer(self.imtui.allocator),
-                    "{s}/",
-                    .{self.dirs.items[v]},
+                    "{s}/{s}",
+                    .{ self.dirs.items[v], self.filter },
                 );
             }
 
@@ -143,12 +153,26 @@ pub fn WithTag(comptime Tag_: type) type {
             var ok = try dialog.button(19, 21, "OK");
             ok.default();
             if (ok.chosen()) {
-                if (std.mem.endsWith(u8, input.impl.value.items, "/")) {
-                    const new_cwd = try self.cwd.openDir(input.impl.value.items, .{ .iterate = true });
-                    self.clearCwd();
-                    try self.setCwd(new_cwd);
+                // TODO: openDir fails abort the program etc.
+                if (std.mem.indexOf(u8, input.impl.value.items, "*.") != null) {
+                    if (std.mem.lastIndexOfScalar(u8, input.impl.value.items, '/')) |fs| {
+                        self.imtui.allocator.free(self.filter);
+                        self.filter = try self.imtui.allocator.dupe(u8, input.impl.value.items[fs + 1 ..]);
 
-                    input.impl.value.clearRetainingCapacity();
+                        const new_cwd = try self.cwd.openDir(input.impl.value.items[0..fs], .{ .iterate = true });
+                        self.clearCwd();
+                        try self.setCwd(new_cwd);
+                    } else {
+                        self.imtui.allocator.free(self.filter);
+                        self.filter = try self.imtui.allocator.dupe(u8, input.impl.value.items);
+
+                        const cwd = try self.cwd.openDir(".", .{ .iterate = true });
+                        self.clearCwd();
+                        try self.setCwd(cwd);
+                    }
+
+                    input.impl.value.replaceRangeAssumeCapacity(0, input.impl.value.items.len, self.filter);
+                    input.impl.el.cursor_col = self.filter.len;
                     files.impl.selected_ix = 0;
                     files.impl.selected_ix_focused = false;
                     dirs_drives.impl.selected_ix = 0;

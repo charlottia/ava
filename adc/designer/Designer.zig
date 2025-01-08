@@ -134,9 +134,7 @@ reorder_dialog: ?ReorderDialog = null,
 confirm_dialog: ?ConfirmDialog = null,
 unsaved_dialog: ?UnsavedDialog = null,
 
-pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, underlay: ?[]const u8) !Designer {
-    const texture = if (underlay) |n| try loadTextureFromFile(imtui.allocator, renderer, n) else null;
-
+pub fn initDefault(imtui: *Imtui, prefs: Prefs) !Designer {
     var controls = std.ArrayListUnmanaged(DesignControl){};
     try controls.append(imtui.allocator, .{ .dialog = .{
         .schema = .{
@@ -154,20 +152,20 @@ pub fn initDefaultWithUnderlay(imtui: *Imtui, prefs: Prefs, renderer: SDL.Render
         .imtui = imtui,
         .prefs = prefs,
         .save_filename = null,
-        .underlay_filename = if (underlay) |n| try imtui.allocator.dupe(u8, n) else null,
-        .underlay_texture = texture,
+        .underlay_filename = null,
+        .underlay_texture = null,
         .controls = controls,
     };
 }
 
-pub fn initFromIni(imtui: *Imtui, prefs: Prefs, renderer: SDL.Renderer, inifile: []const u8) !Designer {
+pub fn initFromIni(imtui: *Imtui, prefs: Prefs, inifile: []const u8) !Designer {
     const data = try std.fs.cwd().readFileAllocOptions(imtui.allocator, inifile, 10485760, null, @alignOf(u8), 0);
     defer imtui.allocator.free(data);
 
     var p = ini.Parser.init(data, .report);
     const save_file = try SerDes.loadGroup(imtui.allocator, &p);
 
-    const texture = try loadTextureFromFile(imtui.allocator, renderer, save_file.underlay);
+    const texture = if (save_file.underlay.len > 0) try loadTextureFromFile(imtui.allocator, imtui.text_mode.renderer, save_file.underlay) else null;
     var controls = std.ArrayListUnmanaged(DesignControl){};
 
     while (try p.next()) |ev| {
@@ -241,9 +239,7 @@ fn dumpAlloc(self: *const Designer) ![]u8 {
     return try buf.toOwnedSlice(self.imtui.allocator);
 }
 
-fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: []const u8) !?SDL.Texture {
-    if (filename.len == 0)
-        return null;
+fn loadTextureFromFile(allocator: Allocator, renderer: SDL.Renderer, filename: []const u8) !SDL.Texture {
     const data = try std.fs.cwd().readFileAllocOptions(allocator, filename, 10485760, null, @alignOf(u8), 0);
     defer allocator.free(data);
     const texture = try SDL.image.loadTextureMem(renderer, data, .png);
@@ -421,7 +417,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
                     self.underlay_texture.?.destroy();
                 }
                 self.underlay_filename = path;
-                self.underlay_texture = (try loadTextureFromFile(self.imtui.allocator, self.imtui.text_mode.renderer, path)).?;
+                self.underlay_texture = try loadTextureFromFile(self.imtui.allocator, self.imtui.text_mode.renderer, path);
             },
             .canceled => {},
         }

@@ -35,9 +35,8 @@ pub fn main() !void {
     defer imtui.deinit();
 
     var designer: Designer = switch (args.mode) {
-        .empty => try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, null),
-        .new => |f| try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, f),
-        .load => |f| try Designer.initFromIni(imtui, prefs, app.renderer, f),
+        .empty => try Designer.initDefault(imtui, prefs),
+        .load => |f| try Designer.initFromIni(imtui, prefs, f),
     };
     defer designer.deinit();
 
@@ -87,7 +86,7 @@ pub fn main() !void {
                 // Flush Imtui.
                 try imtui.newFrame();
                 try imtui.newFrame();
-                designer = try Designer.initDefaultWithUnderlay(imtui, prefs, app.renderer, null);
+                designer = try Designer.initDefault(imtui, prefs);
                 // Ensure we have a control hierarchy before possibly looping
                 // and passing any events to Imtui.
                 try imtui.newFrame();
@@ -98,7 +97,7 @@ pub fn main() !void {
                 designer.deinit();
                 try imtui.newFrame();
                 try imtui.newFrame();
-                designer = try Designer.initFromIni(imtui, prefs, app.renderer, path);
+                designer = try Designer.initFromIni(imtui, prefs, path);
                 try imtui.newFrame();
                 try designer.render();
             },
