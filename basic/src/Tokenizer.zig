@@ -500,63 +500,12 @@ fn resolveExponent(self: *Tokenizer, double: bool, s: []const u8) !Token.Payload
         .{ .single = try std.fmt.parseFloat(f32, s2.items) };
 }
 
-// TODO: replace with table (same with other direction in Token.format).
 fn classifyBareword(bw: []const u8) Token.Payload {
-    if (std.ascii.eqlIgnoreCase(bw, "if")) {
-        return .kw_if;
-    } else if (std.ascii.eqlIgnoreCase(bw, "then")) {
-        return .kw_then;
-    } else if (std.ascii.eqlIgnoreCase(bw, "elseif")) {
-        return .kw_elseif;
-    } else if (std.ascii.eqlIgnoreCase(bw, "else")) {
-        return .kw_else;
-    } else if (std.ascii.eqlIgnoreCase(bw, "end")) {
-        return .kw_end;
-    } else if (std.ascii.eqlIgnoreCase(bw, "goto")) {
-        return .kw_goto;
-    } else if (std.ascii.eqlIgnoreCase(bw, "for")) {
-        return .kw_for;
-    } else if (std.ascii.eqlIgnoreCase(bw, "to")) {
-        return .kw_to;
-    } else if (std.ascii.eqlIgnoreCase(bw, "step")) {
-        return .kw_step;
-    } else if (std.ascii.eqlIgnoreCase(bw, "next")) {
-        return .kw_next;
-    } else if (std.ascii.eqlIgnoreCase(bw, "dim")) {
-        return .kw_dim;
-    } else if (std.ascii.eqlIgnoreCase(bw, "as")) {
-        return .kw_as;
-    } else if (std.ascii.eqlIgnoreCase(bw, "gosub")) {
-        return .kw_gosub;
-    } else if (std.ascii.eqlIgnoreCase(bw, "return")) {
-        return .kw_return;
-    } else if (std.ascii.eqlIgnoreCase(bw, "stop")) {
-        return .kw_stop;
-    } else if (std.ascii.eqlIgnoreCase(bw, "do")) {
-        return .kw_do;
-    } else if (std.ascii.eqlIgnoreCase(bw, "loop")) {
-        return .kw_loop;
-    } else if (std.ascii.eqlIgnoreCase(bw, "while")) {
-        return .kw_while;
-    } else if (std.ascii.eqlIgnoreCase(bw, "until")) {
-        return .kw_until;
-    } else if (std.ascii.eqlIgnoreCase(bw, "wend")) {
-        return .kw_wend;
-    } else if (std.ascii.eqlIgnoreCase(bw, "let")) {
-        return .kw_let;
-    } else if (std.ascii.eqlIgnoreCase(bw, "and")) {
-        return .kw_and;
-    } else if (std.ascii.eqlIgnoreCase(bw, "or")) {
-        return .kw_or;
-    } else if (std.ascii.eqlIgnoreCase(bw, "xor")) {
-        return .kw_xor;
-    } else if (std.ascii.eqlIgnoreCase(bw, "pragma")) {
-        return .kw_pragma;
-    } else if (std.ascii.eqlIgnoreCase(bw, "mod")) {
-        return .kw_mod;
-    } else {
-        return .{ .label = bw };
+    inline for (std.meta.fields(@TypeOf(Token.BarewordTable))) |f| {
+        if (std.ascii.eqlIgnoreCase(bw, @field(Token.BarewordTable, f.name)))
+            return @field(Token.Payload, f.name);
     }
+    return .{ .label = bw };
 }
 
 fn expectTokens(input: []const u8, expected: []const Token) !void {

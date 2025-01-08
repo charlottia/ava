@@ -108,34 +108,44 @@ pub const Payload = union(enum) {
             .diamond => try std.fmt.format(writer, "Diamond", .{}),
             .lte => try std.fmt.format(writer, "Lte", .{}),
             .gte => try std.fmt.format(writer, "Gte", .{}),
-            .kw_if => try std.fmt.format(writer, "IF", .{}),
-            .kw_then => try std.fmt.format(writer, "THEN", .{}),
-            .kw_elseif => try std.fmt.format(writer, "ELSEIF", .{}),
-            .kw_else => try std.fmt.format(writer, "ELSE", .{}),
-            .kw_end => try std.fmt.format(writer, "END", .{}),
-            .kw_goto => try std.fmt.format(writer, "GOTO", .{}),
-            .kw_for => try std.fmt.format(writer, "FOR", .{}),
-            .kw_to => try std.fmt.format(writer, "TO", .{}),
-            .kw_step => try std.fmt.format(writer, "STEP", .{}),
-            .kw_next => try std.fmt.format(writer, "NEXT", .{}),
-            .kw_dim => try std.fmt.format(writer, "DIM", .{}),
-            .kw_as => try std.fmt.format(writer, "AS", .{}),
-            .kw_gosub => try std.fmt.format(writer, "GOSUB", .{}),
-            .kw_return => try std.fmt.format(writer, "RETURN", .{}),
-            .kw_stop => try std.fmt.format(writer, "STOP", .{}),
-            .kw_do => try std.fmt.format(writer, "DO", .{}),
-            .kw_loop => try std.fmt.format(writer, "LOOP", .{}),
-            .kw_while => try std.fmt.format(writer, "WHILE", .{}),
-            .kw_until => try std.fmt.format(writer, "UNTIL", .{}),
-            .kw_wend => try std.fmt.format(writer, "WEND", .{}),
-            .kw_let => try std.fmt.format(writer, "LET", .{}),
-            .kw_and => try std.fmt.format(writer, "AND", .{}),
-            .kw_or => try std.fmt.format(writer, "OR", .{}),
-            .kw_xor => try std.fmt.format(writer, "XOR", .{}),
-            .kw_pragma => try std.fmt.format(writer, "PRAGMA", .{}),
-            .kw_mod => try std.fmt.format(writer, "MOD", .{}),
+            inline else => |_, tag| {
+                inline for (std.meta.fields(@TypeOf(BarewordTable))) |f| {
+                    if (comptime tag == @field(Self, f.name))
+                        return try std.fmt.format(writer, "{s}", .{@field(BarewordTable, f.name)});
+                }
+                @compileError("nope");
+            },
         }
     }
+};
+
+pub const BarewordTable = .{
+    .kw_if = "IF",
+    .kw_then = "THEN",
+    .kw_elseif = "ELSEIF",
+    .kw_else = "ELSE",
+    .kw_end = "END",
+    .kw_goto = "GOTO",
+    .kw_for = "FOR",
+    .kw_to = "TO",
+    .kw_step = "STEP",
+    .kw_next = "NEXT",
+    .kw_dim = "DIM",
+    .kw_as = "AS",
+    .kw_gosub = "GOSUB",
+    .kw_return = "RETURN",
+    .kw_stop = "STOP",
+    .kw_do = "DO",
+    .kw_loop = "LOOP",
+    .kw_while = "WHILE",
+    .kw_until = "UNTIL",
+    .kw_wend = "WEND",
+    .kw_let = "LET",
+    .kw_and = "AND",
+    .kw_or = "OR",
+    .kw_xor = "XOR",
+    .kw_pragma = "PRAGMA",
+    .kw_mod = "MOD",
 };
 
 pub const Tag = std.meta.Tag(Payload);
