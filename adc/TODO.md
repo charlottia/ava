@@ -22,7 +22,7 @@ Last steps:
       item.
 * [x] showing the current filename somewhere would be nice
 * [x] horizontal select focus needs to focus on click
-* [ ] a way to choose an underlay
+* [-] a way to choose an underlay
 * [ ] double-click on dir/file should action
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
   * [ ] don't crash on bad open

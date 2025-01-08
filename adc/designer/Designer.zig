@@ -11,10 +11,12 @@ const Preferences = ini.Preferences;
 pub const SaveDialog = @import("./SaveDialog.zig").WithTag(
     enum { new, save, save_as, open, exit },
 );
-const OpenDialog = @import("./OpenDialog.zig");
+pub const OpenDialog = @import("./OpenDialog.zig").WithTag(
+    enum { dialog, underlay },
+);
 const ReorderDialog = @import("./ReorderDialog.zig");
 pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(
-    enum { new_save, save_save, open_save, simulation_end, open_dialog, save_dialog },
+    enum { new_save, save_save, open_save, exit_save, simulation_end, open_dialog, save_dialog },
 );
 pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new, open });
 const DesignRoot = @import("./DesignRoot.zig");
@@ -349,6 +351,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     var file_menu = try menubar.menu("&File", 16);
 
+    // XXX The new/open/save flows are all implemented very awkwardly. Improve?
     var new = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
     if (new.chosen())
         if (try self.startUnsaved(.new)) {
@@ -363,9 +366,9 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     var open = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
     if (open.chosen())
-        self.open_dialog = try OpenDialog.init(self);
+        self.open_dialog = try OpenDialog.init(self, .dialog, "ini");
 
-    if (self.open_dialog) |*od| if (od.finish()) |r| {
+    if (self.open_dialog) |*od| if (od.finish(.dialog)) |r| {
         self.open_dialog = null;
         switch (r) {
             .opened => |path| {
@@ -404,6 +407,38 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     try file_menu.separator();
 
+    var load_underlay = (try file_menu.item("Load &Underlay...")).help("Loads new underlay behind dialog");
+    if (load_underlay.chosen())
+        self.open_dialog = try OpenDialog.init(self, .underlay, "png");
+
+    if (self.open_dialog) |*od| if (od.finish(.underlay)) |r| {
+        self.open_dialog = null;
+        switch (r) {
+            .opened => |path| {
+                if (self.underlay_filename) |f| {
+                    self.imtui.allocator.free(f);
+                    self.underlay_texture.?.destroy();
+                }
+                self.underlay_filename = path;
+                self.underlay_texture = (try loadTextureFromFile(self.imtui.allocator, self.imtui.text_mode.renderer, path)).?;
+            },
+            .canceled => {},
+        }
+    };
+
+    var unload_underlay = (try file_menu.item("Unload Un&derlay")).help("Unloads current underlay");
+    if (self.underlay_filename == null)
+        _ = unload_underlay.disabled();
+    if (unload_underlay.chosen()) {
+        self.imtui.allocator.free(self.underlay_filename.?);
+        self.underlay_filename = null;
+
+        self.underlay_texture.?.destroy();
+        self.underlay_texture = null;
+    }
+
+    try file_menu.separator();
+
     var export_zig = (try file_menu.item("Export &Zig")).help("Exports current dialog as Zig code to stdout");
     if (export_zig.chosen())
         try self.exportZig();
@@ -426,7 +461,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     try view_menu.separator();
 
-    var underlay = (try view_menu.item("&Underlay")).shortcut(.grave, null).help("Cycles the underlay between behind, in front, and hidden");
+    var underlay = (try view_menu.item("Cycle &Underlay")).shortcut(.grave, null).help("Cycles the underlay between behind, in front, and hidden");
     if (underlay.chosen())
         self.display = switch (self.display) {
             .behind => .in_front,
@@ -445,7 +480,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     try view_menu.end();
 
-    var add_menu = try menubar.menu("&Add", 16);
+    var add_menu = try menubar.menu("&Add", 0);
 
     var button = (try add_menu.item("&Button")).help("Adds new button to dialog");
     if (button.chosen()) {
