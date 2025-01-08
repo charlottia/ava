@@ -25,7 +25,7 @@ Last steps:
 * [x] a way to choose an underlay
 * [x] prompt for unsaved changes on exit
   * [x] even when invoked by window decoration/system
-* [ ] double-click on dir/file should action
+* [x] double-click on dir/file should action
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
   * [ ] don't crash on bad open
 * [ ] OpenDialog patterns

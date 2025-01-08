@@ -257,6 +257,12 @@ pub const Impl = struct {
         }
 
         try handleMouseDrag(ptr, b);
+
+        if (self.select_focus and self.selected_ix_focused and clicks == 2) {
+            if (self.dialog.default_button) |db|
+                db.chosen = true;
+        }
+
         return self.control();
     }
 
