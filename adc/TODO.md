@@ -34,6 +34,8 @@ Last steps:
   * [ ] don't crash on bad open
     * eh later
 * [x] OpenDialog patterns
+* [ ] save as puts the entire path in the default field, and not just the basename
+  * [ ] what does qb do when changing paths here? we clear the input, rather than restoring any default.
 
 ---
 

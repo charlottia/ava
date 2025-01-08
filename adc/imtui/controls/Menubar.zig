@@ -241,7 +241,8 @@ pub const Impl = struct {
 
         if (self.openMenu()) |m| {
             if (m.mousedOverItem()) |i| {
-                i.chosen = true;
+                if (i.enabled)
+                    i.chosen = true;
                 return;
             }
 
