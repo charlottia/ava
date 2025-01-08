@@ -147,7 +147,7 @@ pub fn WithTag(comptime Tag_: type) type {
         fn process(self: *SaveDialog, filename: []const u8) !void {
             const h = self.cwd.createFile(filename, .{}) catch |e| {
                 // TODO: dialog and don't mark as saved
-                std.log.debug("failed to open file for writing '{s}': {any}", .{ filename, e });
+                std.log.warn("failed to open file for writing '{s}': {any}", .{ filename, e });
                 return;
             };
             {

@@ -10,11 +10,12 @@ Last steps:
 * [x] file/dir selection
 * [x] "files not saved" dialog has oddly-sized buttons
 * [x] Zig export
-* [-] new/open/save in designer itself
+* [x] new/open/save in designer itself
   * [x] XXX Current crash: start program no args, move dialog 1px, File > New
         Program, Yes.
 * [ ] fix re-save in other directory
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
+  * [ ] don't crash on bad open
 * [x] Select doesn't show selection until you actually force/make one, and doing
       so un-'selects' all other Selects on the dialog; pressing up or down just
       focuses the horizontal control, but left or right focuses and moves. u/d/l/r
@@ -22,6 +23,7 @@ Last steps:
       and the Display Options colour pickers, which always show their selected
       item.
 * [ ] showing the current filename somewhere would be nice
+* [ ] horizontal select focus needs to focus on click
 
 ---
 

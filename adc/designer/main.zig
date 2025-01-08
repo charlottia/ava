@@ -92,6 +92,15 @@ pub fn main() !void {
                 try imtui.newFrame();
                 try designer.render();
             },
+            .open => |path| {
+                defer allocator.free(path);
+                designer.deinit();
+                try imtui.newFrame();
+                try imtui.newFrame();
+                designer = try Designer.initFromIni(imtui, prefs, app.renderer, path);
+                try imtui.newFrame();
+                try designer.render();
+            },
         };
     }
 }

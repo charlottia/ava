@@ -31,7 +31,7 @@ pub fn init(allocator: Allocator, config: Config) !App {
     errdefer if (config.sdl_image) SDL.image.quit();
 
     if ((comptime builtin.target.os.tag == .windows) and !SetProcessDPIAware())
-        std.log.debug("failed to set process DPI aware", .{});
+        std.log.info("failed to set process DPI aware", .{});
 
     var font = try Font.fromGlyphTxt(allocator, fonts.@"9x16");
     errdefer font.deinit();

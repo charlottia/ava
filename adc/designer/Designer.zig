@@ -12,7 +12,7 @@ pub const SaveDialog = @import("./SaveDialog.zig").WithTag(enum { new, save, sav
 const OpenDialog = @import("./OpenDialog.zig");
 const ReorderDialog = @import("./ReorderDialog.zig");
 pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { new_save, save_save, open_save, simulation_end });
-pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new });
+pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new, open });
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
@@ -104,7 +104,10 @@ const SerDes = ini.SerDes(SaveFile, struct {});
 imtui: *Imtui,
 prefs: Prefs,
 
-event: ?enum { new } = null,
+event: ?union(enum) {
+    new,
+    open: []u8,
+} = null,
 save_filename: ?[]const u8, // TODO: need directory here too; SaveDialog has it.
 underlay_filename: ?[]const u8,
 underlay_texture: ?SDL.Texture,
@@ -119,6 +122,7 @@ simulating: bool = false,
 display: enum { behind, design_only, in_front } = .behind,
 save_dialog: ?SaveDialog = null,
 open_dialog: ?OpenDialog = null,
+pending_open: ?[]u8 = null,
 reorder_dialog: ?ReorderDialog = null,
 confirm_dialog: ?ConfirmDialog = null,
 unsaved_dialog: ?UnsavedDialog = null,
@@ -198,6 +202,10 @@ pub fn deinit(self: *Designer) void {
         d.deinit();
     if (self.reorder_dialog) |*d|
         d.deinit();
+    if (self.pending_open) |s|
+        self.imtui.allocator.free(s);
+    if (self.open_dialog) |*d|
+        d.deinit();
     if (self.save_dialog) |*d|
         d.deinit();
     if (self.snapshot) |s|
@@ -257,6 +265,11 @@ pub fn render(self: *Designer) !void {
         self.inhibit_underlay = false;
 
         if (self.save_dialog) |*d| {
+            self.dialogPrep();
+            try d.render();
+        }
+
+        if (self.open_dialog) |*d| {
             self.dialogPrep();
             try d.render();
         }
@@ -338,12 +351,39 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
             self.event = .new;
         };
 
-    if (try self.checkUnsaved(.new, .new_save))
-        self.event = .new;
+    switch (try self.checkUnsaved(.new, .new_save)) {
+        .nop => {},
+        .action => self.event = .new,
+        .cancel => {},
+    }
 
     var open = (try file_menu.item("&Open Dialog...")).help("Loads new dialog into memory");
-    if (open.chosen()) {
-        // TODO
+    if (open.chosen())
+        self.open_dialog = try OpenDialog.init(self);
+
+    if (self.open_dialog) |*od| if (od.finish()) |r| {
+        self.open_dialog = null;
+        switch (r) {
+            .opened => |path| {
+                if (try self.startUnsaved(.open))
+                    self.event = .{ .open = path }
+                else
+                    self.pending_open = path;
+            },
+            .canceled => {},
+        }
+    };
+
+    switch (try self.checkUnsaved(.open, .open_save)) {
+        .nop => {},
+        .action => {
+            self.event = .{ .open = self.pending_open.? };
+            self.pending_open = null;
+        },
+        .cancel => {
+            self.imtui.allocator.free(self.pending_open.?);
+            self.pending_open = null;
+        },
     }
 
     var save = (try file_menu.item("&Save")).shortcut(.s, .ctrl).help("Writes current dialog to file on disk");
@@ -830,11 +870,13 @@ fn startUnsaved(self: *Designer, comptime unsaved_tag: UnsavedDialog.Tag) !bool 
     return false;
 }
 
+const UnsavedResult = enum { nop, action, cancel };
+
 fn checkUnsaved(
     self: *Designer,
     comptime unsaved_tag: UnsavedDialog.Tag,
     comptime confirm_tag: ConfirmDialog.Tag,
-) !bool {
+) !UnsavedResult {
     const save_tag = @field(SaveDialog.Tag, @tagName(unsaved_tag));
 
     if (self.unsaved_dialog) |*ud| if (ud.finish(unsaved_tag)) |r| {
@@ -842,10 +884,10 @@ fn checkUnsaved(
         switch (r) {
             .save => {
                 try self.startSave(save_tag, confirm_tag);
-                return false;
+                return .nop;
             },
-            .discard => return true,
-            .cancel => return false,
+            .discard => return .action,
+            .cancel => return .cancel,
         }
     };
 
@@ -887,19 +929,19 @@ fn checkSave(
     self: *Designer,
     comptime save_tag: SaveDialog.Tag,
     comptime confirm_tag: ConfirmDialog.Tag,
-) !bool {
+) !UnsavedResult {
     if (self.save_dialog) |*sd| if (sd.finish(save_tag)) |r| {
         self.save_dialog = null;
         switch (r) {
             .saved => try self.confirmSaveAndSnapshot(confirm_tag),
-            .canceled => return false,
+            .canceled => return .cancel,
         }
     };
 
     if (self.confirm_dialog) |*cd| if (cd.finish(confirm_tag)) {
         self.confirm_dialog = null;
-        return true;
+        return .action;
     };
 
-    return false;
+    return .nop;
 }

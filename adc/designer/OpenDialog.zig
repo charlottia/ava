@@ -15,7 +15,6 @@ pub const Result = union(enum) {
 
 imtui: *Imtui,
 designer: *Designer,
-initial_name: ?[]const u8,
 cwd: std.fs.Dir = undefined,
 cwd_name: []u8 = undefined,
 files: std.ArrayListUnmanaged([]u8) = undefined,
@@ -48,13 +47,15 @@ fn setCwd(self: *OpenDialog, cwd: std.fs.Dir) !void {
         try self.dirs.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, ".."));
 
     var it = self.cwd.iterate();
-    while (try it.next()) |e|
+    while (try it.next()) |e| {
+        if (std.mem.startsWith(u8, e.name, "."))
+            continue;
         if (e.kind == .directory) {
-            if (!std.mem.startsWith(u8, e.name, "."))
-                try self.dirs.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, e.name));
+            try self.dirs.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, e.name));
         } else if (e.kind == .file) {
             try self.files.append(self.imtui.allocator, try self.imtui.allocator.dupe(u8, e.name));
-        };
+        }
+    }
 
     std.sort.heap([]u8, self.files.items, {}, stringSort);
     std.sort.heap([]u8, self.dirs.items, {}, stringSort);
@@ -103,10 +104,10 @@ pub fn render(self: *OpenDialog) !void {
     files.end();
 
     if (files.changed()) |v|
-        input.impl.value.replaceRange(
+        try input.impl.value.replaceRange(
             self.imtui.allocator,
             0,
-            input.impl.value.len,
+            input.impl.value.items.len,
             self.files.items[v],
         );
 
@@ -128,7 +129,7 @@ pub fn render(self: *OpenDialog) !void {
 
     dialog.hrule(18, 0, 67, 0x70);
 
-    var ok = try dialog.button(19, 12, "OK");
+    var ok = try dialog.button(19, 21, "OK");
     ok.default();
     if (ok.chosen()) {
         if (std.mem.endsWith(u8, input.impl.value.items, "/")) {
@@ -137,6 +138,8 @@ pub fn render(self: *OpenDialog) !void {
             try self.setCwd(new_cwd);
 
             input.impl.value.clearRetainingCapacity();
+            files.impl.selected_ix = 0;
+            files.impl.selected_ix_focused = false;
             dirs_drives.impl.selected_ix = 0;
             dirs_drives.impl.selected_ix_focused = false;
             try self.imtui.focus(input.impl.control());
@@ -145,11 +148,11 @@ pub fn render(self: *OpenDialog) !void {
         } else if (self.cwd.realpathAlloc(self.imtui.allocator, input.impl.value.items)) |path| {
             self.finished = .{ .opened = path };
         } else |err| {
-            std.log.debug("realpath error for '{s}': {any}", .{err});
+            std.log.warn("realpath error for '{s}': {any}", .{ input.impl.value.items, err });
         }
     }
 
-    var cancel = try dialog.button(19, 28, "Cancel");
+    var cancel = try dialog.button(19, 35, "Cancel");
     cancel.cancel();
     if (cancel.chosen())
         self.finished = .canceled;
