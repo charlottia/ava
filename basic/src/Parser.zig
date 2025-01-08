@@ -27,24 +27,6 @@ pub const Error = error{
     UnexpectedEnd,
 };
 
-const State = union(enum) {
-    init,
-    call: struct {
-        label: WithRange([]const u8),
-        args: std.ArrayList(Expr),
-        comma_next: bool,
-    },
-
-    fn deinit(self: State) void {
-        switch (self) {
-            .init => {},
-            .call => |c| {
-                c.args.deinit();
-            },
-        }
-    }
-};
-
 pub fn parse(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]Stmt {
     var p = try init(allocator, inp, errorinfo);
     defer p.deinit();
@@ -275,16 +257,16 @@ fn acceptCond(self: *Parser) !?Expr {
 }
 
 fn acceptExprList(self: *Parser, comptime septoks: []const Token.Tag, separators: ?*std.ArrayListUnmanaged(Token), trailing: bool) !?[]Expr {
-    var ex = std.ArrayList(Expr).init(self.allocator);
+    var ex = std.ArrayListUnmanaged(Expr){};
     errdefer {
         for (ex.items) |i| i.deinit(self.allocator);
-        ex.deinit();
+        ex.deinit(self.allocator);
     }
 
     {
         const e = try self.acceptExpr() orelse return null;
         errdefer e.deinit(self.allocator);
-        try ex.append(e);
+        try ex.append(self.allocator, e);
     }
 
     while (true) {
@@ -322,10 +304,10 @@ fn acceptExprList(self: *Parser, comptime septoks: []const Token.Tag, separators
         const e2 = try self.acceptExpr() orelse
             return Error.UnexpectedToken;
         errdefer e2.deinit(self.allocator);
-        try ex.append(e2);
+        try ex.append(self.allocator, e2);
     }
 
-    return try ex.toOwnedSlice();
+    return try ex.toOwnedSlice(self.allocator);
 }
 
 fn acceptBuiltinPrint(self: *Parser, l: WithRange([]const u8)) !?Stmt {

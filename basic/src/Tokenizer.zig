@@ -54,8 +54,8 @@ pub fn tokenize(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) !
 }
 
 fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
-    var tx = std.ArrayList(Token).init(allocator);
-    errdefer tx.deinit();
+    var tx = std.ArrayListUnmanaged(Token){};
+    errdefer tx.deinit(allocator);
 
     var state: State = .init;
     var i: usize = 0;
@@ -108,7 +108,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '\r') {
                     lastWasCr = true;
                 } else if (c == '\n') {
-                    try tx.append(attach(
+                    try tx.append(allocator, attach(
                         .linefeed,
                         if (lastWasWasCr) self.loc.back() else self.loc,
                         self.loc,
@@ -116,27 +116,27 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '\'') {
                     state = .{ .remark = .{ .loc = self.loc, .offset = i } };
                 } else if (c == ',') {
-                    try tx.append(attach(.comma, self.loc, self.loc));
+                    try tx.append(allocator, attach(.comma, self.loc, self.loc));
                 } else if (c == ';') {
-                    try tx.append(attach(.semicolon, self.loc, self.loc));
+                    try tx.append(allocator, attach(.semicolon, self.loc, self.loc));
                 } else if (c == ':') {
-                    try tx.append(attach(.colon, self.loc, self.loc));
+                    try tx.append(allocator, attach(.colon, self.loc, self.loc));
                 } else if (c == '=') {
-                    try tx.append(attach(.equals, self.loc, self.loc));
+                    try tx.append(allocator, attach(.equals, self.loc, self.loc));
                 } else if (c == '+') {
-                    try tx.append(attach(.plus, self.loc, self.loc));
+                    try tx.append(allocator, attach(.plus, self.loc, self.loc));
                 } else if (c == '-') {
                     state = .{ .minus = .{ .loc = self.loc, .offset = i } };
                 } else if (c == '*') {
-                    try tx.append(attach(.asterisk, self.loc, self.loc));
+                    try tx.append(allocator, attach(.asterisk, self.loc, self.loc));
                 } else if (c == '/') {
-                    try tx.append(attach(.fslash, self.loc, self.loc));
+                    try tx.append(allocator, attach(.fslash, self.loc, self.loc));
                 } else if (c == '\\') {
-                    try tx.append(attach(.bslash, self.loc, self.loc));
+                    try tx.append(allocator, attach(.bslash, self.loc, self.loc));
                 } else if (c == '(') {
-                    try tx.append(attach(.pareno, self.loc, self.loc));
+                    try tx.append(allocator, attach(.pareno, self.loc, self.loc));
                 } else if (c == ')') {
-                    try tx.append(attach(.parenc, self.loc, self.loc));
+                    try tx.append(allocator, attach(.parenc, self.loc, self.loc));
                 } else if (c == '<') {
                     state = .angleo;
                 } else if (c == '>') {
@@ -167,27 +167,27 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '.') {
                     state = .{ .floating = start };
                 } else if (c == '%') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .integer = try std.fmt.parseInt(i16, inp[start.offset..i], 10),
                     }, start.loc, self.loc));
                     state = .init;
                 } else if (c == '&') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .long = try std.fmt.parseInt(i32, inp[start.offset..i], 10),
                     }, start.loc, self.loc));
                     state = .init;
                 } else if (c == '!') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
                     }, start.loc, self.loc));
                     state = .init;
                 } else if (c == '#') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .double = try std.fmt.parseFloat(f64, inp[start.offset..i]),
                     }, start.loc, self.loc));
                     state = .init;
                 } else {
-                    try tx.append(attach(
+                    try tx.append(allocator, attach(
                         try resolveIntegral(inp[start.offset..i]),
                         start.loc,
                         self.loc.back(),
@@ -202,7 +202,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '.') {
                     state = .{ .floating = start };
                 } else {
-                    try tx.append(attach(.minus, start.loc, start.loc));
+                    try tx.append(allocator, attach(.minus, start.loc, start.loc));
                     state = .init;
                     rewind = 1;
                 }
@@ -225,19 +225,19 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         .state = .init,
                     } };
                 } else if (c == '!') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
                     }, start.loc, self.loc));
                     state = .init;
                 } else if (c == '#') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .double = try std.fmt.parseFloat(f64, inp[start.offset..i]),
                     }, start.loc, self.loc));
                     state = .init;
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     return Error.UnexpectedChar;
                 } else {
-                    try tx.append(attach(
+                    try tx.append(allocator, attach(
                         try resolveFloating(inp[start.offset..i]),
                         start.loc,
                         self.loc.back(),
@@ -256,14 +256,14 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         } else {
                             if (fe.pointed)
                                 // 1.2eX
-                                try tx.append(attach(
+                                try tx.append(allocator, attach(
                                     try resolveFloating(inp[fe.start.offset .. i - 1]),
                                     fe.start.loc,
                                     self.loc.back().back(),
                                 ))
                             else
                                 // 1eX
-                                try tx.append(attach(
+                                try tx.append(allocator, attach(
                                     try resolveIntegral(inp[fe.start.offset .. i - 1]),
                                     fe.start.loc,
                                     self.loc.back().back(),
@@ -276,7 +276,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         if (c >= '0' and c <= '9') {
                             fe.state = .exp;
                         } else {
-                            try tx.append(attach(
+                            try tx.append(allocator, attach(
                                 try self.resolveExponent(fe.double, inp[fe.start.offset..i]),
                                 fe.start.loc,
                                 self.loc.back(),
@@ -289,7 +289,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         if (c >= '0' and c <= '9') {
                             // nop
                         } else {
-                            try tx.append(attach(
+                            try tx.append(allocator, attach(
                                 try self.resolveExponent(fe.double, inp[fe.start.offset..i]),
                                 fe.start.loc,
                                 self.loc.back(),
@@ -306,22 +306,22 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     // nop
                 } else if (c == '%' or c == '&' or c == '!' or c == '#' or c == '$') {
-                    try tx.append(attach(.{ .label = inp[start.offset .. i + 1] }, start.loc, self.loc));
+                    try tx.append(allocator, attach(.{ .label = inp[start.offset .. i + 1] }, start.loc, self.loc));
                     state = .init;
                 } else if (c == ':') {
-                    try tx.append(attach(.{ .jumplabel = inp[start.offset .. i + 1] }, start.loc, self.loc));
+                    try tx.append(allocator, attach(.{ .jumplabel = inp[start.offset .. i + 1] }, start.loc, self.loc));
                     state = .init;
                 } else if (std.ascii.eqlIgnoreCase(inp[start.offset..i], "rem")) {
                     state = .{ .remark = start };
                 } else {
-                    try tx.append(attach(classifyBareword(inp[start.offset..i]), start.loc, self.loc.back()));
+                    try tx.append(allocator, attach(classifyBareword(inp[start.offset..i]), start.loc, self.loc.back()));
                     state = .init;
                     rewind = 1;
                 }
             },
             .string => |start| {
                 if (c == '"') {
-                    try tx.append(attach(.{ .string = inp[start.offset..i] }, start.loc, self.loc));
+                    try tx.append(allocator, attach(.{ .string = inp[start.offset..i] }, start.loc, self.loc));
                     state = .init;
                 } else {
                     // nop
@@ -331,7 +331,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 if (c >= '0' and c <= '9') {
                     // nop
                 } else {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 .. i], 10),
                     }, start.loc, self.loc.back()));
                     state = .init;
@@ -340,7 +340,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             },
             .remark => |start| {
                 if (c == '\r' or c == '\n') {
-                    try tx.append(attach(.{
+                    try tx.append(allocator, attach(.{
                         .remark = inp[start.offset..i],
                     }, start.loc, self.loc.back()));
                     state = .init;
@@ -351,23 +351,23 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             },
             .angleo => {
                 if (c == '>') { // <>
-                    try tx.append(attach(.diamond, self.loc.back(), self.loc));
+                    try tx.append(allocator, attach(.diamond, self.loc.back(), self.loc));
                     state = .init;
                 } else if (c == '=') { // <=
-                    try tx.append(attach(.lte, self.loc.back(), self.loc));
+                    try tx.append(allocator, attach(.lte, self.loc.back(), self.loc));
                     state = .init;
                 } else {
-                    try tx.append(attach(.angleo, self.loc.back(), self.loc.back()));
+                    try tx.append(allocator, attach(.angleo, self.loc.back(), self.loc.back()));
                     state = .init;
                     rewind = 1;
                 }
             },
             .anglec => {
                 if (c == '=') { // >=
-                    try tx.append(attach(.gte, self.loc.back(), self.loc));
+                    try tx.append(allocator, attach(.gte, self.loc.back(), self.loc));
                     state = .init;
                 } else {
-                    try tx.append(attach(.anglec, self.loc.back(), self.loc.back()));
+                    try tx.append(allocator, attach(.anglec, self.loc.back(), self.loc.back()));
                     state = .init;
                     rewind = 1;
                 }
@@ -377,13 +377,13 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
 
     switch (state) {
         .init => {},
-        .integer => |start| try tx.append(attach(
+        .integer => |start| try tx.append(allocator, attach(
             try resolveIntegral(inp[start.offset..]),
             start.loc,
             self.loc.back(),
         )),
-        .minus => |start| try tx.append(attach(.minus, start.loc, start.loc)),
-        .floating => |start| try tx.append(attach(
+        .minus => |start| try tx.append(allocator, attach(.minus, start.loc, start.loc)),
+        .floating => |start| try tx.append(allocator, attach(
             try resolveFloating(inp[start.offset..]),
             start.loc,
             self.loc.back(),
@@ -393,29 +393,29 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 .init => {
                     if (fe.pointed)
                         // 1.2e$
-                        try tx.append(attach(
+                        try tx.append(allocator, attach(
                             try resolveFloating(inp[fe.start.offset .. inp.len - 1]),
                             fe.start.loc,
                             self.loc.back().back(),
                         ))
                     else
                         // 1e$
-                        try tx.append(attach(
+                        try tx.append(allocator, attach(
                             try resolveIntegral(inp[fe.start.offset .. inp.len - 1]),
                             fe.start.loc,
                             self.loc.back().back(),
                         ));
-                    try tx.append(attach(.{ .label = inp[inp.len - 1 ..] }, self.loc.back(), self.loc.back()));
+                    try tx.append(allocator, attach(.{ .label = inp[inp.len - 1 ..] }, self.loc.back(), self.loc.back()));
                 },
                 .sign => {
-                    try tx.append(attach(
+                    try tx.append(allocator, attach(
                         try self.resolveExponent(fe.double, inp[fe.start.offset..]),
                         fe.start.loc,
                         self.loc.back(),
                     ));
                 },
                 .exp => {
-                    try tx.append(attach(
+                    try tx.append(allocator, attach(
                         try self.resolveExponent(fe.double, inp[fe.start.offset..]),
                         fe.start.loc,
                         self.loc.back(),
@@ -425,25 +425,25 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
         },
         .bareword => |start| {
             if (std.ascii.eqlIgnoreCase(inp[start.offset..], "rem")) {
-                try tx.append(attach(.{
+                try tx.append(allocator, attach(.{
                     .remark = inp[start.offset..],
                 }, start.loc, self.loc.back()));
             } else {
-                try tx.append(attach(classifyBareword(inp[start.offset..]), start.loc, self.loc.back()));
+                try tx.append(allocator, attach(classifyBareword(inp[start.offset..]), start.loc, self.loc.back()));
             }
         },
         .string => return Error.UnexpectedEnd,
-        .fileno => |start| try tx.append(attach(.{
+        .fileno => |start| try tx.append(allocator, attach(.{
             .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 ..], 10),
         }, start.loc, self.loc.back())),
-        .remark => |start| try tx.append(attach(.{
+        .remark => |start| try tx.append(allocator, attach(.{
             .remark = inp[start.offset..],
         }, start.loc, self.loc.back())),
-        .angleo => try tx.append(attach(.angleo, self.loc.back(), self.loc.back())),
-        .anglec => try tx.append(attach(.anglec, self.loc.back(), self.loc.back())),
+        .angleo => try tx.append(allocator, attach(.angleo, self.loc.back(), self.loc.back())),
+        .anglec => try tx.append(allocator, attach(.anglec, self.loc.back(), self.loc.back())),
     }
 
-    return tx.toOwnedSlice();
+    return tx.toOwnedSlice(allocator);
 }
 
 fn attach(payload: Token.Payload, start: Loc, end: Loc) Token {
