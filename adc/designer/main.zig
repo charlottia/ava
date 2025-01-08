@@ -43,7 +43,7 @@ pub fn main() !void {
 
     _ = try SDL.showCursor(prefs.settings.system_cursor);
 
-    while (imtui.running) {
+    while (true) {
         while (SDL.pollEvent()) |ev|
             try imtui.processEvent(ev);
 
@@ -102,6 +102,7 @@ pub fn main() !void {
                 try imtui.newFrame();
                 try designer.render();
             },
+            .quit => break,
         };
     }
 }

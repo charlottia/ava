@@ -18,7 +18,7 @@ const ReorderDialog = @import("./ReorderDialog.zig");
 pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(
     enum { new_save, save_save, open_save, exit_save, simulation_end, open_dialog, save_dialog },
 );
-pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new, open });
+pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new, open, exit });
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");
 const DesignButton = @import("./DesignButton.zig");
@@ -113,6 +113,7 @@ prefs: Prefs,
 event: ?union(enum) {
     new,
     open: []u8,
+    quit,
 } = null,
 save_filename: ?[]const u8,
 underlay_filename: ?[]const u8,
@@ -351,7 +352,7 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
 
     var file_menu = try menubar.menu("&File", 16);
 
-    // XXX The new/open/save flows are all implemented very awkwardly. Improve?
+    // XXX The new/open/save/exit flows are all implemented very awkwardly. Improve?
     var new = (try file_menu.item("&New Dialog")).help("Removes currently loaded dialog from memory");
     if (new.chosen())
         if (try self.startUnsaved(.new)) {
@@ -446,8 +447,18 @@ fn renderMenus(self: *Designer, focused_dc: ?DesignControl) !Imtui.Controls.Menu
     try file_menu.separator();
 
     var exit = (try file_menu.item("E&xit")).help("Exits Designer and returns to OS");
-    if (exit.chosen())
-        self.imtui.running = false;
+    if (exit.chosen() or !self.imtui.running) {
+        // ay mamá
+        self.imtui.running = true;
+        if (try self.startUnsaved(.exit))
+            self.event = .quit;
+    }
+
+    switch (try self.checkUnsaved(.exit, .exit_save)) {
+        .nop => {},
+        .action => self.event = .quit,
+        .cancel => {},
+    }
 
     try file_menu.end();
 
