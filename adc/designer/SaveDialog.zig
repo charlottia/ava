@@ -129,10 +129,19 @@ pub fn WithTag(comptime Tag_: type) type {
                     dirs_drives.impl.selected_ix_focused = false;
                     try self.imtui.focus(input.impl.control());
                 } else if (input.impl.value.items.len == 0) {
-                    // TODO: "Must specify name"
-                } else {
-                    try self.process(input.impl.value.items);
+                    self.designer.confirm_dialog = try Designer.ConfirmDialog.init(self.designer, .save_dialog, "", "Must specify name", .{});
+                } else if (self.cwd.createFile(input.impl.value.items, .{})) |h| {
+                    defer h.close();
+                    try self.designer.dump(h.writer());
+
+                    if (self.designer.save_filename) |n| {
+                        self.imtui.allocator.free(n);
+                        self.designer.save_filename = null;
+                    }
+                    self.designer.save_filename = try self.imtui.allocator.dupe(u8, input.impl.value.items);
                     self.finished = .saved;
+                } else |err| {
+                    self.designer.confirm_dialog = try Designer.ConfirmDialog.init(self.designer, .save_dialog, "", "Error saving'{s}': {any}", .{ input.impl.value.items, err });
                 }
             }
 
@@ -142,25 +151,10 @@ pub fn WithTag(comptime Tag_: type) type {
                 self.finished = .canceled;
 
             try dialog.end();
-        }
 
-        fn process(self: *SaveDialog, filename: []const u8) !void {
-            const h = self.cwd.createFile(filename, .{}) catch |e| {
-                // TODO: dialog and don't mark as saved
-                std.log.warn("failed to open file for writing '{s}': {any}", .{ filename, e });
-                return;
+            if (self.designer.confirm_dialog) |*cd| if (cd.finish(.save_dialog)) {
+                self.designer.confirm_dialog = null;
             };
-            {
-                defer h.close();
-                try self.designer.dump(h.writer());
-            }
-
-            // TODO: saving path stuff properly here and in Designer
-            if (self.designer.save_filename) |n| {
-                self.imtui.allocator.free(n);
-                self.designer.save_filename = null;
-            }
-            self.designer.save_filename = try self.imtui.allocator.dupe(u8, filename);
         }
     };
 }

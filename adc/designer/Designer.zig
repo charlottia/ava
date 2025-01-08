@@ -8,10 +8,14 @@ const ini = @import("ini");
 const Imtui = imtuilib.Imtui;
 const Preferences = ini.Preferences;
 
-pub const SaveDialog = @import("./SaveDialog.zig").WithTag(enum { new, save, save_as, open, exit });
+pub const SaveDialog = @import("./SaveDialog.zig").WithTag(
+    enum { new, save, save_as, open, exit },
+);
 const OpenDialog = @import("./OpenDialog.zig");
 const ReorderDialog = @import("./ReorderDialog.zig");
-pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(enum { new_save, save_save, open_save, simulation_end });
+pub const ConfirmDialog = @import("./ConfirmDialog.zig").WithTag(
+    enum { new_save, save_save, open_save, simulation_end, open_dialog, save_dialog },
+);
 pub const UnsavedDialog = @import("./UnsavedDialog.zig").WithTag(enum { new, open });
 const DesignRoot = @import("./DesignRoot.zig");
 const DesignDialog = @import("./DesignDialog.zig");

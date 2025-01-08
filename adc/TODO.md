@@ -15,7 +15,7 @@ Last steps:
         Program, Yes.
 * [ ] fix re-save in other directory
 * [ ] some edge cases, some crashing (usually element resize where r2<r1 etc.)
-  * [ ] don't crash on bad open
+  * [-] don't crash on bad open
 * [x] Select doesn't show selection until you actually force/make one, and doing
       so un-'selects' all other Selects on the dialog; pressing up or down just
       focuses the horizontal control, but left or right focuses and moves. u/d/l/r
@@ -24,6 +24,7 @@ Last steps:
       item.
 * [ ] showing the current filename somewhere would be nice
 * [ ] horizontal select focus needs to focus on click
+* [ ] a way to choose an underlay
 
 ---
 

@@ -144,11 +144,11 @@ pub fn render(self: *OpenDialog) !void {
             dirs_drives.impl.selected_ix_focused = false;
             try self.imtui.focus(input.impl.control());
         } else if (input.impl.value.items.len == 0) {
-            // TODO: "Must specify name"
+            self.designer.confirm_dialog = try Designer.ConfirmDialog.init(self.designer, .open_dialog, "", "Must specify name", .{});
         } else if (self.cwd.realpathAlloc(self.imtui.allocator, input.impl.value.items)) |path| {
             self.finished = .{ .opened = path };
         } else |err| {
-            std.log.warn("realpath error for '{s}': {any}", .{ input.impl.value.items, err });
+            self.designer.confirm_dialog = try Designer.ConfirmDialog.init(self.designer, .open_dialog, "", "Error opening '{s}': {any}", .{ input.impl.value.items, err });
         }
     }
 
@@ -158,4 +158,8 @@ pub fn render(self: *OpenDialog) !void {
         self.finished = .canceled;
 
     try dialog.end();
+
+    if (self.designer.confirm_dialog) |*cd| if (cd.finish(.open_dialog)) {
+        self.designer.confirm_dialog = null;
+    };
 }
