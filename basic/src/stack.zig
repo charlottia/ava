@@ -716,7 +716,11 @@ pub fn Machine(comptime Effects: type) type {
                             },
                         }
                     },
-                    .JUMP => return Error.Unimplemented,
+                    .JUMP => {
+                        std.debug.assert(code.len - i + 1 >= 2);
+                        const imm = code[i..][0..2];
+                        i = std.mem.readInt(u16, imm, .little);
+                    },
                     // .OPERATOR_NEGATE_INTEGER => {
                     //     const vx = try self.takeValues(1, .integer);
                     //     try self.stack.append(self.allocator, .{ .integer = -vx[0] });
