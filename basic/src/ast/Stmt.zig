@@ -74,6 +74,7 @@ pub const Payload = union(enum) {
         step: Expr,
     },
     next: WithRange([]const u8),
+    lineno: u16,
     jumplabel: []const u8,
     goto: WithRange([]const u8),
     end,
@@ -149,6 +150,7 @@ pub const Payload = union(enum) {
                 f.step.deinit(allocator);
             },
             .next => {},
+            .lineno => {},
             .jumplabel => {},
             .goto => {},
             .end => {},

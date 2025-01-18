@@ -392,7 +392,7 @@ test "compile variable access" {
 
 test "compile (parse) error" {
     var errorinfo: ErrorInfo = .{};
-    const eu = compileText(testing.allocator, " 1", &errorinfo);
+    const eu = compileText(testing.allocator, " -", &errorinfo);
     try testing.expectError(error.UnexpectedToken, eu);
     try testing.expectEqual(ErrorInfo{ .loc = Loc{ .row = 1, .col = 2 } }, errorinfo);
 }

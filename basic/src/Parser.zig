@@ -84,6 +84,7 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
     // TODO: our terminator behaviour is (still) not very rigorous. Consider
     // "FOR I = 1 to 10 PRINT "X" NEXT I". This probably just parses --
     // should it?
+    // ANSWER: Maybe: QB is actually [very forgiving](https://github.com/charlottia/ava/issues/3).
 
     if (self.accept(.linefeed) != null)
         return self.parseOne();
@@ -92,6 +93,11 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
         try self.append(Stmt.init(.{ .remark = r.payload }, r.range));
         return self.parseOne();
     }
+
+    if (self.accept(.integer)) |n|
+        return Stmt.init(.{ .lineno = @intCast(n.payload) }, n.range)
+    else if (self.accept(.long)) |n|
+        return Stmt.init(.{ .lineno = @intCast(n.payload) }, n.range);
 
     if (self.accept(.jumplabel)) |l|
         return Stmt.init(.{ .jumplabel = l.payload }, l.range);
@@ -659,5 +665,48 @@ test "a+b+c - x*y*z" {
             },
             .separators = &.{},
         } }, Range.init(.{ 1, 1 }, .{ 1, 19 })),
+    });
+}
+
+test "bare lineno" {
+    try expectParse("1\n", &.{
+        Stmt.init(.{ .lineno = 1 }, Range.init(.{ 1, 1 }, .{ 1, 1 })),
+    });
+}
+
+test "lineno and call" {
+    try expectParse(" 23 blah\n", &.{
+        Stmt.init(.{ .lineno = 23 }, Range.init(.{ 1, 2 }, .{ 1, 3 })),
+        Stmt.init(.{ .call = .{
+            .name = WithRange([]const u8).init("blah", Range.init(.{ 1, 5 }, .{ 1, 8 })),
+            .args = &.{},
+        } }, Range.init(.{ 1, 5 }, .{ 1, 8 })),
+    });
+}
+
+test "bare jumplabel" {
+    try expectParse("xyzzy:\n", &.{
+        Stmt.init(.{ .jumplabel = "xyzzy:" }, Range.init(.{ 1, 1 }, .{ 1, 6 })),
+    });
+}
+
+test "jumplabel and call" {
+    try expectParse("  ff: egumi\n", &.{
+        Stmt.init(.{ .jumplabel = "ff:" }, Range.init(.{ 1, 3 }, .{ 1, 5 })),
+        Stmt.init(.{ .call = .{
+            .name = WithRange([]const u8).init("egumi", Range.init(.{ 1, 7 }, .{ 1, 11 })),
+            .args = &.{},
+        } }, Range.init(.{ 1, 7 }, .{ 1, 11 })),
+    });
+}
+
+test "lineno, jumplabel and call" {
+    try expectParse("7 ff: egumi\n", &.{
+        Stmt.init(.{ .lineno = 7 }, Range.init(.{ 1, 1 }, .{ 1, 1 })),
+        Stmt.init(.{ .jumplabel = "ff:" }, Range.init(.{ 1, 3 }, .{ 1, 5 })),
+        Stmt.init(.{ .call = .{
+            .name = WithRange([]const u8).init("egumi", Range.init(.{ 1, 7 }, .{ 1, 11 })),
+            .args = &.{},
+        } }, Range.init(.{ 1, 7 }, .{ 1, 11 })),
     });
 }

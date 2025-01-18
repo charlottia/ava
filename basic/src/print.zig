@@ -191,6 +191,7 @@ const Printer = struct {
                 try self.advance(lv.range);
                 try self.writer.writeAll(lv.payload);
             },
+            .lineno => |n| try std.fmt.format(self.writer, "{d} ", .{n}),
             .jumplabel => |l| try self.writer.writeAll(l),
             .goto => |l| {
                 try self.writer.writeAll("GOTO");
