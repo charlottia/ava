@@ -73,6 +73,18 @@ pub fn Machine(comptime Effects: type) type {
             }
         }
 
+        inline fn adv(code: []const u8, i: *usize, n: anytype) (ty: {
+            break :ty if (@TypeOf(n) == comptime_int)
+                *const [n]u8
+            else
+                []const u8;
+        }) {
+            std.debug.assert(code.len - i.* + 1 >= n);
+            const imm = code[i.*..][0..n];
+            i.* += n;
+            return imm;
+        }
+
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
             var i: usize = 0;
             while (i < code.len) {
@@ -84,54 +96,41 @@ pub fn Machine(comptime Effects: type) type {
 
                 switch (op) {
                     .PUSH => if (ix.rest == 0b1000) {
-                        std.debug.assert(code.len - i + 1 >= 1);
-                        const slot = code[i];
-                        i += 1;
+                        const slot = adv(code, &i, 1)[0];
                         const v = try self.variableGet(slot);
                         errdefer self.valueFree(v);
                         try self.stack.append(self.allocator, v);
                     } else switch (it.t) {
                         .INTEGER => {
-                            std.debug.assert(code.len - i + 1 >= 2);
-                            const imm = code[i..][0..2];
-                            i += 2;
+                            const imm = adv(code, &i, 2);
                             try self.stack.append(
                                 self.allocator,
                                 .{ .integer = std.mem.readInt(i16, imm, .little) },
                             );
                         },
                         .LONG => {
-                            std.debug.assert(code.len - i + 1 >= 4);
-                            const imm = code[i..][0..4];
-                            i += 4;
+                            const imm = adv(code, &i, 4);
                             try self.stack.append(
                                 self.allocator,
                                 .{ .long = std.mem.readInt(i32, imm, .little) },
                             );
                         },
                         .SINGLE => {
-                            std.debug.assert(code.len - i + 1 >= 4);
-                            const imm = code[i..][0..4];
-                            i += 4;
+                            const imm = adv(code, &i, 4);
                             var r: [1]f32 = undefined;
                             @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
                             try self.stack.append(self.allocator, .{ .single = r[0] });
                         },
                         .DOUBLE => {
-                            std.debug.assert(code.len - i + 1 >= 8);
-                            const imm = code[i..][0..8];
-                            i += 8;
+                            const imm = adv(code, &i, 8);
                             var r: [1]f64 = undefined;
                             @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
                             try self.stack.append(self.allocator, .{ .double = r[0] });
                         },
                         .STRING => {
-                            std.debug.assert(code.len - i + 1 >= 2);
-                            const lenb = code[i..][0..2];
-                            i += 2;
+                            const lenb = adv(code, &i, 2);
                             const len = std.mem.readInt(u16, lenb, .little);
-                            const str = code[i..][0..len];
-                            i += len;
+                            const str = adv(code, &i, len);
                             const s = try self.allocator.dupe(u8, str);
                             errdefer self.allocator.free(s);
                             try self.stack.append(self.allocator, .{ .string = s });
@@ -204,10 +203,8 @@ pub fn Machine(comptime Effects: type) type {
                         },
                     },
                     .LET => {
-                        std.debug.assert(code.len - i + 1 >= 1);
+                        const slot = adv(code, &i, 1)[0];
                         std.debug.assert(self.stack.items.len >= 1);
-                        const slot = code[i];
-                        i += 1;
                         const val = self.stackTake(1);
                         errdefer self.valueFreeMany(&val);
                         try self.variableOwn(slot, val[0]);
@@ -717,8 +714,7 @@ pub fn Machine(comptime Effects: type) type {
                         }
                     },
                     .JUMP => {
-                        std.debug.assert(code.len - i + 1 >= 2);
-                        const imm = code[i..][0..2];
+                        const imm = adv(code, &i, 2);
                         i = std.mem.readInt(u16, imm, .little);
                     },
                     // .OPERATOR_NEGATE_INTEGER => {
@@ -738,12 +734,9 @@ pub fn Machine(comptime Effects: type) type {
                     //     try self.stack.append(self.allocator, .{ .double = -vx[0] });
                     // },
                     .PRAGMA => {
-                        std.debug.assert(code.len - i + 1 >= 2);
-                        const lenb = code[i..][0..2];
-                        i += 2;
+                        const lenb = adv(code, &i, 2);
                         const len = std.mem.readInt(u16, lenb, .little);
-                        const str = code[i..][0..len];
-                        i += len;
+                        const str = adv(code, &i, len);
                         const s = try @"test".parsePragmaString(self.allocator, str);
                         defer self.allocator.free(s);
                         try self.effects.pragmaPrinted(s);
