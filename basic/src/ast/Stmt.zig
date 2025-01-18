@@ -114,7 +114,10 @@ pub const Payload = union(enum) {
                 try l.rhs.payload.formatAst(indent + 1, writer);
                 try writer.writeByte('\n');
             },
-            else => unreachable,
+            .lineno => |n| try std.fmt.format(writer, "Lineno: <{d}>\n", .{n}),
+            .jumplabel => |l| try std.fmt.format(writer, "JumpLabel: <{s}>\n", .{l}),
+            .goto => |l| try std.fmt.format(writer, "Goto: <{s}>\n", .{l.payload}),
+            inline else => |_, tag| @panic("unhandled in formatAst: " ++ @tagName(tag)),
         }
     }
 

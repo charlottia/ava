@@ -61,7 +61,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
     var i: usize = 0;
     var rewind: usize = 0;
     var rewinds: [1]Loc = undefined;
-    var lastWasCr = false;
+    var last_was_cr = false;
     while (i < inp.len) : ({
         // XXX: This rewinder isn't robust to multiple consecutive rewind=2.
         if (rewind == 0) {
@@ -88,8 +88,8 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
         }
     }) {
         const c = inp[i];
-        const lastWasWasCr = lastWasCr;
-        lastWasCr = false;
+        const last_last_was_cr = last_was_cr;
+        last_was_cr = false;
 
         switch (state) {
             .init => {
@@ -106,13 +106,13 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '\t') {
                     // nop
                 } else if (c == '\r') {
-                    lastWasCr = true;
+                    last_was_cr = true;
                 } else if (c == '\n') {
                     try tx.append(allocator, attach(
                         .linefeed,
-                        if (lastWasWasCr) self.loc.back() else self.loc,
+                        if (last_last_was_cr) self.loc.back() else self.loc,
                         self.loc,
-                        inp[(if (lastWasWasCr) i - 1 else i) .. i + 1],
+                        inp[(if (last_last_was_cr) i - 1 else i) .. i + 1],
                     ));
                 } else if (c == '\'') {
                     state = .{ .remark = .{ .loc = self.loc, .offset = i } };

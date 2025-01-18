@@ -48,6 +48,7 @@ pub const Op = enum(u4) {
     PRINT_COMMA = 0b0101, // TODO: use space in rest of opcode for this
     PRINT_LINEFEED = 0b0110, // and this.
     ALU = 0b0111,
+    JUMP = 0b1000,
     PRAGMA = 0b1110,
 };
 
@@ -149,6 +150,15 @@ pub const Value = union(enum) {
     }
 };
 
+pub const Label = struct {
+    id: usize,
+};
+
+pub const Target = union(enum) {
+    label_id: usize,
+    absolute: usize,
+};
+
 pub fn printFormat(allocator: Allocator, writer: anytype, v: Value) !void {
     switch (v) {
         .integer => |n| {
@@ -196,14 +206,14 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
     // This is an enormous hack and I don't like it. Is precise compatibility
     // worth this? Is there a better way to do it that'd more closely follow how
     // QB actually works?
-    var hasPoint = false;
+    var has_point = false;
     for (s[0..len]) |c|
         if (c == '.') {
-            hasPoint = true;
+            has_point = true;
             break;
         };
 
-    if (hasPoint) {
+    if (has_point) {
         var digits = len - 1;
         if (s[0] == '-') digits -= 1;
         const cap = switch (@TypeOf(f)) {
@@ -232,81 +242,114 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
     try writer.writeAll(s[0..len]);
 }
 
-pub fn assembleOne(e: anytype, writer: anytype) !void {
-    switch (@TypeOf(e)) {
-        Opcode => {
-            switch (e.op) {
-                .PUSH => {
-                    if (e.slot) |slot| {
-                        std.debug.assert(e.t == null);
-                        const insn = InsnX{ .op = e.op, .rest = 0b1000 };
-                        try writer.writeInt(u8, @bitCast(insn), .little);
-                        try writer.writeInt(u8, slot, .little);
-                    } else {
-                        const insn = InsnT{ .op = e.op, .t = e.t.? };
-                        try writer.writeInt(u8, @bitCast(insn), .little);
-                    }
-                },
-                .CAST => {
-                    const insn = InsnTC{ .op = e.op, .tf = e.tc.?.from, .tt = e.tc.?.to };
-                    try writer.writeInt(u8, @bitCast(insn), .little);
-                },
-                .LET => {
-                    const insn = InsnX{ .op = e.op };
-                    try writer.writeInt(u8, @bitCast(insn), .little);
-                    try writer.writeInt(u8, e.slot.?, .little);
-                },
-                .PRINT => {
-                    const insn = InsnT{ .op = e.op, .t = e.t.? };
-                    std.debug.assert(e.slot == null);
-                    try writer.writeInt(u8, @bitCast(insn), .little);
-                },
-                .PRINT_COMMA, .PRINT_LINEFEED, .PRAGMA => {
-                    const insn = InsnX{ .op = e.op };
-                    try writer.writeInt(u8, @bitCast(insn), .little);
-                },
-                .ALU => {
-                    const insn = InsnAlu{ .op = e.op, .t = e.t.?, .alu = e.alu.? };
-                    try writer.writeInt(u16, @bitCast(insn), .little);
-                },
-            }
-        },
-        Value => {
-            switch (e) {
-                .integer => |i| try writer.writeInt(i16, i, .little),
-                .long => |i| try writer.writeInt(i32, i, .little),
-                .single => |n| try writer.writeStruct(packed struct { n: f32 }{ .n = n }),
-                .double => |n| try writer.writeStruct(packed struct { n: f64 }{ .n = n }),
-                .string => |s| {
-                    try writer.writeInt(u16, @as(u16, @intCast(s.len)), .little);
-                    try writer.writeAll(s);
-                },
-            }
-        },
-        []const u8 => {
-            // label; one byte for length.
-            try writer.writeByte(@intCast(e.len));
-            try writer.writeAll(e);
-        },
-        else => @panic("unhandled type: " ++ @typeName(@TypeOf(e))),
-    }
-}
+pub const Assembler = struct {
+    allocator: Allocator,
+    buffer: std.ArrayListUnmanaged(u8) = .{},
+    labels: std.AutoHashMapUnmanaged(usize, usize) = .{},
 
-pub fn assembleInto(writer: anytype, inp: anytype) !void {
-    inline for (inp) |e|
-        try assembleOne(e, writer);
-}
+    pub fn init(allocator: Allocator) Assembler {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *Assembler) void {
+        self.labels.deinit(self.allocator);
+        self.buffer.deinit(self.allocator);
+    }
+
+    pub fn one(self: *Assembler, e: anytype) !void {
+        const writer = self.buffer.writer(self.allocator);
+
+        switch (@TypeOf(e)) {
+            Opcode => {
+                switch (e.op) {
+                    .PUSH => {
+                        if (e.slot) |slot| {
+                            std.debug.assert(e.t == null);
+                            const insn = InsnX{ .op = e.op, .rest = 0b1000 };
+                            try writer.writeInt(u8, @bitCast(insn), .little);
+                            try writer.writeInt(u8, slot, .little);
+                        } else {
+                            const insn = InsnT{ .op = e.op, .t = e.t.? };
+                            try writer.writeInt(u8, @bitCast(insn), .little);
+                        }
+                    },
+                    .CAST => {
+                        const insn = InsnTC{ .op = e.op, .tf = e.tc.?.from, .tt = e.tc.?.to };
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                    },
+                    .LET => {
+                        const insn = InsnX{ .op = e.op };
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                        try writer.writeInt(u8, e.slot.?, .little);
+                    },
+                    .PRINT => {
+                        const insn = InsnT{ .op = e.op, .t = e.t.? };
+                        std.debug.assert(e.slot == null);
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                    },
+                    .PRINT_COMMA, .PRINT_LINEFEED, .PRAGMA => {
+                        const insn = InsnX{ .op = e.op };
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                    },
+                    .ALU => {
+                        const insn = InsnAlu{ .op = e.op, .t = e.t.?, .alu = e.alu.? };
+                        try writer.writeInt(u16, @bitCast(insn), .little);
+                    },
+                    .JUMP => {
+                        const insn = InsnX{ .op = e.op };
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                    },
+                }
+            },
+            Value => {
+                switch (e) {
+                    .integer => |i| try writer.writeInt(i16, i, .little),
+                    .long => |i| try writer.writeInt(i32, i, .little),
+                    .single => |n| try writer.writeStruct(packed struct { n: f32 }{ .n = n }),
+                    .double => |n| try writer.writeStruct(packed struct { n: f64 }{ .n = n }),
+                    .string => |s| {
+                        try writer.writeInt(u16, @as(u16, @intCast(s.len)), .little);
+                        try writer.writeAll(s);
+                    },
+                }
+            },
+            Label => {
+                const entry = try self.labels.getOrPut(self.allocator, e.id);
+                std.debug.assert(!entry.found_existing);
+                entry.value_ptr.* = self.buffer.items.len;
+            },
+            Target => {
+                const offset = switch (e) {
+                    .label_id => |n| self.labels.get(n).?,
+                    .absolute => |n| n,
+                };
+                try writer.writeInt(u16, @as(u16, @intCast(offset)), .little);
+            },
+            []const u8 => {
+                // label; one byte for length.
+                try writer.writeByte(@intCast(e.len));
+                try writer.writeAll(e);
+                @compileError("what");
+            },
+            else => @compileError("unhandled type: " ++ @typeName(@TypeOf(e))),
+        }
+    }
+};
 
 pub fn assemble(allocator: Allocator, inp: anytype) ![]const u8 {
-    var out = std.ArrayListUnmanaged(u8){};
-    defer out.deinit(allocator);
-    try assembleInto(out.writer(allocator), inp);
-    return try out.toOwnedSlice(allocator);
+    var as = Assembler.init(std.testing.allocator);
+    defer as.deinit();
+
+    inline for (inp) |e|
+        try as.one(e);
+
+    return try as.buffer.toOwnedSlice(allocator);
 }
 
 fn expectAssembles(inp: anytype, expected: []const u8) !void {
     const code = try assemble(testing.allocator, inp);
     defer testing.allocator.free(code);
+
     try testing.expectEqualSlices(u8, expected, code);
 }
 
@@ -351,4 +394,13 @@ test "assembles" {
     try expectAssembles(.{
         Opcode{ .op = .PRAGMA },
     }, &.{0x0e});
+}
+
+test "assembles jumps" {
+    try expectAssembles(.{
+        Opcode{ .op = .PUSH, .t = .LONG },
+        Label{ .id = 1 },
+        Opcode{ .op = .PUSH, .t = .SINGLE },
+        Target{ .label_id = 1 },
+    }, &.{ 0x11, 0x21, 0x01, 0x00 });
 }

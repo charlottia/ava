@@ -15,22 +15,24 @@ const stack = @import("stack.zig");
 const Compiler = @This();
 
 allocator: Allocator,
-buf: std.ArrayListUnmanaged(u8) = .{},
-writer: std.ArrayListUnmanaged(u8).Writer,
+as: isa.Assembler,
 errorinfo: ?*ErrorInfo,
 
 deftypes: [26]ty.Type = [_]ty.Type{.single} ** 26,
 slots: std.StringHashMapUnmanaged(u8) = .{}, // key is UPPERCASE with sigil
 nextslot: u8 = 0,
+linenos: std.AutoHashMapUnmanaged(usize, usize) = .{},
+jumplabels: std.StringHashMapUnmanaged(usize) = .{},
 
 const Error = error{
     Unimplemented,
     TypeMismatch,
     Overflow,
+    DuplicateLabel,
 };
 
 pub fn compile(allocator: Allocator, sx: []const Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
-    var compiler = try init(allocator, errorinfo);
+    var compiler = init(allocator, errorinfo);
     defer compiler.deinit();
 
     return compiler.compileStmts(sx);
@@ -43,31 +45,36 @@ pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo
     return compile(allocator, sx, errorinfo);
 }
 
-pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
-    const self = try allocator.create(Compiler);
-    self.* = .{
+pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Compiler {
+    return .{
         .allocator = allocator,
-        .writer = undefined,
+        .as = isa.Assembler.init(allocator),
         .errorinfo = errorinfo,
     };
-    self.writer = self.buf.writer(allocator);
-    return self;
 }
 
 pub fn deinit(self: *Compiler) void {
-    self.buf.deinit(self.allocator);
-    var it = self.slots.keyIterator();
-    while (it.next()) |k|
-        self.allocator.free(k.*);
+    {
+        var it = self.jumplabels.keyIterator();
+        while (it.next()) |k|
+            self.allocator.free(k.*);
+    }
+    self.jumplabels.deinit(self.allocator);
+    self.linenos.deinit(self.allocator);
+    {
+        var it = self.slots.keyIterator();
+        while (it.next()) |k|
+            self.allocator.free(k.*);
+    }
     self.slots.deinit(self.allocator);
-    self.allocator.destroy(self);
+    self.as.deinit();
 }
 
 pub fn compileStmts(self: *Compiler, sx: []const Stmt) ![]const u8 {
     for (sx) |s|
         try self.compileStmt(s);
 
-    return self.buf.toOwnedSlice(self.allocator);
+    return self.as.buffer.toOwnedSlice(self.allocator);
 }
 
 fn compileStmt(self: *Compiler, s: Stmt) !void {
@@ -87,32 +94,55 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             // argument.
             for (p.args, 0..) |a, i| {
                 const t = try self.compileExpr(a.payload);
-                try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT, .t = isa.Type.fromTy(t) }});
+                try self.as.one(isa.Opcode{ .op = .PRINT, .t = isa.Type.fromTy(t) });
                 if (i < p.separators.len) {
                     switch (p.separators[i].payload) {
                         ';' => {},
-                        ',' => try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_COMMA }}),
+                        ',' => try self.as.one(isa.Opcode{ .op = .PRINT_COMMA }),
                         else => unreachable,
                     }
                 }
             }
-            if (p.separators.len < p.args.len) {
-                try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_LINEFEED }});
-            }
+            if (p.separators.len < p.args.len)
+                try self.as.one(isa.Opcode{ .op = .PRINT_LINEFEED });
         },
         .let => |l| {
             const resolved = try self.labelResolve(l.lhs.payload, .write);
-            const rhsType = try self.compileExpr(l.rhs.payload);
-            try self.compileCoerce(rhsType, resolved.type);
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .LET, .slot = resolved.slot },
-            });
+            const rhs_ty = try self.compileExpr(l.rhs.payload);
+            try self.compileCoerce(rhs_ty, resolved.type);
+            try self.as.one(isa.Opcode{ .op = .LET, .slot = resolved.slot });
+        },
+        .lineno => |n| {
+            const entry = try self.linenos.getOrPut(self.allocator, n);
+            if (entry.found_existing)
+                return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate lineno: {d}", .{n});
+            entry.value_ptr.* = self.as.buffer.items.len;
+        },
+        .jumplabel => |l| {
+            const lowered = try std.ascii.allocLowerString(self.allocator, l);
+            errdefer self.allocator.free(lowered);
+
+            const entry = try self.jumplabels.getOrPut(self.allocator, lowered);
+            if (entry.found_existing)
+                return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate jumplabel: {s}", .{l});
+            entry.value_ptr.* = self.as.buffer.items.len;
+        },
+        .goto => |l| {
+            // TODO: non-fatal if target not found
+            const offset = if (std.fmt.parseUnsigned(u16, l.payload, 10)) |n|
+                self.linenos.get(n).?
+            else |_| t: {
+                const lowered = try std.ascii.allocLowerString(self.allocator, l.payload);
+                defer self.allocator.free(lowered);
+                break :t self.jumplabels.get(lowered).?;
+            };
+
+            try self.as.one(isa.Opcode{ .op = .JUMP });
+            try self.as.one(isa.Target{ .absolute = offset });
         },
         .pragma_printed => |p| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .PRAGMA },
-                isa.Value{ .string = p.payload },
-            });
+            try self.as.one(isa.Opcode{ .op = .PRAGMA });
+            try self.as.one(isa.Value{ .string = p.payload });
         },
         else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
     }
@@ -121,46 +151,34 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
 fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.Type {
     switch (e) {
         .imm_integer => |n| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .PUSH, .t = .INTEGER },
-                isa.Value{ .integer = n },
-            });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .t = .INTEGER });
+            try self.as.one(isa.Value{ .integer = n });
             return .integer;
         },
         .imm_long => |n| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .PUSH, .t = .LONG },
-                isa.Value{ .long = n },
-            });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .t = .LONG });
+            try self.as.one(isa.Value{ .long = n });
             return .long;
         },
         .imm_single => |n| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .PUSH, .t = .SINGLE },
-                isa.Value{ .single = n },
-            });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .t = .SINGLE });
+            try self.as.one(isa.Value{ .single = n });
             return .single;
         },
         .imm_double => |n| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .PUSH, .t = .DOUBLE },
-                isa.Value{ .double = n },
-            });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .t = .DOUBLE });
+            try self.as.one(isa.Value{ .double = n });
             return .double;
         },
         .imm_string => |s| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{ .op = .PUSH, .t = .STRING },
-                isa.Value{ .string = s },
-            });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .t = .STRING });
+            try self.as.one(isa.Value{ .string = s });
             return .string;
         },
         .label => |l| {
             const resolved = try self.labelResolve(l, .read);
             if (resolved.slot) |slot| {
-                try isa.assembleInto(self.writer, .{
-                    isa.Opcode{ .op = .PUSH, .slot = slot },
-                });
+                try self.as.one(isa.Opcode{ .op = .PUSH, .slot = slot });
             } else {
                 // autovivify
                 _ = try self.compileExpr(Expr.Payload.zeroImm(resolved.type));
@@ -169,12 +187,10 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
         },
         .binop => |b| {
             const tyx = try self.compileBinopOperands(b.lhs.payload, b.op.payload, b.rhs.payload);
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode{
-                    .op = .ALU,
-                    .t = isa.Type.fromTy(tyx.widened),
-                    .alu = isa.AluOp.fromExprOp(b.op.payload),
-                },
+            try self.as.one(isa.Opcode{
+                .op = .ALU,
+                .t = isa.Type.fromTy(tyx.widened),
+                .alu = isa.AluOp.fromExprOp(b.op.payload),
             });
 
             return tyx.result;
@@ -209,11 +225,9 @@ fn compileCoerce(self: *Compiler, from: ty.Type, to: ty.Type) !void {
         .string => return self.cannotCoerce(from, to),
     }
 
-    try isa.assembleInto(self.writer, .{
-        isa.Opcode{
-            .op = .CAST,
-            .tc = .{ .from = isa.TypeCast.fromTy(from), .to = isa.TypeCast.fromTy(to) },
-        },
+    try self.as.one(isa.Opcode{
+        .op = .CAST,
+        .tc = .{ .from = isa.TypeCast.fromTy(from), .to = isa.TypeCast.fromTy(to) },
     });
 }
 
@@ -227,53 +241,53 @@ const BinopTypes = struct {
 };
 
 fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Expr.Payload) !BinopTypes {
-    const lhsType = try self.compileExpr(lhs);
+    const lhs_ty = try self.compileExpr(lhs);
 
     // Compile RHS to get type; snip off the generated code and append after we
     // do any necessary coercion. (It was either this or do stack swapsies in
     // the generated code.)
-    const index = self.buf.items.len;
-    const rhsType = try self.compileExpr(rhs);
-    const rhsCode = try self.allocator.dupe(u8, self.buf.items[index..]);
-    defer self.allocator.free(rhsCode);
-    self.buf.items.len = index;
+    const index = self.as.buffer.items.len;
+    const rhs_ty = try self.compileExpr(rhs);
+    const rhs_code = try self.allocator.dupe(u8, self.as.buffer.items[index..]);
+    defer self.allocator.free(rhs_code);
+    self.as.buffer.items.len = index;
 
     // Coerce both types to the wider of the two (if possible).
-    const widenedType = lhsType.widen(rhsType) orelse return self.cannotCoerce(rhsType, lhsType);
-    try self.compileCoerce(lhsType, widenedType);
+    const widened_ty = lhs_ty.widen(rhs_ty) orelse return self.cannotCoerce(rhs_ty, lhs_ty);
+    try self.compileCoerce(lhs_ty, widened_ty);
 
-    try self.writer.writeAll(rhsCode);
-    try self.compileCoerce(rhsType, widenedType);
+    try self.as.buffer.appendSlice(self.allocator, rhs_code);
+    try self.compileCoerce(rhs_ty, widened_ty);
 
     // Determine the type of the result of the operation, which might differ
     // from the input type (fdiv, idiv). The former is necessary for the
     // compilation to know what was placed on the stack; the latter is necessary
     // to determine which opcode to produce.
-    const resultType: ty.Type = switch (op) {
-        .add => widenedType,
-        .mul => switch (widenedType) {
+    const result_ty: ty.Type = switch (op) {
+        .add => widened_ty,
+        .mul => switch (widened_ty) {
             .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot multiply a STRING", .{}),
-            else => widenedType,
+            else => widened_ty,
         },
-        .fdiv => switch (widenedType) {
+        .fdiv => switch (widened_ty) {
             .integer, .single => .single,
             .long, .double => .double,
             .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot fdivide a STRING", .{}),
         },
-        .sub => switch (widenedType) {
+        .sub => switch (widened_ty) {
             .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot subtract a STRING", .{}),
-            else => widenedType,
+            else => widened_ty,
         },
         .eq, .neq, .lt, .gt, .lte, .gte => .integer,
-        .idiv, .@"and", .@"or", .xor, .mod => switch (widenedType) {
+        .idiv, .@"and", .@"or", .xor, .mod => switch (widened_ty) {
             .integer => .integer,
             .long, .single, .double => .long,
-            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot {s} a STRING", .{@tagName(widenedType)}),
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot {s} a STRING", .{@tagName(widened_ty)}),
         },
         // else => return ErrorInfo.ret(self, Error.Unimplemented, "unknown result type of op {any}", .{op}),
     };
 
-    return .{ .widened = widenedType, .result = resultType };
+    return .{ .widened = widened_ty, .result = result_ty };
 }
 
 const Rw = enum { read, write };
@@ -451,10 +465,10 @@ test "compiler and stack machine agree on binop expression types" {
     for (std.meta.tags(Expr.Op)) |op| {
         for (std.meta.tags(ty.Type)) |tyLhs| {
             for (std.meta.tags(ty.Type)) |tyRhs| {
-                var c = try Compiler.init(testing.allocator, null);
+                var c = Compiler.init(testing.allocator, null);
                 defer c.deinit();
 
-                const compilerTy = c.compileExpr(.{ .binop = .{
+                const compiler_ty = c.compileExpr(.{ .binop = .{
                     .lhs = &Expr.init(Expr.Payload.oneImm(tyLhs), .{}),
                     .op = loc.WithRange(Expr.Op).init(op, .{}),
                     .rhs = &Expr.init(Expr.Payload.oneImm(tyRhs), .{}),
@@ -470,14 +484,38 @@ test "compiler and stack machine agree on binop expression types" {
                 );
                 defer m.deinit();
 
-                const code = try c.buf.toOwnedSlice(testing.allocator);
+                const code = try c.as.buffer.toOwnedSlice(testing.allocator);
                 defer testing.allocator.free(code);
 
                 try m.run(code);
 
                 try testing.expectEqual(1, m.stack.items.len);
-                try testing.expectEqual(m.stack.items[0].type(), compilerTy);
+                try testing.expectEqual(m.stack.items[0].type(), compiler_ty);
             }
         }
     }
+}
+
+test "goto" {
+    try expectCompile(
+        \\PRINT 1
+        \\a: PRINT 2
+        \\GOTO a
+        \\77 GOTO 77
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Label{ .id = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Opcode{ .op = .JUMP },
+        isa.Target{ .label_id = 1 },
+        isa.Label{ .id = 2 },
+        isa.Opcode{ .op = .JUMP },
+        isa.Target{ .label_id = 2 },
+    });
 }

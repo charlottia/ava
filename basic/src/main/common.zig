@@ -52,7 +52,7 @@ pub fn handlesDeinit() !void {
     try stdout.bw.flush();
 }
 
-const helpText =
+const help_text =
     \\
     \\Global options:
     \\
@@ -65,7 +65,7 @@ pub fn usageFor(status: u8, comptime command: []const u8, comptime argsPart: []c
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
         \\Usage: {?s} 
     ++ command ++ (if (argsPart.len > 0) " " else "") ++ argsPart ++ "\n\n" ++
-        body ++ helpText, .{opts.global.executable_name});
+        body ++ help_text, .{opts.global.executable_name});
     std.process.exit(status);
 }
 
@@ -236,6 +236,11 @@ pub fn disasm(allocator: Allocator, code: []const u8) !void {
                 i += 1;
                 try reportType(ia.t);
                 try std.fmt.format(stdout.wr, " {s}", .{@tagName(ia.alu)});
+            },
+            .JUMP => {
+                const target = std.mem.readInt(u16, code[i..][0..2], .little);
+                i += 2;
+                try std.fmt.format(stdout.wr, " {} (0x{x})", .{ target, target });
             },
             .PRAGMA => unreachable,
         }

@@ -51,7 +51,7 @@ pub fn main(allocator: Allocator, options: opts.Compile) !void {
     if (std.mem.eql(u8, filename, "-")) {
         try common.stdout.wr.writeAll(code);
     } else {
-        const filenameOut = if (std.ascii.endsWithIgnoreCase(filename, ".bas")) bas: {
+        const filename_out = if (std.ascii.endsWithIgnoreCase(filename, ".bas")) bas: {
             var buf = try allocator.dupe(u8, filename);
             @memcpy(buf[buf.len - 3 ..], "avc");
             break :bas buf;
@@ -61,8 +61,8 @@ pub fn main(allocator: Allocator, options: opts.Compile) !void {
             @memcpy(buf[buf.len - 4 ..], ".avc");
             break :other buf;
         };
-        defer allocator.free(filenameOut);
+        defer allocator.free(filename_out);
 
-        try std.fs.cwd().writeFile(.{ .sub_path = filenameOut, .data = code });
+        try std.fs.cwd().writeFile(.{ .sub_path = filename_out, .data = code });
     }
 }

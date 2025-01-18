@@ -100,7 +100,7 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
         return Stmt.init(.{ .lineno = @intCast(n.payload) }, n.range);
 
     if (self.accept(.jumplabel)) |l|
-        return Stmt.init(.{ .jumplabel = l.payload }, l.range);
+        return Stmt.init(.{ .jumplabel = l.payload[0 .. l.payload.len - 1] }, l.range);
 
     if (try self.acceptStmtLabel()) |s| return s;
     if (try self.acceptStmtLet()) |s| return s;
@@ -700,13 +700,13 @@ test "lineno and call" {
 
 test "bare jumplabel" {
     try expectParse("xyzzy:\n", &.{
-        Stmt.init(.{ .jumplabel = "xyzzy:" }, Range.init(.{ 1, 1 }, .{ 1, 6 })),
+        Stmt.init(.{ .jumplabel = "xyzzy" }, Range.init(.{ 1, 1 }, .{ 1, 6 })),
     });
 }
 
 test "jumplabel and call" {
     try expectParse("  ff: egumi\n", &.{
-        Stmt.init(.{ .jumplabel = "ff:" }, Range.init(.{ 1, 3 }, .{ 1, 5 })),
+        Stmt.init(.{ .jumplabel = "ff" }, Range.init(.{ 1, 3 }, .{ 1, 5 })),
         Stmt.init(.{ .call = .{
             .name = WithRange([]const u8).init("egumi", Range.init(.{ 1, 7 }, .{ 1, 11 })),
             .args = &.{},
@@ -717,7 +717,7 @@ test "jumplabel and call" {
 test "lineno, jumplabel and call" {
     try expectParse("7 ff: egumi\n", &.{
         Stmt.init(.{ .lineno = 7 }, Range.init(.{ 1, 1 }, .{ 1, 1 })),
-        Stmt.init(.{ .jumplabel = "ff:" }, Range.init(.{ 1, 3 }, .{ 1, 5 })),
+        Stmt.init(.{ .jumplabel = "ff" }, Range.init(.{ 1, 3 }, .{ 1, 5 })),
         Stmt.init(.{ .call = .{
             .name = WithRange([]const u8).init("egumi", Range.init(.{ 1, 7 }, .{ 1, 11 })),
             .args = &.{},

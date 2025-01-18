@@ -38,7 +38,7 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
     try common.stdout.tc.setColor(common.stdout.wr, .reset);
 
     var errorinfo: ErrorInfo = .{};
-    var c = try Compiler.init(allocator, &errorinfo);
+    var c = Compiler.init(allocator, &errorinfo);
     defer c.deinit();
 
     var m = stack.Machine(common.RunEffects).init(allocator, try common.RunEffects.init(allocator), &errorinfo);
