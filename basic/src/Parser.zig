@@ -130,13 +130,13 @@ fn nt(self: *const Parser) ?Token {
 
 fn accept(self: *Parser, comptime tt: Token.Tag) ?WithRange(std.meta.TagPayload(Token.Payload, tt)) {
     const t = self.nt() orelse return null;
-    if (t.payload == tt) {
-        self.nti += 1;
-        const payload = @field(t.payload, @tagName(tt));
-        return WithRange(std.meta.TagPayload(Token.Payload, tt))
-            .init(payload, t.range);
+    switch (t.payload) {
+        tt => |payload| {
+            self.nti += 1;
+            return WithRange(@TypeOf(payload)).init(payload, t.range);
+        },
+        else => return null,
     }
-    return null;
 }
 
 fn expect(self: *Parser, comptime tt: Token.Tag) !WithRange(std.meta.TagPayload(Token.Payload, tt)) {
@@ -283,7 +283,7 @@ fn acceptExprList(self: *Parser, comptime septoks: []const Token.Tag, separators
         inline for (septoks) |st| {
             if (self.accept(st)) |t| {
                 if (separators) |so|
-                    try so.append(self.allocator, Token.init(st, t.range));
+                    try so.append(self.allocator, Token.init(st, t.range, "")); // XXX
                 found = true;
                 break;
             }
@@ -476,9 +476,23 @@ fn acceptStmtNext(self: *Parser) !?Stmt {
 
 fn acceptStmtGoto(self: *Parser) !?Stmt {
     const k = self.accept(.kw_goto) orelse return null;
-    const l = try self.expect(.label);
 
-    return Stmt.init(.{ .goto = l }, Range.initEnds(k.range, l.range));
+    if (self.accept(.label)) |l|
+        return Stmt.init(.{ .goto = l }, Range.initEnds(k.range, l.range));
+
+    if (self.accept(.integer)) |n|
+        return Stmt.init(
+            .{ .goto = WithRange([]const u8).init(self.tx[self.nti - 1].span, n.range) },
+            Range.initEnds(k.range, n.range),
+        );
+
+    if (self.accept(.long)) |n|
+        return Stmt.init(
+            .{ .goto = WithRange([]const u8).init(self.tx[self.nti - 1].span, n.range) },
+            Range.initEnds(k.range, n.range),
+        );
+
+    return Error.UnexpectedToken;
 }
 
 fn acceptStmtEnd(self: *Parser) !?Stmt {
@@ -708,5 +722,19 @@ test "lineno, jumplabel and call" {
             .name = WithRange([]const u8).init("egumi", Range.init(.{ 1, 7 }, .{ 1, 11 })),
             .args = &.{},
         } }, Range.init(.{ 1, 7 }, .{ 1, 11 })),
+    });
+}
+
+test "goto" {
+    try expectParse("goto targey", &.{
+        Stmt.init(.{
+            .goto = WithRange([]const u8).init("targey", Range.init(.{ 1, 6 }, .{ 1, 11 })),
+        }, Range.init(.{ 1, 1 }, .{ 1, 11 })),
+    });
+
+    try expectParse("goto 123777", &.{
+        Stmt.init(.{
+            .goto = WithRange([]const u8).init("123777", Range.init(.{ 1, 6 }, .{ 1, 11 })),
+        }, Range.init(.{ 1, 1 }, .{ 1, 11 })),
     });
 }

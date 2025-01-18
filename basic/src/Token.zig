@@ -8,11 +8,14 @@ const Tokenizer = @import("Tokenizer.zig");
 
 const Token = @This();
 
+// All string references belong to the input string.
+
 payload: Payload,
 range: Range,
+span: []const u8,
 
-pub fn init(payload: Payload, range: Range) Token {
-    return .{ .payload = payload, .range = range };
+pub fn init(payload: Payload, range: Range, span: []const u8) Token {
+    return .{ .payload = payload, .range = range, .span = span };
 }
 
 pub fn format(self: Token, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
@@ -21,7 +24,6 @@ pub fn format(self: Token, comptime fmt: []const u8, options: std.fmt.FormatOpti
     try std.fmt.format(writer, "{any} {any}", .{ self.range, self.payload });
 }
 
-// Any references belong to the input string.
 pub const Payload = union(enum) {
     const Self = @This();
 

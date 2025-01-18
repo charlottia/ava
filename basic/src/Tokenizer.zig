@@ -112,31 +112,32 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         .linefeed,
                         if (lastWasWasCr) self.loc.back() else self.loc,
                         self.loc,
+                        inp[(if (lastWasWasCr) i - 1 else i) .. i + 1],
                     ));
                 } else if (c == '\'') {
                     state = .{ .remark = .{ .loc = self.loc, .offset = i } };
                 } else if (c == ',') {
-                    try tx.append(allocator, attach(.comma, self.loc, self.loc));
+                    try tx.append(allocator, attach(.comma, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == ';') {
-                    try tx.append(allocator, attach(.semicolon, self.loc, self.loc));
+                    try tx.append(allocator, attach(.semicolon, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == ':') {
-                    try tx.append(allocator, attach(.colon, self.loc, self.loc));
+                    try tx.append(allocator, attach(.colon, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '=') {
-                    try tx.append(allocator, attach(.equals, self.loc, self.loc));
+                    try tx.append(allocator, attach(.equals, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '+') {
-                    try tx.append(allocator, attach(.plus, self.loc, self.loc));
+                    try tx.append(allocator, attach(.plus, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '-') {
                     state = .{ .minus = .{ .loc = self.loc, .offset = i } };
                 } else if (c == '*') {
-                    try tx.append(allocator, attach(.asterisk, self.loc, self.loc));
+                    try tx.append(allocator, attach(.asterisk, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '/') {
-                    try tx.append(allocator, attach(.fslash, self.loc, self.loc));
+                    try tx.append(allocator, attach(.fslash, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '\\') {
-                    try tx.append(allocator, attach(.bslash, self.loc, self.loc));
+                    try tx.append(allocator, attach(.bslash, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '(') {
-                    try tx.append(allocator, attach(.pareno, self.loc, self.loc));
+                    try tx.append(allocator, attach(.pareno, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == ')') {
-                    try tx.append(allocator, attach(.parenc, self.loc, self.loc));
+                    try tx.append(allocator, attach(.parenc, self.loc, self.loc, inp[i .. i + 1]));
                 } else if (c == '<') {
                     state = .angleo;
                 } else if (c == '>') {
@@ -167,30 +168,36 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '.') {
                     state = .{ .floating = start };
                 } else if (c == '%') {
+                    const span = inp[start.offset .. i + 1];
                     try tx.append(allocator, attach(.{
-                        .integer = try std.fmt.parseInt(i16, inp[start.offset..i], 10),
-                    }, start.loc, self.loc));
+                        .integer = try std.fmt.parseInt(i16, span[0 .. span.len - 1], 10),
+                    }, start.loc, self.loc, span));
                     state = .init;
                 } else if (c == '&') {
+                    const span = inp[start.offset .. i + 1];
                     try tx.append(allocator, attach(.{
-                        .long = try std.fmt.parseInt(i32, inp[start.offset..i], 10),
-                    }, start.loc, self.loc));
+                        .long = try std.fmt.parseInt(i32, span[0 .. span.len - 1], 10),
+                    }, start.loc, self.loc, span));
                     state = .init;
                 } else if (c == '!') {
+                    const span = inp[start.offset .. i + 1];
                     try tx.append(allocator, attach(.{
-                        .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
-                    }, start.loc, self.loc));
+                        .single = try std.fmt.parseFloat(f32, span[0 .. span.len - 1]),
+                    }, start.loc, self.loc, span));
                     state = .init;
                 } else if (c == '#') {
+                    const span = inp[start.offset .. i + 1];
                     try tx.append(allocator, attach(.{
-                        .double = try std.fmt.parseFloat(f64, inp[start.offset..i]),
-                    }, start.loc, self.loc));
+                        .double = try std.fmt.parseFloat(f64, span[0 .. span.len - 1]),
+                    }, start.loc, self.loc, span));
                     state = .init;
                 } else {
+                    const span = inp[start.offset..i];
                     try tx.append(allocator, attach(
-                        try resolveIntegral(inp[start.offset..i]),
+                        try resolveIntegral(span),
                         start.loc,
                         self.loc.back(),
+                        span,
                     ));
                     state = .init;
                     rewind = 1;
@@ -202,7 +209,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '.') {
                     state = .{ .floating = start };
                 } else {
-                    try tx.append(allocator, attach(.minus, start.loc, start.loc));
+                    try tx.append(allocator, attach(.minus, start.loc, start.loc, inp[i - 1 .. i]));
                     state = .init;
                     rewind = 1;
                 }
@@ -225,22 +232,26 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         .state = .init,
                     } };
                 } else if (c == '!') {
+                    const span = inp[start.offset .. i + 1];
                     try tx.append(allocator, attach(.{
-                        .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
-                    }, start.loc, self.loc));
+                        .single = try std.fmt.parseFloat(f32, span[0 .. span.len - 1]),
+                    }, start.loc, self.loc, span));
                     state = .init;
                 } else if (c == '#') {
+                    const span = inp[start.offset .. i + 1];
                     try tx.append(allocator, attach(.{
-                        .double = try std.fmt.parseFloat(f64, inp[start.offset..i]),
-                    }, start.loc, self.loc));
+                        .double = try std.fmt.parseFloat(f64, span[0 .. span.len - 1]),
+                    }, start.loc, self.loc, span));
                     state = .init;
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     return Error.UnexpectedChar;
                 } else {
+                    const span = inp[start.offset..i];
                     try tx.append(allocator, attach(
-                        try resolveFloating(inp[start.offset..i]),
+                        try resolveFloating(span),
                         start.loc,
                         self.loc.back(),
+                        span,
                     ));
                     state = .init;
                     rewind = 1;
@@ -254,19 +265,22 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         } else if (c >= '0' and c <= '9') {
                             fe.state = .exp;
                         } else {
+                            const span = inp[fe.start.offset .. i - 1];
                             if (fe.pointed)
                                 // 1.2eX
                                 try tx.append(allocator, attach(
-                                    try resolveFloating(inp[fe.start.offset .. i - 1]),
+                                    try resolveFloating(span),
                                     fe.start.loc,
                                     self.loc.back().back(),
+                                    span,
                                 ))
                             else
                                 // 1eX
                                 try tx.append(allocator, attach(
-                                    try resolveIntegral(inp[fe.start.offset .. i - 1]),
+                                    try resolveIntegral(span),
                                     fe.start.loc,
                                     self.loc.back().back(),
+                                    span,
                                 ));
                             state = .init;
                             rewind = 2;
@@ -276,10 +290,12 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         if (c >= '0' and c <= '9') {
                             fe.state = .exp;
                         } else {
+                            const span = inp[fe.start.offset..i];
                             try tx.append(allocator, attach(
-                                try self.resolveExponent(fe.double, inp[fe.start.offset..i]),
+                                try self.resolveExponent(fe.double, span),
                                 fe.start.loc,
                                 self.loc.back(),
+                                span,
                             ));
                             state = .init;
                             rewind = 1;
@@ -289,10 +305,12 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         if (c >= '0' and c <= '9') {
                             // nop
                         } else {
+                            const span = inp[fe.start.offset..i];
                             try tx.append(allocator, attach(
-                                try self.resolveExponent(fe.double, inp[fe.start.offset..i]),
+                                try self.resolveExponent(fe.double, span),
                                 fe.start.loc,
                                 self.loc.back(),
+                                span,
                             ));
                             state = .init;
                             rewind = 1;
@@ -306,22 +324,45 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     // nop
                 } else if (c == '%' or c == '&' or c == '!' or c == '#' or c == '$') {
-                    try tx.append(allocator, attach(.{ .label = inp[start.offset .. i + 1] }, start.loc, self.loc));
+                    const span = inp[start.offset .. i + 1];
+                    try tx.append(allocator, attach(
+                        .{ .label = span },
+                        start.loc,
+                        self.loc,
+                        span,
+                    ));
                     state = .init;
                 } else if (c == ':') {
-                    try tx.append(allocator, attach(.{ .jumplabel = inp[start.offset .. i + 1] }, start.loc, self.loc));
+                    const span = inp[start.offset .. i + 1];
+                    try tx.append(allocator, attach(
+                        .{ .jumplabel = span },
+                        start.loc,
+                        self.loc,
+                        span,
+                    ));
                     state = .init;
                 } else if (std.ascii.eqlIgnoreCase(inp[start.offset..i], "rem")) {
                     state = .{ .remark = start };
                 } else {
-                    try tx.append(allocator, attach(classifyBareword(inp[start.offset..i]), start.loc, self.loc.back()));
+                    const span = inp[start.offset..i];
+                    try tx.append(allocator, attach(
+                        classifyBareword(span),
+                        start.loc,
+                        self.loc.back(),
+                        span,
+                    ));
                     state = .init;
                     rewind = 1;
                 }
             },
             .string => |start| {
                 if (c == '"') {
-                    try tx.append(allocator, attach(.{ .string = inp[start.offset..i] }, start.loc, self.loc));
+                    try tx.append(allocator, attach(
+                        .{ .string = inp[start.offset..i] },
+                        start.loc,
+                        self.loc,
+                        inp[start.offset - 1 .. i + 1],
+                    ));
                     state = .init;
                 } else {
                     // nop
@@ -333,16 +374,17 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else {
                     try tx.append(allocator, attach(.{
                         .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 .. i], 10),
-                    }, start.loc, self.loc.back()));
+                    }, start.loc, self.loc.back(), inp[start.offset..i]));
                     state = .init;
                     rewind = 1;
                 }
             },
             .remark => |start| {
                 if (c == '\r' or c == '\n') {
+                    const span = inp[start.offset..i];
                     try tx.append(allocator, attach(.{
-                        .remark = inp[start.offset..i],
-                    }, start.loc, self.loc.back()));
+                        .remark = span,
+                    }, start.loc, self.loc.back(), span));
                     state = .init;
                     rewind = 1;
                 } else {
@@ -351,23 +393,23 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             },
             .angleo => {
                 if (c == '>') { // <>
-                    try tx.append(allocator, attach(.diamond, self.loc.back(), self.loc));
+                    try tx.append(allocator, attach(.diamond, self.loc.back(), self.loc, inp[i - 1 .. i + 1]));
                     state = .init;
                 } else if (c == '=') { // <=
-                    try tx.append(allocator, attach(.lte, self.loc.back(), self.loc));
+                    try tx.append(allocator, attach(.lte, self.loc.back(), self.loc, inp[i - 1 .. i + 1]));
                     state = .init;
                 } else {
-                    try tx.append(allocator, attach(.angleo, self.loc.back(), self.loc.back()));
+                    try tx.append(allocator, attach(.angleo, self.loc.back(), self.loc.back(), inp[i - 1 .. i]));
                     state = .init;
                     rewind = 1;
                 }
             },
             .anglec => {
                 if (c == '=') { // >=
-                    try tx.append(allocator, attach(.gte, self.loc.back(), self.loc));
+                    try tx.append(allocator, attach(.gte, self.loc.back(), self.loc, inp[i - 1 .. i + 1]));
                     state = .init;
                 } else {
-                    try tx.append(allocator, attach(.anglec, self.loc.back(), self.loc.back()));
+                    try tx.append(allocator, attach(.anglec, self.loc.back(), self.loc.back(), inp[i - 1 .. i]));
                     state = .init;
                     rewind = 1;
                 }
@@ -381,12 +423,19 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             try resolveIntegral(inp[start.offset..]),
             start.loc,
             self.loc.back(),
+            inp[start.offset..],
         )),
-        .minus => |start| try tx.append(allocator, attach(.minus, start.loc, start.loc)),
+        .minus => |start| try tx.append(allocator, attach(
+            .minus,
+            start.loc,
+            start.loc,
+            inp[inp.len - 1 ..],
+        )),
         .floating => |start| try tx.append(allocator, attach(
             try resolveFloating(inp[start.offset..]),
             start.loc,
             self.loc.back(),
+            inp[start.offset..],
         )),
         .floating_exponent => |fe| {
             switch (fe.state) {
@@ -397,6 +446,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                             try resolveFloating(inp[fe.start.offset .. inp.len - 1]),
                             fe.start.loc,
                             self.loc.back().back(),
+                            inp[fe.start.offset .. inp.len - 1],
                         ))
                     else
                         // 1e$
@@ -404,14 +454,21 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                             try resolveIntegral(inp[fe.start.offset .. inp.len - 1]),
                             fe.start.loc,
                             self.loc.back().back(),
+                            inp[fe.start.offset .. inp.len - 1],
                         ));
-                    try tx.append(allocator, attach(.{ .label = inp[inp.len - 1 ..] }, self.loc.back(), self.loc.back()));
+                    try tx.append(allocator, attach(
+                        .{ .label = inp[inp.len - 1 ..] },
+                        self.loc.back(),
+                        self.loc.back(),
+                        inp[inp.len - 1 ..],
+                    ));
                 },
                 .sign => {
                     try tx.append(allocator, attach(
                         try self.resolveExponent(fe.double, inp[fe.start.offset..]),
                         fe.start.loc,
                         self.loc.back(),
+                        inp[fe.start.offset..],
                     ));
                 },
                 .exp => {
@@ -419,6 +476,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         try self.resolveExponent(fe.double, inp[fe.start.offset..]),
                         fe.start.loc,
                         self.loc.back(),
+                        inp[fe.start.offset..],
                     ));
                 },
             }
@@ -427,29 +485,35 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             if (std.ascii.eqlIgnoreCase(inp[start.offset..], "rem")) {
                 try tx.append(allocator, attach(.{
                     .remark = inp[start.offset..],
-                }, start.loc, self.loc.back()));
+                }, start.loc, self.loc.back(), inp[start.offset..]));
             } else {
-                try tx.append(allocator, attach(classifyBareword(inp[start.offset..]), start.loc, self.loc.back()));
+                try tx.append(allocator, attach(
+                    classifyBareword(inp[start.offset..]),
+                    start.loc,
+                    self.loc.back(),
+                    inp[start.offset..],
+                ));
             }
         },
         .string => return Error.UnexpectedEnd,
         .fileno => |start| try tx.append(allocator, attach(.{
             .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 ..], 10),
-        }, start.loc, self.loc.back())),
+        }, start.loc, self.loc.back(), inp[start.offset..])),
         .remark => |start| try tx.append(allocator, attach(.{
             .remark = inp[start.offset..],
-        }, start.loc, self.loc.back())),
-        .angleo => try tx.append(allocator, attach(.angleo, self.loc.back(), self.loc.back())),
-        .anglec => try tx.append(allocator, attach(.anglec, self.loc.back(), self.loc.back())),
+        }, start.loc, self.loc.back(), inp[start.offset..])),
+        .angleo => try tx.append(allocator, attach(.angleo, self.loc.back(), self.loc.back(), inp[inp.len - 1 ..])),
+        .anglec => try tx.append(allocator, attach(.anglec, self.loc.back(), self.loc.back(), inp[inp.len - 1 ..])),
     }
 
     return tx.toOwnedSlice(allocator);
 }
 
-fn attach(payload: Token.Payload, start: Loc, end: Loc) Token {
+fn attach(payload: Token.Payload, start: Loc, end: Loc, span: []const u8) Token {
     return .{
         .payload = payload,
         .range = .{ .start = start, .end = end },
+        .span = span,
     };
 }
 
@@ -523,29 +587,29 @@ test "tokenizes basics" {
         \\REM Hiii :3
         \\REM
     , &.{
-        Token.init(.kw_if, Range.init(.{ 1, 1 }, .{ 1, 2 })),
-        Token.init(.{ .integer = 10 }, Range.init(.{ 1, 4 }, .{ 1, 5 })),
-        Token.init(.kw_then, Range.init(.{ 1, 7 }, .{ 1, 10 })),
-        Token.init(.kw_end, Range.init(.{ 1, 12 }, .{ 1, 14 })),
-        Token.init(.semicolon, Range.init(.{ 1, 15 }, .{ 1, 15 })),
-        Token.init(.linefeed, Range.init(.{ 1, 16 }, .{ 1, 16 })),
-        Token.init(.{ .label = "tere" }, Range.init(.{ 2, 3 }, .{ 2, 6 })),
-        Token.init(.{ .label = "maailm%" }, Range.init(.{ 2, 8 }, .{ 2, 14 })),
-        Token.init(.comma, Range.init(.{ 2, 15 }, .{ 2, 15 })),
-        Token.init(.{ .label = "ava$" }, Range.init(.{ 2, 17 }, .{ 2, 20 })),
-        Token.init(.equals, Range.init(.{ 2, 22 }, .{ 2, 22 })),
-        Token.init(.{ .label = "siin&" }, Range.init(.{ 2, 24 }, .{ 2, 28 })),
-        Token.init(.{ .remark = "'okok" }, Range.init(.{ 2, 30 }, .{ 2, 34 })),
-        Token.init(.linefeed, Range.init(.{ 2, 35 }, .{ 2, 35 })),
-        Token.init(.{ .jumplabel = "Awawa:" }, Range.init(.{ 3, 1 }, .{ 3, 6 })),
-        Token.init(.{ .fileno = 7 }, Range.init(.{ 3, 8 }, .{ 3, 9 })),
-        Token.init(.angleo, Range.init(.{ 3, 10 }, .{ 3, 10 })),
-        Token.init(.diamond, Range.init(.{ 3, 11 }, .{ 3, 12 })),
-        Token.init(.anglec, Range.init(.{ 3, 13 }, .{ 3, 13 })),
-        Token.init(.linefeed, Range.init(.{ 3, 14 }, .{ 3, 14 })),
-        Token.init(.{ .remark = "REM Hiii :3" }, Range.init(.{ 4, 1 }, .{ 4, 11 })),
-        Token.init(.linefeed, Range.init(.{ 4, 12 }, .{ 4, 12 })),
-        Token.init(.{ .remark = "REM" }, Range.init(.{ 5, 1 }, .{ 5, 3 })),
+        Token.init(.kw_if, Range.init(.{ 1, 1 }, .{ 1, 2 }), "if"),
+        Token.init(.{ .integer = 10 }, Range.init(.{ 1, 4 }, .{ 1, 5 }), "10"),
+        Token.init(.kw_then, Range.init(.{ 1, 7 }, .{ 1, 10 }), "Then"),
+        Token.init(.kw_end, Range.init(.{ 1, 12 }, .{ 1, 14 }), "END"),
+        Token.init(.semicolon, Range.init(.{ 1, 15 }, .{ 1, 15 }), ";"),
+        Token.init(.linefeed, Range.init(.{ 1, 16 }, .{ 1, 16 }), "\n"),
+        Token.init(.{ .label = "tere" }, Range.init(.{ 2, 3 }, .{ 2, 6 }), "tere"),
+        Token.init(.{ .label = "maailm%" }, Range.init(.{ 2, 8 }, .{ 2, 14 }), "maailm%"),
+        Token.init(.comma, Range.init(.{ 2, 15 }, .{ 2, 15 }), ","),
+        Token.init(.{ .label = "ava$" }, Range.init(.{ 2, 17 }, .{ 2, 20 }), "ava$"),
+        Token.init(.equals, Range.init(.{ 2, 22 }, .{ 2, 22 }), "="),
+        Token.init(.{ .label = "siin&" }, Range.init(.{ 2, 24 }, .{ 2, 28 }), "siin&"),
+        Token.init(.{ .remark = "'okok" }, Range.init(.{ 2, 30 }, .{ 2, 34 }), "'okok"),
+        Token.init(.linefeed, Range.init(.{ 2, 35 }, .{ 2, 35 }), "\n"),
+        Token.init(.{ .jumplabel = "Awawa:" }, Range.init(.{ 3, 1 }, .{ 3, 6 }), "Awawa:"),
+        Token.init(.{ .fileno = 7 }, Range.init(.{ 3, 8 }, .{ 3, 9 }), "#7"),
+        Token.init(.angleo, Range.init(.{ 3, 10 }, .{ 3, 10 }), "<"),
+        Token.init(.diamond, Range.init(.{ 3, 11 }, .{ 3, 12 }), "<>"),
+        Token.init(.anglec, Range.init(.{ 3, 13 }, .{ 3, 13 }), ">"),
+        Token.init(.linefeed, Range.init(.{ 3, 14 }, .{ 3, 14 }), "\n"),
+        Token.init(.{ .remark = "REM Hiii :3" }, Range.init(.{ 4, 1 }, .{ 4, 11 }), "REM Hiii :3"),
+        Token.init(.linefeed, Range.init(.{ 4, 12 }, .{ 4, 12 }), "\n"),
+        Token.init(.{ .remark = "REM" }, Range.init(.{ 5, 1 }, .{ 5, 3 }), "REM"),
     });
 }
 
@@ -554,8 +618,8 @@ test "tokenizes strings" {
     try expectTokens(
         \\"abc" "!"
     , &.{
-        Token.init(.{ .string = "abc" }, Range.init(.{ 1, 1 }, .{ 1, 5 })),
-        Token.init(.{ .string = "!" }, Range.init(.{ 1, 7 }, .{ 1, 9 })),
+        Token.init(.{ .string = "abc" }, Range.init(.{ 1, 1 }, .{ 1, 5 }), "\"abc\""),
+        Token.init(.{ .string = "!" }, Range.init(.{ 1, 7 }, .{ 1, 9 }), "\"!\""),
     });
 }
 
@@ -563,17 +627,17 @@ test "tokenizes SINGLEs" {
     try expectTokens(
         \\1. 2.2 3! 4.! 5.5! 1e10 2E-5 4.4e+8 5E+ 6e
     , &.{
-        Token.init(.{ .single = 1.0 }, Range.init(.{ 1, 1 }, .{ 1, 2 })),
-        Token.init(.{ .single = 2.2 }, Range.init(.{ 1, 4 }, .{ 1, 6 })),
-        Token.init(.{ .single = 3.0 }, Range.init(.{ 1, 8 }, .{ 1, 9 })),
-        Token.init(.{ .single = 4.0 }, Range.init(.{ 1, 11 }, .{ 1, 13 })),
-        Token.init(.{ .single = 5.5 }, Range.init(.{ 1, 15 }, .{ 1, 18 })),
-        Token.init(.{ .single = 1e10 }, Range.init(.{ 1, 20 }, .{ 1, 23 })),
-        Token.init(.{ .single = 2e-5 }, Range.init(.{ 1, 25 }, .{ 1, 28 })),
-        Token.init(.{ .single = 4.4e+8 }, Range.init(.{ 1, 30 }, .{ 1, 35 })),
-        Token.init(.{ .single = 5E+0 }, Range.init(.{ 1, 37 }, .{ 1, 39 })),
-        Token.init(.{ .integer = 6 }, Range.init(.{ 1, 41 }, .{ 1, 41 })),
-        Token.init(.{ .label = "e" }, Range.init(.{ 1, 42 }, .{ 1, 42 })),
+        Token.init(.{ .single = 1.0 }, Range.init(.{ 1, 1 }, .{ 1, 2 }), "1."),
+        Token.init(.{ .single = 2.2 }, Range.init(.{ 1, 4 }, .{ 1, 6 }), "2.2"),
+        Token.init(.{ .single = 3.0 }, Range.init(.{ 1, 8 }, .{ 1, 9 }), "3!"),
+        Token.init(.{ .single = 4.0 }, Range.init(.{ 1, 11 }, .{ 1, 13 }), "4.!"),
+        Token.init(.{ .single = 5.5 }, Range.init(.{ 1, 15 }, .{ 1, 18 }), "5.5!"),
+        Token.init(.{ .single = 1e10 }, Range.init(.{ 1, 20 }, .{ 1, 23 }), "1e10"),
+        Token.init(.{ .single = 2e-5 }, Range.init(.{ 1, 25 }, .{ 1, 28 }), "2E-5"),
+        Token.init(.{ .single = 4.4e+8 }, Range.init(.{ 1, 30 }, .{ 1, 35 }), "4.4e+8"),
+        Token.init(.{ .single = 5E+0 }, Range.init(.{ 1, 37 }, .{ 1, 39 }), "5E+"),
+        Token.init(.{ .integer = 6 }, Range.init(.{ 1, 41 }, .{ 1, 41 }), "6"),
+        Token.init(.{ .label = "e" }, Range.init(.{ 1, 42 }, .{ 1, 42 }), "e"),
     });
 }
 
@@ -581,40 +645,40 @@ test "tokenizes DOUBLEs" {
     try expectTokens(
         \\1.2345678 2# 2147483648 3.45# 1d10 2D-5 4.4d+8 5D+ 6d
     , &.{
-        Token.init(.{ .double = 1.2345678 }, Range.init(.{ 1, 1 }, .{ 1, 9 })),
-        Token.init(.{ .double = 2.0 }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
-        Token.init(.{ .double = 2147483648.0 }, Range.init(.{ 1, 14 }, .{ 1, 23 })),
-        Token.init(.{ .double = 3.45 }, Range.init(.{ 1, 25 }, .{ 1, 29 })),
-        Token.init(.{ .double = 1e10 }, Range.init(.{ 1, 31 }, .{ 1, 34 })),
-        Token.init(.{ .double = 2e-5 }, Range.init(.{ 1, 36 }, .{ 1, 39 })),
-        Token.init(.{ .double = 4.4e+8 }, Range.init(.{ 1, 41 }, .{ 1, 46 })),
-        Token.init(.{ .double = 5E+0 }, Range.init(.{ 1, 48 }, .{ 1, 50 })),
-        Token.init(.{ .integer = 6 }, Range.init(.{ 1, 52 }, .{ 1, 52 })),
-        Token.init(.{ .label = "d" }, Range.init(.{ 1, 53 }, .{ 1, 53 })),
+        Token.init(.{ .double = 1.2345678 }, Range.init(.{ 1, 1 }, .{ 1, 9 }), "1.2345678"),
+        Token.init(.{ .double = 2.0 }, Range.init(.{ 1, 11 }, .{ 1, 12 }), "2#"),
+        Token.init(.{ .double = 2147483648.0 }, Range.init(.{ 1, 14 }, .{ 1, 23 }), "2147483648"),
+        Token.init(.{ .double = 3.45 }, Range.init(.{ 1, 25 }, .{ 1, 29 }), "3.45#"),
+        Token.init(.{ .double = 1e10 }, Range.init(.{ 1, 31 }, .{ 1, 34 }), "1d10"),
+        Token.init(.{ .double = 2e-5 }, Range.init(.{ 1, 36 }, .{ 1, 39 }), "2D-5"),
+        Token.init(.{ .double = 4.4e+8 }, Range.init(.{ 1, 41 }, .{ 1, 46 }), "4.4d+8"),
+        Token.init(.{ .double = 5E+0 }, Range.init(.{ 1, 48 }, .{ 1, 50 }), "5D+"),
+        Token.init(.{ .integer = 6 }, Range.init(.{ 1, 52 }, .{ 1, 52 }), "6"),
+        Token.init(.{ .label = "d" }, Range.init(.{ 1, 53 }, .{ 1, 53 }), "d"),
     });
 }
 
 test "handles carriage returns" {
     // If you save a file from QBASIC for realsies ...
     try expectTokens("awa\r\nwa\n", &.{
-        Token.init(.{ .label = "awa" }, Range.init(.{ 1, 1 }, .{ 1, 3 })),
-        Token.init(.linefeed, Range.init(.{ 1, 4 }, .{ 1, 5 })),
-        Token.init(.{ .label = "wa" }, Range.init(.{ 2, 1 }, .{ 2, 2 })),
-        Token.init(.linefeed, Range.init(.{ 2, 3 }, .{ 2, 3 })),
+        Token.init(.{ .label = "awa" }, Range.init(.{ 1, 1 }, .{ 1, 3 }), "awa"),
+        Token.init(.linefeed, Range.init(.{ 1, 4 }, .{ 1, 5 }), "\r\n"),
+        Token.init(.{ .label = "wa" }, Range.init(.{ 2, 1 }, .{ 2, 2 }), "wa"),
+        Token.init(.linefeed, Range.init(.{ 2, 3 }, .{ 2, 3 }), "\n"),
     });
 }
 
 test "tokenizes leading negation" {
     try expectTokens("-1 --2", &.{
-        Token.init(.{ .integer = -1 }, Range.init(.{ 1, 1 }, .{ 1, 2 })),
-        Token.init(.minus, Range.init(.{ 1, 4 }, .{ 1, 4 })),
-        Token.init(.{ .integer = -2 }, Range.init(.{ 1, 5 }, .{ 1, 6 })),
+        Token.init(.{ .integer = -1 }, Range.init(.{ 1, 1 }, .{ 1, 2 }), "-1"),
+        Token.init(.minus, Range.init(.{ 1, 4 }, .{ 1, 4 }), "-"),
+        Token.init(.{ .integer = -2 }, Range.init(.{ 1, 5 }, .{ 1, 6 }), "-2"),
     });
 }
 
 test "tokenizes floats without integral part" {
     try expectTokens(".1 -.2", &.{
-        Token.init(.{ .single = 0.1 }, Range.init(.{ 1, 1 }, .{ 1, 2 })),
-        Token.init(.{ .single = -0.2 }, Range.init(.{ 1, 4 }, .{ 1, 6 })),
+        Token.init(.{ .single = 0.1 }, Range.init(.{ 1, 1 }, .{ 1, 2 }), ".1"),
+        Token.init(.{ .single = -0.2 }, Range.init(.{ 1, 4 }, .{ 1, 6 }), "-.2"),
     });
 }
