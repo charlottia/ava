@@ -25,7 +25,7 @@ pub fn read(comptime T: type, allocator: Allocator, reader: anytype) (Allocator.
 
 fn serialize(comptime T: type, writer: anytype, payload: T) @TypeOf(writer).Error!void {
     switch (@typeInfo(T)) {
-        .Union => |u| {
+        .@"union" => |u| {
             comptime std.debug.assert(u.tag_type != null);
             const Tag = u.tag_type.?;
             try serialize(Tag, writer, payload);
@@ -37,29 +37,29 @@ fn serialize(comptime T: type, writer: anytype, payload: T) @TypeOf(writer).Erro
             }
             std.debug.panic("unmatched union tag: {x:0>2}", .{@intFromEnum(payload)});
         },
-        .Enum => |e| try serialize(e.tag_type, writer, @intFromEnum(payload)),
-        .Int => |_| try writer.writeInt(T, payload, .little),
-        .Pointer => |p| {
-            comptime std.debug.assert(p.size == .Slice);
-            comptime std.debug.assert(p.sentinel == null);
+        .@"enum" => |e| try serialize(e.tag_type, writer, @intFromEnum(payload)),
+        .int => |_| try writer.writeInt(T, payload, .little),
+        .pointer => |p| {
+            comptime std.debug.assert(p.size == .slice);
+            comptime std.debug.assert(p.sentinel() == null);
             comptime std.debug.assert(p.child == u8); // XXX
             try serialize(u32, writer, @intCast(payload.len));
             try writer.writeAll(payload);
         },
-        .Struct => |s| {
+        .@"struct" => |s| {
             comptime std.debug.assert(s.layout == .auto);
             inline for (s.fields) |f|
                 try serialize(f.type, writer, @field(payload, f.name));
         },
-        .Bool => try writer.writeByte(@intFromBool(payload)),
-        .Void => {},
+        .bool => try writer.writeByte(@intFromBool(payload)),
+        .void => {},
         else => @compileError("unhandled type: " ++ @typeName(T) ++ " (" ++ @tagName(@typeInfo(T)) ++ ")"),
     }
 }
 
 fn serializeLength(comptime T: type, payload: T) usize {
     switch (@typeInfo(T)) {
-        .Union => |u| {
+        .@"union" => |u| {
             comptime std.debug.assert(u.tag_type != null);
             const Tag = u.tag_type.?;
             inline for (comptime std.meta.tags(Tag)) |tag| {
@@ -70,30 +70,30 @@ fn serializeLength(comptime T: type, payload: T) usize {
             }
             std.debug.panic("unmatched union tag: {x:0>2}", .{@intFromEnum(payload)});
         },
-        .Enum => |e| return serializeLength(e.tag_type, @intFromEnum(payload)),
-        .Int => |i| return @divExact(i.bits, 8),
-        .Pointer => |p| {
-            comptime std.debug.assert(p.size == .Slice);
-            comptime std.debug.assert(p.sentinel == null);
+        .@"enum" => |e| return serializeLength(e.tag_type, @intFromEnum(payload)),
+        .int => |i| return @divExact(i.bits, 8),
+        .pointer => |p| {
+            comptime std.debug.assert(p.size == .slice);
+            comptime std.debug.assert(p.sentinel() == null);
             comptime std.debug.assert(p.child == u8); // XXX
             return serializeLength(u32, @intCast(payload.len)) + payload.len;
         },
-        .Struct => |s| {
+        .@"struct" => |s| {
             comptime std.debug.assert(s.layout == .auto);
             var len: usize = 0;
             inline for (s.fields) |f|
                 len += serializeLength(f.type, @field(payload, f.name));
             return len;
         },
-        .Bool => return 1,
-        .Void => return 0,
+        .bool => return 1,
+        .void => return 0,
         else => @compileError("unhandled type: " ++ @typeName(T) ++ " (" ++ @tagName(@typeInfo(T)) ++ ")"),
     }
 }
 
 fn deserialize(comptime T: type, allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).Error || error{EndOfStream})!T {
     switch (@typeInfo(T)) {
-        .Union => |u| {
+        .@"union" => |u| {
             comptime std.debug.assert(u.tag_type != null);
             const Tag = u.tag_type.?;
             const kind = try deserialize(Tag, allocator, reader);
@@ -106,33 +106,33 @@ fn deserialize(comptime T: type, allocator: Allocator, reader: anytype) (Allocat
             }
             std.debug.panic("unmatched union tag: {x:0>2}", .{@intFromEnum(kind)});
         },
-        .Enum => |e| return @enumFromInt(try deserialize(e.tag_type, allocator, reader)),
-        .Int => |_| return try reader.readInt(T, .little),
-        .Pointer => |p| {
-            comptime std.debug.assert(p.size == .Slice);
-            comptime std.debug.assert(p.sentinel == null);
+        .@"enum" => |e| return @enumFromInt(try deserialize(e.tag_type, allocator, reader)),
+        .int => |_| return try reader.readInt(T, .little),
+        .pointer => |p| {
+            comptime std.debug.assert(p.size == .slice);
+            comptime std.debug.assert(p.sentinel() == null);
             comptime std.debug.assert(p.child == u8); // XXX
             const len = try deserialize(u32, allocator, reader);
             const a = try allocator.alloc(u8, len);
             try reader.readNoEof(a);
             return a;
         },
-        .Struct => |s| {
+        .@"struct" => |s| {
             comptime std.debug.assert(s.layout == .auto);
             var r: T = undefined;
             inline for (s.fields) |f|
                 @field(r, f.name) = try deserialize(f.type, allocator, reader);
             return r;
         },
-        .Bool => return try reader.readByte() == 1,
-        .Void => return,
+        .bool => return try reader.readByte() == 1,
+        .void => return,
         else => @compileError("unhandled type: " ++ @typeName(T) ++ " (" ++ @tagName(@typeInfo(T)) ++ ")"),
     }
 }
 
 pub fn free(comptime T: type, allocator: Allocator, t: T) void {
     switch (@typeInfo(T)) {
-        .Union => |u| {
+        .@"union" => |u| {
             comptime std.debug.assert(u.tag_type != null);
             const Tag = u.tag_type.?;
             inline for (comptime std.meta.tags(Tag)) |tag| {
@@ -143,21 +143,21 @@ pub fn free(comptime T: type, allocator: Allocator, t: T) void {
             }
             std.debug.panic("unmatched union tag: {x:0>2}", .{@intFromEnum(t)});
         },
-        .Enum => {},
-        .Int => {},
-        .Pointer => |p| {
-            comptime std.debug.assert(p.size == .Slice);
-            comptime std.debug.assert(p.sentinel == null);
+        .@"enum" => {},
+        .int => {},
+        .pointer => |p| {
+            comptime std.debug.assert(p.size == .slice);
+            comptime std.debug.assert(p.sentinel() == null);
             comptime std.debug.assert(p.child == u8); // XXX
             allocator.free(t);
         },
-        .Struct => |s| {
+        .@"struct" => |s| {
             comptime std.debug.assert(s.layout == .auto);
             inline for (s.fields) |f|
                 free(f.type, allocator, @field(t, f.name));
         },
-        .Bool => {},
-        .Void => {},
+        .bool => {},
+        .void => {},
         else => @compileError("unhandled type: " ++ @typeName(T) ++ " (" ++ @tagName(@typeInfo(T)) ++ ")"),
     }
 }

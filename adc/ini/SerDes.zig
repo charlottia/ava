@@ -47,7 +47,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
     for (std.meta.fields(Schema)) |f| {
         var was_group = false;
         switch (@typeInfo(f.type)) {
-            .Pointer => |p| if (p.size == .Slice and p.child != u8) {
+            .pointer => |p| if (p.size == .slice and p.child != u8) {
                 was_group = true;
                 ArrayFieldEnumFields = ArrayFieldEnumFields ++ [_]std.builtin.Type.EnumField{.{
                     .name = f.name,
@@ -61,7 +61,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
                 ArrayStateFields = ArrayStateFields ++ [_]std.builtin.Type.StructField{.{
                     .name = f.name,
                     .type = std.ArrayListUnmanaged(p.child),
-                    .default_value = &std.ArrayListUnmanaged(p.child){},
+                    .default_value_ptr = &std.ArrayListUnmanaged(p.child){},
                     .is_comptime = false,
                     .alignment = @alignOf(std.ArrayListUnmanaged(p.child)),
                 }};
@@ -72,7 +72,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
             LoadStateFields = LoadStateFields ++ [_]std.builtin.Type.StructField{.{
                 .name = f.name,
                 .type = bool,
-                .default_value = &false,
+                .default_value_ptr = &false,
                 .is_comptime = false,
                 .alignment = 0,
             }};
@@ -82,28 +82,28 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
     const Underlying = u8;
     std.debug.assert(ArrayStateFields.len <= std.math.maxInt(Underlying) + 1);
 
-    const ArrayFieldEnum = @Type(.{ .Enum = .{
+    const ArrayFieldEnum = @Type(.{ .@"enum" = .{
         .tag_type = Underlying,
         .fields = ArrayFieldEnumFields,
         .decls = &.{},
         .is_exhaustive = true,
     } });
 
-    const ArrayElemState = @Type(.{ .Union = .{
+    const ArrayElemState = @Type(.{ .@"union" = .{
         .layout = .auto,
         .tag_type = ArrayFieldEnum,
         .fields = ArrayElemStateFields,
         .decls = &.{},
     } });
 
-    const ArrayState = @Type(.{ .Struct = .{
+    const ArrayState = @Type(.{ .@"struct" = .{
         .layout = .auto,
         .fields = ArrayStateFields,
         .decls = &.{},
         .is_tuple = false,
     } });
 
-    const LoadState = @Type(.{ .Struct = .{
+    const LoadState = @Type(.{ .@"struct" = .{
         .layout = .@"packed",
         .fields = LoadStateFields,
         .decls = &.{},
@@ -190,7 +190,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
 
             inline for (std.meta.fields(Schema)) |f|
                 if (!@field(load_state, f.name)) {
-                    if (f.default_value) |default|
+                    if (f.default_value_ptr) |default|
                         @field(s, f.name) = @as(*const f.type, @ptrCast(@alignCast(default))).*
                     else
                         return Error.MissingField;
@@ -202,7 +202,7 @@ pub fn SerDes(comptime Schema: type, comptime Config: type) type {
         pub fn save(writer: anytype, v: Schema) @TypeOf(writer).Error!void {
             inline for (std.meta.fields(Schema)) |f| {
                 switch (@typeInfo(f.type)) {
-                    .Pointer => |p| if (p.size == .Slice and p.child != u8) {
+                    .pointer => |p| if (p.size == .slice and p.child != u8) {
                         for (@field(v, f.name)) |e| {
                             try std.fmt.format(writer, "\n[{s}]\n", .{f.name});
                             inline for (std.meta.fields(@TypeOf(e))) |sf| {

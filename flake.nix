@@ -9,7 +9,7 @@
     zig-overlay.inputs.nixpkgs.follows = "nixpkgs";
     zig-overlay.inputs.flake-utils.follows = "flake-utils";
 
-    zls.url = github:zigtools/zls/0.13.0;
+    zls.url = github:zigtools/zls/master;
     zls.inputs.nixpkgs.follows = "nixpkgs";
     zls.inputs.flake-utils.follows = "flake-utils";
     zls.inputs.zig-overlay.follows = "zig-overlay";
@@ -35,7 +35,7 @@
   } @ inputs:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {inherit system;};
-      zig = zig-overlay.packages.${system}."0.13.0";
+      zig = zig-overlay.packages.${system}.master;
       zls = inputs.zls.packages.${system}.zls;
       gitignoreSource = gitignore.lib.gitignoreSource;
       python = inputs.niar.packages.${system}.python;

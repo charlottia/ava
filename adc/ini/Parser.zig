@@ -153,7 +153,7 @@ fn expectEventsHandling(input: []const u8, events: anytype, error_handling: Pars
         if (E == Parser.Error) {
             if (error_handling == .report)
                 try testing.expectError(ev, p.next());
-        } else if (@typeInfo(@TypeOf(ev)) == .Pointer) {
+        } else if (@typeInfo(@TypeOf(ev)) == .pointer) {
             try testing.expectEqualDeep(Parser.Event{ .group = ev }, p.next());
         } else {
             try testing.expectEqualDeep(

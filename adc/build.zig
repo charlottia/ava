@@ -1,11 +1,11 @@
 const std = @import("std");
-const SDL = @import("SDL.zig");
+const SDL = @import("sdl");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const sdlsdk = SDL.init(b, null);
+    const sdlsdk = SDL.init(b, .{});
 
     const test_step = b.step("test", "Run unit tests");
 
@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     imtui.linkLibCpp();
-    sdlsdk.link(imtui, .dynamic);
+    sdlsdk.link(imtui, .dynamic, .SDL2);
     imtui.root_module.addImport("sdl2", sdlsdk.getWrapperModule());
     imtui.linkSystemLibrary("sdl2_image");
 
@@ -47,8 +47,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     adc.linkLibCpp();
-    adc.root_module.addImport("imtui", &imtui.root_module);
-    adc.root_module.addImport("ini", &ini.root_module);
+    adc.root_module.addImport("imtui", imtui.root_module);
+    adc.root_module.addImport("ini", ini.root_module);
 
     const avabasic_mod = b.dependency("avabasic", .{
         .target = target,
@@ -86,8 +86,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     designer.linkLibCpp();
-    designer.root_module.addImport("imtui", &imtui.root_module);
-    designer.root_module.addImport("ini", &ini.root_module);
+    designer.root_module.addImport("imtui", imtui.root_module);
+    designer.root_module.addImport("ini", ini.root_module);
 
     b.installArtifact(designer);
 

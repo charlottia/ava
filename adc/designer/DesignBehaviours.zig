@@ -50,9 +50,9 @@ fn StateForBehaviours(comptime behaviours: anytype) type {
         .{ .name = "move", .type = MoveKind, .alignment = @alignOf(MoveKind) },
     };
 
-    return @Type(.{ .Union = .{
+    return @Type(.{ .@"union" = .{
         .layout = .auto,
-        .tag_type = @Type(.{ .Enum = .{
+        .tag_type = @Type(.{ .@"enum" = .{
             .tag_type = u8,
             .fields = StateEnumFields,
             .decls = &.{},
@@ -103,27 +103,27 @@ pub fn Impl(comptime Config: type) type {
     const Archetypes = archetypesForBehaviours(Config.behaviours);
 
     comptime var FieldsFields: []const std.builtin.Type.StructField =
-        if (@hasDecl(Config, "Fields")) @typeInfo(Config.Fields).Struct.fields else &.{};
+        if (@hasDecl(Config, "Fields")) @typeInfo(Config.Fields).@"struct".fields else &.{};
 
     if (!Archetypes.dialog)
         FieldsFields = FieldsFields ++ [_]std.builtin.Type.StructField{
-            .{ .name = "dialog", .type = *DesignDialog.Impl, .default_value = null, .is_comptime = false, .alignment = @alignOf(*DesignDialog.Impl) },
+            .{ .name = "dialog", .type = *DesignDialog.Impl, .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(*DesignDialog.Impl) },
         };
 
     FieldsFields = FieldsFields ++ [_]std.builtin.Type.StructField{
-        .{ .name = "r1", .type = usize, .default_value = null, .is_comptime = false, .alignment = @alignOf(usize) },
-        .{ .name = "c1", .type = usize, .default_value = null, .is_comptime = false, .alignment = @alignOf(usize) },
-        .{ .name = "r2", .type = usize, .default_value = if (Archetypes.sizing != .wh_resizable) &@as(usize, undefined) else null, .is_comptime = false, .alignment = @alignOf(usize) },
-        .{ .name = "c2", .type = usize, .default_value = if (Archetypes.sizing == .autosized) &@as(usize, undefined) else null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "r1", .type = usize, .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "c1", .type = usize, .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "r2", .type = usize, .default_value_ptr = if (Archetypes.sizing != .wh_resizable) &@as(usize, undefined) else null, .is_comptime = false, .alignment = @alignOf(usize) },
+        .{ .name = "c2", .type = usize, .default_value_ptr = if (Archetypes.sizing == .autosized) &@as(usize, undefined) else null, .is_comptime = false, .alignment = @alignOf(usize) },
     };
 
     if (Archetypes.text_editable)
         FieldsFields = FieldsFields ++ [_]std.builtin.Type.StructField{
-            .{ .name = "text", .type = std.ArrayListUnmanaged(u8), .default_value = null, .is_comptime = false, .alignment = @alignOf(std.ArrayListUnmanaged(u8)) },
-            .{ .name = "text_start", .type = usize, .default_value = &@as(usize, undefined), .is_comptime = false, .alignment = @alignOf(usize) },
+            .{ .name = "text", .type = std.ArrayListUnmanaged(u8), .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(std.ArrayListUnmanaged(u8)) },
+            .{ .name = "text_start", .type = usize, .default_value_ptr = &@as(usize, undefined), .is_comptime = false, .alignment = @alignOf(usize) },
         };
 
-    const Fields = @Type(.{ .Struct = .{
+    const Fields = @Type(.{ .@"struct" = .{
         .layout = .auto,
         .fields = FieldsFields,
         .decls = &.{},

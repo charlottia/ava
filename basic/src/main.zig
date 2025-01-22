@@ -41,7 +41,7 @@ pub fn main() !void {
     defer opts.global.deinit();
 
     const verb = opts.global.verb orelse usage(if (opts.global.options.help) 0 else 1);
-    inline for (@typeInfo(std.meta.Tag(opts.Command)).Enum.fields) |f| {
+    inline for (@typeInfo(std.meta.Tag(opts.Command)).@"enum".fields) |f| {
         if (@intFromEnum(verb) == f.value) {
             return @field(commands, f.name).main(allocator, @field(verb, f.name));
         }

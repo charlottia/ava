@@ -340,7 +340,7 @@ pub fn getOrPutControl(self: *Imtui, comptime T: type, args: anytype) !T {
     if (e.found_existing and e.value_ptr.lives(self.generation)) {
         const pc = e.value_ptr.as(T.Impl);
         // Designer's controls don't update state on describe() and so take no arguments.
-        if (@typeInfo(@TypeOf(T.Impl.describe)).Fn.params.len == 1)
+        if (@typeInfo(@TypeOf(T.Impl.describe)).@"fn".params.len == 1)
             @call(.auto, T.Impl.describe, .{pc})
         else
             @call(.auto, T.Impl.describe, .{pc} ++ args);

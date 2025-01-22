@@ -54,18 +54,6 @@
         "type": "github"
       }
     },
-    "langref": {
-      "flake": false,
-      "locked": {
-        "narHash": "sha256-O6p2tiKD8ZMhSX+DeA/o5hhAvcPkU2J9lFys/r11peY=",
-        "type": "file",
-        "url": "https://raw.githubusercontent.com/ziglang/zig/0fb2015fd3422fc1df364995f9782dfe7255eccd/doc/langref.html.in"
-      },
-      "original": {
-        "type": "file",
-        "url": "https://raw.githubusercontent.com/ziglang/zig/0fb2015fd3422fc1df364995f9782dfe7255eccd/doc/langref.html.in"
-      }
-    },
     "niar": {
       "inputs": {
         "flake-utils": [
@@ -141,11 +129,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1724804793,
-        "narHash": "sha256-ln8ZTkORKP7hiFJB2nfDsVOcivE/iHLsnK1Q7u2Nlmg=",
+        "lastModified": 1737419334,
+        "narHash": "sha256-xEQ+2zoihSR8TSHH5KMceReUd9Ae2tPNLFoQviGpaAg=",
         "owner": "mitchellh",
         "repo": "zig-overlay",
-        "rev": "c9e071dd875395201ea56132f1bf6cab3172abdf",
+        "rev": "11ba4193561b6096b2c72174163940a50251a99c",
         "type": "github"
       },
       "original": {
@@ -162,7 +150,6 @@
         "gitignore": [
           "gitignore"
         ],
-        "langref": "langref",
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -171,16 +158,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1717891507,
-        "narHash": "sha256-l/Zo1OwdB3js3wXOpgFLozKwq+bdsPySZtKbEbYBb7U=",
+        "lastModified": 1737505060,
+        "narHash": "sha256-N9ROrtrhVuGXzLcUB4elsvwXTKnOQIgCw9oMBPgLD1E=",
         "owner": "zigtools",
         "repo": "zls",
-        "rev": "a26718049a8657d4da04c331aeced1697bc7652b",
+        "rev": "9fc45caeafe3136070ea7abcf2f28addec069b5d",
         "type": "github"
       },
       "original": {
         "owner": "zigtools",
-        "ref": "0.13.0",
+        "ref": "master",
         "repo": "zls",
         "type": "github"
       }

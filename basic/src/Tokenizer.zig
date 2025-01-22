@@ -3,9 +3,9 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const Token = @import("Token.zig");
-const loc = @import("loc.zig");
-const Loc = loc.Loc;
-const Range = loc.Range;
+const locz = @import("loc.zig");
+const Loc = locz.Loc;
+const Range = locz.Range;
 const ErrorInfo = @import("ErrorInfo.zig");
 
 const Tokenizer = @This();

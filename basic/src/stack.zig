@@ -86,6 +86,8 @@ pub fn Machine(comptime Effects: type) type {
         }
 
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
+            @setEvalBranchQuota(10000);
+
             var i: usize = 0;
             while (i < code.len) {
                 const ix: isa.InsnX = @bitCast(code[i]);
