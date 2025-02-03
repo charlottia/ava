@@ -1,0 +1,7 @@
+10 PRINT "hi"
+20 GOTO 40
+30 PRINT "yo"
+40 PRINT "no"
+50 GOTO 8
+   PRINT "woah"
+ 8 PRAGMA PRINTED "hi\nno\n"

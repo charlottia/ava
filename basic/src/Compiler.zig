@@ -21,24 +21,23 @@ errorinfo: ?*ErrorInfo,
 deftypes: [26]ty.Type = [_]ty.Type{.single} ** 26,
 slots: std.StringHashMapUnmanaged(u8) = .{}, // key is UPPERCASE with sigil
 nextslot: u8 = 0,
-linenos: std.AutoHashMapUnmanaged(usize, usize) = .{},
-jumplabels: std.StringHashMapUnmanaged(usize) = .{},
 
 const Error = error{
     Unimplemented,
     TypeMismatch,
     Overflow,
     DuplicateLabel,
+    MissingTarget,
 };
 
-pub fn compile(allocator: Allocator, sx: []const Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
+pub fn compile(allocator: Allocator, sx: []const Stmt, errorinfo: ?*ErrorInfo) (Error || Parser.Error || Allocator.Error)![]const u8 {
     var compiler = init(allocator, errorinfo);
     defer compiler.deinit();
 
     return compiler.compileStmts(sx);
 }
 
-pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]const u8 {
+pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) (Error || Parser.Error || Allocator.Error)![]const u8 {
     const sx = try Parser.parse(allocator, inp, errorinfo);
     defer Parser.free(allocator, sx);
 
@@ -55,13 +54,6 @@ pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Compiler {
 
 pub fn deinit(self: *Compiler) void {
     {
-        var it = self.jumplabels.keyIterator();
-        while (it.next()) |k|
-            self.allocator.free(k.*);
-    }
-    self.jumplabels.deinit(self.allocator);
-    self.linenos.deinit(self.allocator);
-    {
         var it = self.slots.keyIterator();
         while (it.next()) |k|
             self.allocator.free(k.*);
@@ -70,14 +62,16 @@ pub fn deinit(self: *Compiler) void {
     self.as.deinit();
 }
 
-pub fn compileStmts(self: *Compiler, sx: []const Stmt) ![]const u8 {
+pub fn compileStmts(self: *Compiler, sx: []const Stmt) (Error || Allocator.Error)![]const u8 {
     for (sx) |s|
         try self.compileStmt(s);
+
+    try self.as.reloc();
 
     return self.as.buffer.toOwnedSlice(self.allocator);
 }
 
-fn compileStmt(self: *Compiler, s: Stmt) !void {
+fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
     switch (s.payload) {
         .remark => {},
         .call => |c| {
@@ -113,32 +107,24 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             try self.as.one(isa.Opcode{ .op = .LET, .slot = resolved.slot });
         },
         .lineno => |n| {
-            const entry = try self.linenos.getOrPut(self.allocator, n);
-            if (entry.found_existing)
-                return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate lineno: {d}", .{n});
-            entry.value_ptr.* = self.as.buffer.items.len;
+            // TODO:
+            // if (entry.found_existing)
+            //     return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate lineno: {d}", .{n});
+            const ns = try std.fmt.allocPrint(self.allocator, "{d}", .{n});
+            defer self.allocator.free(ns);
+            try self.as.one(isa.Label{ .id = ns });
         },
         .jumplabel => |l| {
+            // TODO:
+            // if (entry.found_existing)
+            //     return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate jumplabel: {s}", .{l});
             const lowered = try std.ascii.allocLowerString(self.allocator, l);
-            errdefer self.allocator.free(lowered);
-
-            const entry = try self.jumplabels.getOrPut(self.allocator, lowered);
-            if (entry.found_existing)
-                return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate jumplabel: {s}", .{l});
-            entry.value_ptr.* = self.as.buffer.items.len;
+            defer self.allocator.free(lowered);
+            try self.as.one(isa.Label{ .id = lowered });
         },
         .goto => |l| {
-            // TODO: non-fatal if target not found
-            const offset = if (std.fmt.parseUnsigned(u16, l.payload, 10)) |n|
-                self.linenos.get(n).?
-            else |_| t: {
-                const lowered = try std.ascii.allocLowerString(self.allocator, l.payload);
-                defer self.allocator.free(lowered);
-                break :t self.jumplabels.get(lowered).?;
-            };
-
             try self.as.one(isa.Opcode{ .op = .JUMP });
-            try self.as.one(isa.Target{ .absolute = offset });
+            try self.as.one(isa.Target{ .label_id = l.payload });
         },
         .pragma_printed => |p| {
             try self.as.one(isa.Opcode{ .op = .PRAGMA });
@@ -407,7 +393,7 @@ test "compile variable access" {
 test "compile (parse) error" {
     var errorinfo: ErrorInfo = .{};
     const eu = compileText(testing.allocator, " -", &errorinfo);
-    try testing.expectError(error.UnexpectedToken, eu);
+    try testing.expectError(error.InvalidToken, eu);
     try testing.expectEqual(ErrorInfo{ .loc = Loc{ .row = 1, .col = 2 } }, errorinfo);
 }
 
@@ -507,15 +493,15 @@ test "goto" {
         isa.Value{ .integer = 1 },
         isa.Opcode{ .op = .PRINT, .t = .INTEGER },
         isa.Opcode{ .op = .PRINT_LINEFEED },
-        isa.Label{ .id = 1 },
+        isa.Label{ .id = "a" },
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 2 },
         isa.Opcode{ .op = .PRINT, .t = .INTEGER },
         isa.Opcode{ .op = .PRINT_LINEFEED },
         isa.Opcode{ .op = .JUMP },
-        isa.Target{ .label_id = 1 },
-        isa.Label{ .id = 2 },
+        isa.Target{ .label_id = "a" },
+        isa.Label{ .id = "77" },
         isa.Opcode{ .op = .JUMP },
-        isa.Target{ .label_id = 2 },
+        isa.Target{ .label_id = "77" },
     });
 }

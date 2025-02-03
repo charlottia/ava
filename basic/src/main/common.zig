@@ -304,7 +304,6 @@ pub const RunEffects = struct {
 
     pub fn pragmaPrinted(self: *Self, s: []const u8) !void {
         _ = self;
-        _ = s;
-        unreachable;
+        std.log.debug("ignoring PRAGMA PRINTED: {}", .{std.zig.fmtEscapes(s)});
     }
 };

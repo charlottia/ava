@@ -23,11 +23,11 @@ errorinfo: ?*ErrorInfo,
 
 pub const Error = error{
     ExpectedTerminator,
-    UnexpectedToken,
-    UnexpectedEnd,
-};
+    InvalidToken,
+    InvalidEnd,
+} || Tokenizer.Error;
 
-pub fn parse(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]Stmt {
+pub fn parse(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) (Error || Allocator.Error)![]Stmt {
     var p = try init(allocator, inp, errorinfo);
     defer p.deinit();
 
@@ -39,7 +39,7 @@ pub fn free(allocator: Allocator, sx: []Stmt) void {
     allocator.free(sx);
 }
 
-fn init(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) !Parser {
+fn init(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) (Error || Allocator.Error)!Parser {
     const tx = try Tokenizer.tokenize(allocator, inp, errorinfo);
     return .{
         .allocator = allocator,
@@ -57,7 +57,7 @@ fn deinit(self: *Parser) void {
         s.deinit(self.allocator);
 }
 
-fn parseAll(self: *Parser) ![]Stmt {
+fn parseAll(self: *Parser) (Error || Allocator.Error)![]Stmt {
     while (self.parseOne() catch |err| {
         if (self.nt()) |t| {
             if (self.errorinfo) |ei|
@@ -111,7 +111,7 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
     if (try self.acceptStmtEnd()) |s| return s;
     if (try self.acceptStmtPragma()) |s| return s;
 
-    return Error.UnexpectedToken;
+    return Error.InvalidToken;
 }
 
 fn append(self: *Parser, s: Stmt) !void {
@@ -140,7 +140,7 @@ fn accept(self: *Parser, comptime tt: Token.Tag) ?WithRange(std.meta.TagPayload(
 }
 
 fn expect(self: *Parser, comptime tt: Token.Tag) !WithRange(std.meta.TagPayload(Token.Payload, tt)) {
-    return self.accept(tt) orelse Error.UnexpectedToken;
+    return self.accept(tt) orelse Error.InvalidToken;
 }
 
 fn peek(self: *Parser, comptime tt: Token.Tag) bool {
@@ -183,7 +183,7 @@ fn acceptFactor(self: *Parser) !?Expr {
         return Expr.init(.{ .imm_string = s.payload }, s.range);
 
     if (self.accept(.minus)) |m| {
-        const e = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        const e = try self.acceptExpr() orelse return Error.InvalidToken;
         errdefer e.deinit(self.allocator);
 
         const expr = try self.allocator.create(Expr);
@@ -192,7 +192,7 @@ fn acceptFactor(self: *Parser) !?Expr {
     }
 
     if (self.accept(.pareno)) |p| {
-        const e = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        const e = try self.acceptExpr() orelse return Error.InvalidToken;
         errdefer e.deinit(self.allocator);
         const tok_pc = try self.expect(.parenc);
 
@@ -204,7 +204,7 @@ fn acceptFactor(self: *Parser) !?Expr {
     return null;
 }
 
-fn acceptTEC(self: *Parser, next: *const fn (*Parser) (Allocator.Error || Error)!?Expr, mappings: anytype) (Allocator.Error || Error)!?Expr {
+fn acceptTEC(self: *Parser, next: *const fn (*Parser) (Error || Allocator.Error)!?Expr, mappings: anytype) (Error || Allocator.Error)!?Expr {
     var t = try next(self) orelse return null;
     errdefer t.deinit(self.allocator);
 
@@ -217,7 +217,7 @@ fn acceptTEC(self: *Parser, next: *const fn (*Parser) (Allocator.Error || Error)
             return t;
         };
 
-        const f2 = try next(self) orelse return Error.UnexpectedToken;
+        const f2 = try next(self) orelse return Error.InvalidToken;
         errdefer f2.deinit(self.allocator);
 
         const lhs = try self.allocator.create(Expr);
@@ -243,7 +243,7 @@ fn acceptTerm(self: *Parser) !?Expr {
     });
 }
 
-fn acceptExpr(self: *Parser) (Allocator.Error || Error)!?Expr {
+fn acceptExpr(self: *Parser) (Error || Allocator.Error)!?Expr {
     return self.acceptTEC(acceptTerm, .{
         .plus = .add,
         .minus = .sub,
@@ -308,7 +308,7 @@ fn acceptExprList(self: *Parser, comptime septoks: []const Token.Tag, separators
         }
 
         const e2 = try self.acceptExpr() orelse
-            return Error.UnexpectedToken;
+            return Error.InvalidToken;
         errdefer e2.deinit(self.allocator);
         try ex.append(self.allocator, e2);
     }
@@ -328,7 +328,7 @@ fn acceptBuiltinPrint(self: *Parser, l: WithRange([]const u8)) !?Stmt {
     defer separators.deinit(self.allocator);
 
     const ex = try self.acceptExprList(&.{ .comma, .semicolon }, &separators, true) orelse
-        return Error.UnexpectedToken;
+        return Error.InvalidToken;
     errdefer Expr.deinitSlice(self.allocator, ex);
 
     var seps = try self.allocator.alloc(WithRange(u8), separators.items.len);
@@ -367,7 +367,7 @@ fn acceptStmtLabel(self: *Parser) !?Stmt {
     }
 
     if (self.accept(.equals)) |eq| {
-        const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        const rhs = try self.acceptExpr() orelse return Error.InvalidToken;
         return Stmt.init(.{ .let = .{
             .kw = false,
             .lhs = l,
@@ -377,16 +377,16 @@ fn acceptStmtLabel(self: *Parser) !?Stmt {
     }
 
     if (self.eoi())
-        return Error.UnexpectedEnd;
+        return Error.InvalidEnd;
 
-    return Error.UnexpectedToken;
+    return Error.InvalidToken;
 }
 
 fn acceptStmtLet(self: *Parser) !?Stmt {
     const k = self.accept(.kw_let) orelse return null;
     const lhs = try self.expect(.label);
     const eq = try self.expect(.equals);
-    const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
+    const rhs = try self.acceptExpr() orelse return Error.InvalidToken;
     return Stmt.init(.{ .let = .{
         .kw = true,
         .lhs = lhs,
@@ -397,7 +397,7 @@ fn acceptStmtLet(self: *Parser) !?Stmt {
 
 fn acceptStmtIf(self: *Parser) !?Stmt {
     const k = self.accept(.kw_if) orelse return null;
-    const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
+    const cond = try self.acceptCond() orelse return Error.InvalidToken;
     errdefer cond.deinit(self.allocator);
     const tok_then = try self.expect(.kw_then);
     if (try self.peekTerminator()) {
@@ -406,14 +406,14 @@ fn acceptStmtIf(self: *Parser) !?Stmt {
             .tok_then = tok_then,
         } }, Range.initEnds(k.range, cond.range));
     }
-    const st = try self.parseOne() orelse return Error.UnexpectedEnd;
+    const st = try self.parseOne() orelse return Error.InvalidEnd;
     errdefer st.deinit(self.allocator);
     const stmt_t = try self.allocator.create(Stmt);
     errdefer self.allocator.destroy(stmt_t);
     stmt_t.* = st;
 
     if (self.accept(.kw_else)) |tok_else| {
-        const sf = try self.parseOne() orelse return Error.UnexpectedEnd;
+        const sf = try self.parseOne() orelse return Error.InvalidEnd;
         errdefer sf.deinit(self.allocator);
         const stmt_f = try self.allocator.create(Stmt);
         errdefer self.allocator.destroy(stmt_f);
@@ -439,14 +439,14 @@ fn acceptStmtFor(self: *Parser) !?Stmt {
     const k = self.accept(.kw_for) orelse return null;
     const lv = try self.expect(.label);
     const tok_eq = try self.expect(.equals);
-    const from = try self.acceptExpr() orelse return Error.UnexpectedToken;
+    const from = try self.acceptExpr() orelse return Error.InvalidToken;
     errdefer from.deinit(self.allocator);
     const tok_to = try self.expect(.kw_to);
-    const to = try self.acceptExpr() orelse return Error.UnexpectedToken;
+    const to = try self.acceptExpr() orelse return Error.InvalidToken;
     errdefer to.deinit(self.allocator);
 
     if (self.accept(.kw_step)) |tok_step| {
-        const step = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        const step = try self.acceptExpr() orelse return Error.InvalidToken;
         return Stmt.init(.{ .forstep = .{
             .lv = lv,
             .tok_eq = tok_eq,
@@ -492,7 +492,7 @@ fn acceptStmtGoto(self: *Parser) !?Stmt {
             Range.initEnds(k.range, n.range),
         );
 
-    return Error.UnexpectedToken;
+    return Error.InvalidToken;
 }
 
 fn acceptStmtEnd(self: *Parser) !?Stmt {
@@ -514,7 +514,7 @@ fn acceptStmtPragma(self: *Parser) !?Stmt {
         const s = try self.expect(.string);
         return Stmt.init(.{ .pragma_printed = s }, Range.initEnds(k.range, s.range));
     } else {
-        return Error.UnexpectedToken;
+        return Error.InvalidToken;
     }
 }
 
@@ -597,7 +597,7 @@ test "parses a PRINT statement with trailing separator" {
 test "parse error" {
     var errorinfo: ErrorInfo = .{};
     const eu = parse(testing.allocator, "\n\"x\"", &errorinfo);
-    try testing.expectError(error.UnexpectedToken, eu);
+    try testing.expectError(error.InvalidToken, eu);
     try testing.expectEqual(ErrorInfo{ .loc = .{ .row = 2, .col = 1 } }, errorinfo);
 }
 

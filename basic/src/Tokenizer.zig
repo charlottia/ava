@@ -14,8 +14,9 @@ allocator: Allocator,
 loc: Loc = .{ .row = 1, .col = 1 },
 
 pub const Error = error{
-    UnexpectedChar,
-    UnexpectedEnd,
+    InvalidCharacter,
+    InvalidEnd,
+    Overflow,
 };
 
 const LocOffset = struct {
@@ -42,7 +43,7 @@ const State = union(enum) {
     anglec,
 };
 
-pub fn tokenize(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]Token {
+pub fn tokenize(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) (Error || Allocator.Error)![]Token {
     var t = Tokenizer{
         .allocator = allocator,
     };
@@ -53,7 +54,7 @@ pub fn tokenize(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) !
     };
 }
 
-fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
+fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) (Error || Allocator.Error)![]Token {
     var tx = std.ArrayListUnmanaged(Token){};
     errdefer tx.deinit(allocator);
 
@@ -145,7 +146,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '#') {
                     state = .{ .fileno = .{ .loc = self.loc, .offset = i } };
                 } else {
-                    return Error.UnexpectedChar;
+                    return Error.InvalidCharacter;
                 }
             },
             .integer => |start| {
@@ -244,7 +245,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     }, start.loc, self.loc, span));
                     state = .init;
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
-                    return Error.UnexpectedChar;
+                    return Error.InvalidCharacter;
                 } else {
                     const span = inp[start.offset..i];
                     try tx.append(allocator, attach(
@@ -495,7 +496,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 ));
             }
         },
-        .string => return Error.UnexpectedEnd,
+        .string => return Error.InvalidEnd,
         .fileno => |start| try tx.append(allocator, attach(.{
             .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 ..], 10),
         }, start.loc, self.loc.back(), inp[start.offset..])),

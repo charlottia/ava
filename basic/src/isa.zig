@@ -151,12 +151,11 @@ pub const Value = union(enum) {
 };
 
 pub const Label = struct {
-    id: usize,
+    id: []const u8,
 };
 
 pub const Target = union(enum) {
-    label_id: usize,
-    absolute: usize,
+    label_id: []const u8,
 };
 
 pub fn printFormat(allocator: Allocator, writer: anytype, v: Value) !void {
@@ -242,21 +241,34 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
     try writer.writeAll(s[0..len]);
 }
 
+const Reloc = struct {
+    offset: usize,
+    target: []const u8, // Assembler.labels key; it owns the memory.
+};
+
 pub const Assembler = struct {
+    const Error = error{DuplicateLabel};
+    pub const RelocError = error{MissingTarget};
+
     allocator: Allocator,
     buffer: std.ArrayListUnmanaged(u8) = .{},
-    labels: std.AutoHashMapUnmanaged(usize, usize) = .{},
+    labels: std.StringHashMapUnmanaged(usize) = .{},
+    relocs: std.ArrayListUnmanaged(Reloc) = .{},
 
     pub fn init(allocator: Allocator) Assembler {
         return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *Assembler) void {
+        self.relocs.deinit(self.allocator);
+        var it = self.labels.keyIterator();
+        while (it.next()) |key_ptr|
+            self.allocator.free(key_ptr.*);
         self.labels.deinit(self.allocator);
         self.buffer.deinit(self.allocator);
     }
 
-    pub fn one(self: *Assembler, e: anytype) !void {
+    pub fn one(self: *Assembler, e: anytype) (Error || Allocator.Error)!void {
         const writer = self.buffer.writer(self.allocator);
 
         switch (@TypeOf(e)) {
@@ -314,24 +326,36 @@ pub const Assembler = struct {
                 }
             },
             Label => {
-                const entry = try self.labels.getOrPut(self.allocator, e.id);
-                std.debug.assert(!entry.found_existing);
+                const key = try self.allocator.dupe(u8, e.id);
+                errdefer self.allocator.free(key);
+
+                const entry = try self.labels.getOrPut(self.allocator, key);
+                if (entry.found_existing)
+                    return Error.DuplicateLabel;
+
                 entry.value_ptr.* = self.buffer.items.len;
             },
-            Target => {
-                const offset = switch (e) {
-                    .label_id => |n| self.labels.get(n).?,
-                    .absolute => |n| n,
-                };
-                try writer.writeInt(u16, @as(u16, @intCast(offset)), .little);
-            },
-            []const u8 => {
-                // label; one byte for length.
-                try writer.writeByte(@intCast(e.len));
-                try writer.writeAll(e);
-                @compileError("what");
+            Target => switch (e) {
+                .label_id => |l| {
+                    try self.relocs.append(self.allocator, .{
+                        .offset = self.buffer.items.len,
+                        .target = l,
+                    });
+                    try writer.writeInt(u16, 0xffff, .little);
+                },
             },
             else => @compileError("unhandled type: " ++ @typeName(@TypeOf(e))),
+        }
+    }
+
+    pub fn reloc(self: *Assembler) RelocError!void {
+        for (self.relocs.items) |rl| {
+            std.mem.writeInt(
+                u16,
+                self.buffer.items[rl.offset..][0..2],
+                @intCast(self.labels.get(rl.target) orelse return RelocError.MissingTarget),
+                .little,
+            );
         }
     }
 };
@@ -342,6 +366,8 @@ pub fn assemble(allocator: Allocator, inp: anytype) ![]const u8 {
 
     inline for (inp) |e|
         try as.one(e);
+
+    try as.reloc();
 
     return try as.buffer.toOwnedSlice(allocator);
 }
@@ -398,9 +424,13 @@ test "assembles" {
 
 test "assembles jumps" {
     try expectAssembles(.{
+        Opcode{ .op = .PUSH, .t = .INTEGER },
+        Label{ .id = "1" },
         Opcode{ .op = .PUSH, .t = .LONG },
-        Label{ .id = 1 },
+        Target{ .label_id = "2" },
         Opcode{ .op = .PUSH, .t = .SINGLE },
-        Target{ .label_id = 1 },
-    }, &.{ 0x11, 0x21, 0x01, 0x00 });
+        Target{ .label_id = "1" },
+        Opcode{ .op = .PUSH, .t = .DOUBLE },
+        Label{ .id = "2" },
+    }, &.{ 0x01, 0x11, 0x08, 0x00, 0x21, 0x01, 0x00, 0x31 });
 }
