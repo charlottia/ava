@@ -69,6 +69,9 @@
         dontConfigure = true;
         dontInstall = true;
         doCheck = true;
+
+        # Lil reminder to rerun zon2nix if build.zig.zon changes, otherwise
+        # you'll get RenameAcrossMountPoints errors in build.
         buildPhase = ''
           mkdir -p .cache
           ln -s ${basic-deps} .cache/p
