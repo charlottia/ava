@@ -47,7 +47,7 @@ pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo
 pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Compiler {
     return .{
         .allocator = allocator,
-        .as = isa.Assembler.init(allocator),
+        .as = isa.Assembler.init(allocator, errorinfo),
         .errorinfo = errorinfo,
     };
 }
@@ -107,17 +107,11 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             try self.as.one(isa.Opcode{ .op = .LET, .slot = resolved.slot });
         },
         .lineno => |n| {
-            // TODO:
-            // if (entry.found_existing)
-            //     return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate lineno: {d}", .{n});
             const ns = try std.fmt.allocPrint(self.allocator, "{d}", .{n});
             defer self.allocator.free(ns);
             try self.as.one(isa.Label{ .id = ns });
         },
         .jumplabel => |l| {
-            // TODO:
-            // if (entry.found_existing)
-            //     return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate jumplabel: {s}", .{l});
             const lowered = try std.ascii.allocLowerString(self.allocator, l);
             defer self.allocator.free(lowered);
             try self.as.one(isa.Label{ .id = lowered });
@@ -504,4 +498,24 @@ test "goto" {
         isa.Opcode{ .op = .JUMP },
         isa.Target{ .label_id = "77" },
     });
+}
+
+test "duplicate linenos and jumplabels" {
+    try expectCompileErr(
+        \\10 PRINT "hi"
+        \\20 PRINT "ok"
+        \\20 GOTO 10
+    , Error.DuplicateLabel, "duplicate jump label: 20");
+
+    try expectCompileErr(
+        \\   PRINT "hi"
+        \\x: PRINT "ok"
+        \\x: GOTO x
+    , Error.DuplicateLabel, "duplicate jump label: x");
+}
+
+test "missing jump target" {
+    try expectCompileErr(
+        \\GOTO 10
+    , Error.MissingTarget, "missing jump target: 10");
 }

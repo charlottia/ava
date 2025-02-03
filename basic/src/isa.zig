@@ -4,6 +4,7 @@ const testing = std.testing;
 
 const ty = @import("ty.zig");
 const Expr = @import("ast/Expr.zig");
+const ErrorInfo = @import("ErrorInfo.zig");
 
 pub const Type = enum(u3) {
     INTEGER = 0b000,
@@ -251,12 +252,13 @@ pub const Assembler = struct {
     pub const RelocError = error{MissingTarget};
 
     allocator: Allocator,
+    errorinfo: ?*ErrorInfo,
     buffer: std.ArrayListUnmanaged(u8) = .{},
     labels: std.StringHashMapUnmanaged(usize) = .{},
     relocs: std.ArrayListUnmanaged(Reloc) = .{},
 
-    pub fn init(allocator: Allocator) Assembler {
-        return .{ .allocator = allocator };
+    pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Assembler {
+        return .{ .allocator = allocator, .errorinfo = errorinfo };
     }
 
     pub fn deinit(self: *Assembler) void {
@@ -331,7 +333,7 @@ pub const Assembler = struct {
 
                 const entry = try self.labels.getOrPut(self.allocator, key);
                 if (entry.found_existing)
-                    return Error.DuplicateLabel;
+                    return ErrorInfo.ret(self, Error.DuplicateLabel, "duplicate jump label: {s}", .{key});
 
                 entry.value_ptr.* = self.buffer.items.len;
             },
@@ -348,20 +350,17 @@ pub const Assembler = struct {
         }
     }
 
-    pub fn reloc(self: *Assembler) RelocError!void {
+    pub fn reloc(self: *Assembler) (RelocError || Allocator.Error)!void {
         for (self.relocs.items) |rl| {
-            std.mem.writeInt(
-                u16,
-                self.buffer.items[rl.offset..][0..2],
-                @intCast(self.labels.get(rl.target) orelse return RelocError.MissingTarget),
-                .little,
-            );
+            const target = self.labels.get(rl.target) orelse
+                return ErrorInfo.ret(self, RelocError.MissingTarget, "missing jump target: {s}", .{rl.target});
+            std.mem.writeInt(u16, self.buffer.items[rl.offset..][0..2], @intCast(target), .little);
         }
     }
 };
 
 pub fn assemble(allocator: Allocator, inp: anytype) ![]const u8 {
-    var as = Assembler.init(std.testing.allocator);
+    var as = Assembler.init(std.testing.allocator, null);
     defer as.deinit();
 
     inline for (inp) |e|
