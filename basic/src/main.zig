@@ -2,15 +2,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const args = @import("args");
 
-const opts = @import("main/opts.zig");
-const common = @import("main/common.zig");
+const opts = @import("./main/opts.zig");
+const common = @import("./main/common.zig");
 const commands = .{
-    .repl = @import("main/repl.zig"),
-    .run = @import("main/run.zig"),
-    .compile = @import("main/compile.zig"),
-    .pp = @import("main/pp.zig"),
-    .ast = @import("main/ast.zig"),
-    .bc = @import("main/bc.zig"),
+    .repl = @import("./main/repl.zig"),
+    .run = @import("./main/run.zig"),
+    .compile = @import("./main/compile.zig"),
+    .pp = @import("./main/pp.zig"),
+    .ast = @import("./main/ast.zig"),
+    .bc = @import("./main/bc.zig"),
 };
 
 fn usage(status: u8) noreturn {

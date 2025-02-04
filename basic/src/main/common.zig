@@ -1,11 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const isa = @import("../isa.zig");
+const isa = @import("../isa/root.zig");
 const PrintLoc = @import("../PrintLoc.zig");
 const ErrorInfo = @import("../ErrorInfo.zig");
-
-const opts = @import("opts.zig");
+const opts = @import("./opts.zig");
 
 const HandleRead = struct {
     const Self = @This();

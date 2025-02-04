@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Loc = @import("loc.zig").Loc;
+const Loc = @import("./loc.zig").Loc;
 
 const ErrorInfo = @This();
 

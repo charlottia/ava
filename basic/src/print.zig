@@ -2,12 +2,12 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const Expr = @import("ast/Expr.zig");
-const Stmt = @import("ast/Stmt.zig");
-const Parser = @import("Parser.zig");
-const loc = @import("loc.zig");
+const Expr = @import("./ast/Expr.zig");
+const Stmt = @import("./ast/Stmt.zig");
+const Parser = @import("./Parser.zig");
+const loc = @import("./loc.zig");
 const Loc = loc.Loc;
-const @"test" = @import("test.zig");
+const @"test" = @import("./test.zig");
 
 const Printer = struct {
     const Self = @This();

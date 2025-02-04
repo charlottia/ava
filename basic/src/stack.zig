@@ -2,11 +2,11 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const isa = @import("isa.zig");
-const Compiler = @import("Compiler.zig");
-const PrintLoc = @import("PrintLoc.zig");
-const ErrorInfo = @import("ErrorInfo.zig");
-const @"test" = @import("test.zig");
+const isa = @import("./isa/root.zig");
+const Compiler = @import("./Compiler.zig");
+const PrintLoc = @import("./PrintLoc.zig");
+const ErrorInfo = @import("./ErrorInfo.zig");
+const @"test" = @import("./test.zig");
 
 const Error = error{
     TypeMismatch,

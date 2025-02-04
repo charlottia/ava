@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const loc = @import("../loc.zig");
 const Range = loc.Range;
 const WithRange = loc.WithRange;
-const Expr = @import("Expr.zig");
+const Expr = @import("./Expr.zig");
 
 const Stmt = @This();
 

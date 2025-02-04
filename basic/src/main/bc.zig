@@ -3,10 +3,9 @@ const Allocator = std.mem.Allocator;
 
 const Compiler = @import("../Compiler.zig");
 const ErrorInfo = @import("../ErrorInfo.zig");
-const isa = @import("../isa.zig");
-
-const opts = @import("opts.zig");
-const common = @import("common.zig");
+const isa = @import("../isa/root.zig");
+const opts = @import("./opts.zig");
+const common = @import("./common.zig");
 
 fn usage(status: u8) noreturn {
     common.usageFor(status, "bc", "[options] [file]",

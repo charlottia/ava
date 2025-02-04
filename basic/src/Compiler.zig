@@ -2,15 +2,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const loc = @import("loc.zig");
+const loc = @import("./loc.zig");
 const Loc = loc.Loc;
-const Stmt = @import("ast/Stmt.zig");
-const Expr = @import("ast/Expr.zig");
-const Parser = @import("Parser.zig");
-const isa = @import("isa.zig");
-const ErrorInfo = @import("ErrorInfo.zig");
-const ty = @import("ty.zig");
-const stack = @import("stack.zig");
+const Stmt = @import("./ast/Stmt.zig");
+const Expr = @import("./ast/Expr.zig");
+const Parser = @import("./Parser.zig");
+const isa = @import("./isa/root.zig");
+const ErrorInfo = @import("./ErrorInfo.zig");
+const ty = @import("./ty.zig");
+const stack = @import("./stack.zig");
 
 const Compiler = @This();
 
@@ -427,7 +427,7 @@ fn expectCompile(input: []const u8, assembly: anytype) !void {
 
     testing.expectEqualSlices(u8, exp, code) catch |err| {
         if (err == error.TestExpectedEqual) {
-            const common = @import("main/common.zig");
+            const common = @import("./main/common.zig");
             common.handlesInitErr();
             try common.disasm(testing.allocator, exp, code);
             try common.handlesDeinit();

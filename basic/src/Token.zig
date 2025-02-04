@@ -2,9 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const loc = @import("loc.zig");
+const loc = @import("./loc.zig");
 const Range = loc.Range;
-const Tokenizer = @import("Tokenizer.zig");
+const Tokenizer = @import("./Tokenizer.zig");
 
 const Token = @This();
 

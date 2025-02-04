@@ -2,9 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const Compiler = @import("Compiler.zig");
-const stack = @import("stack.zig");
-const ErrorInfo = @import("ErrorInfo.zig");
+const Compiler = @import("./Compiler.zig");
+const stack = @import("./stack.zig");
+const ErrorInfo = @import("./ErrorInfo.zig");
 
 const Matches = struct {
     const Self = @This();

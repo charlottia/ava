@@ -6,9 +6,8 @@ const print = @import("../print.zig");
 const Compiler = @import("../Compiler.zig");
 const stack = @import("../stack.zig");
 const ErrorInfo = @import("../ErrorInfo.zig");
-
-const opts = @import("opts.zig");
-const common = @import("common.zig");
+const opts = @import("./opts.zig");
+const common = @import("./common.zig");
 
 fn usage(status: u8) noreturn {
     common.usageFor(status, "repl", "[options]",

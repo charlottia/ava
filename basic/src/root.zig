@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 
 pub const Parser = @import("./Parser.zig");
-pub const isa = @import("./isa.zig");
+pub const isa = @import("./isa/root.zig");
 pub const Compiler = @import("./Compiler.zig");
 pub const stack = @import("./stack.zig");
 pub const PrintLoc = @import("./PrintLoc.zig");

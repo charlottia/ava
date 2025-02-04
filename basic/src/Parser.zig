@@ -2,15 +2,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const Tokenizer = @import("Tokenizer.zig");
-const Token = @import("Token.zig");
-const Stmt = @import("ast/Stmt.zig");
-const Expr = @import("ast/Expr.zig");
-const loc = @import("loc.zig");
+const Tokenizer = @import("./Tokenizer.zig");
+const Token = @import("./Token.zig");
+const Stmt = @import("./ast/Stmt.zig");
+const Expr = @import("./ast/Expr.zig");
+const loc = @import("./loc.zig");
 const Loc = loc.Loc;
 const Range = loc.Range;
 const WithRange = loc.WithRange;
-const ErrorInfo = @import("ErrorInfo.zig");
+const ErrorInfo = @import("./ErrorInfo.zig");
 
 const Parser = @This();
 
