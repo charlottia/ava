@@ -121,6 +121,32 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_t_code.len + 3) });
             try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
         },
+        .if2 => |i| {
+            _ = try self.compileExpr(i.cond.payload);
+
+            {
+                const index = self.as.buffer.items.len;
+                try self.compileStmt(i.stmt_t.*);
+                const stmt_t_code = try self.allocator.dupe(u8, self.as.buffer.items[index..]);
+                defer self.allocator.free(stmt_t_code);
+                self.as.buffer.items.len = index;
+
+                try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
+                try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_t_code.len + 3 + 3) });
+                try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
+            }
+            {
+                const index = self.as.buffer.items.len;
+                try self.compileStmt(i.stmt_f.*);
+                const stmt_f_code = try self.allocator.dupe(u8, self.as.buffer.items[index..]);
+                defer self.allocator.free(stmt_f_code);
+                self.as.buffer.items.len = index;
+
+                try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
+                try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_f_code.len + 3) });
+                try self.as.buffer.appendSlice(self.allocator, stmt_f_code);
+            }
+        },
         .lineno => |n| {
             const ns = try std.fmt.allocPrint(self.allocator, "{d}", .{n});
             defer self.allocator.free(ns);
@@ -535,7 +561,7 @@ test "missing jump target" {
     , Error.MissingTarget, "missing jump target: 10");
 }
 
-test "if" {
+test "if1" {
     try expectCompile(
         \\PRINT "start"
         \\IF 1 = 2 THEN PRINT "impossible"
@@ -562,5 +588,31 @@ test "if" {
         isa.Value{ .string = "end" },
         isa.Opcode{ .op = .PRINT, .t = .STRING },
         isa.Opcode{ .op = .PRINT_LINEFEED },
+    });
+}
+
+test "if2" {
+    try expectCompile(
+        \\IF 1 = 2 THEN PRINT "false" ELSE PRINT "true"
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "else" },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "false" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
+        isa.Target{ .label_id = "end" },
+        isa.Label{ .id = "else" },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "true" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Label{ .id = "end" },
     });
 }

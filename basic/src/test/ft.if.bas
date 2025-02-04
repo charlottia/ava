@@ -1,11 +1,15 @@
 IF 1 = 1 THEN PRINT "true"
 PRAGMA PRINTED "true\n"
 
-IF 1 = 2 THEN print "false"
+IF 1 = 2 THEN PRINT "false"
 PRAGMA PRINTED ""
 
 PRINT "ok"
 PRAGMA PRINTED "ok\n"
+
+IF 1 = 2 THEN PRINT "false" ELSE PRINT "true"
+IF 1 = 1 THEN PRINT "true" ELSE PRINT "false"
+PRAGMA PRINTED "true\ntrue\n"
 
 REM IF 1 = 2 THEN
 REM    PRINT "true"
