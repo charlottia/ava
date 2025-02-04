@@ -29,6 +29,14 @@ REM PRINT a% = b#
 REM PRINT a% <> b#
 REM PRAGMA PRINTED "-1\n0\n"
 
+GOTO skip
+
+frango:
+PRINT "yippee!"
+GOTO endd
+
+skip:
+
 IF 1 = 1 THEN
    PRINT "true/";
    IF 1 = 2 THEN
@@ -37,6 +45,7 @@ IF 1 = 1 THEN
    ELSE
       PRINT "tr";
       PRINT "ue"
+      GOTO frango
    ENDIF
 ELSE
    PRINT "false/";
@@ -48,6 +57,6 @@ ELSE
       PRINT "se"
    END IF
 END IF
-PRAGMA PRINTED "true/true\n"
 
-REM TODO: combine jump targets and if to stress our linking
+endd:
+PRAGMA PRINTED "true/true\nyippee!\n"

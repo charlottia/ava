@@ -306,6 +306,12 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Ex
     // Compile RHS to get type; snip off the generated code and append after we
     // do any necessary coercion. (It was either this or do stack swapsies in
     // the generated code.)
+    //
+    // XXX: Note that this is probably(?) robust to our linking mechanism
+    // only because there are no jumps in expressions. Call expressions might
+    // change this; if the jump target shifts position in the buffer after the
+    // assembler records it in a Reloc, we're in trouble. :) In that case we're
+    // probably better off just adding a SWAP op.
     const index = self.as.buffer.items.len;
     const rhs_ty = try self.compileExpr(rhs);
     const rhs_code = try self.allocator.dupe(u8, self.as.buffer.items[index..]);
