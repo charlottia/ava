@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const testing = std.testing;
 
 const ErrorInfo = @import("../ErrorInfo.zig");
 const isa = @import("./root.zig");
@@ -19,6 +20,18 @@ const Reloc = struct {
     offset: usize,
     target: []const u8, // Assembler.labels key; it owns the memory.
 };
+
+pub fn assemble(allocator: Allocator, inp: anytype) ![]const u8 {
+    var as = init(allocator, null);
+    defer as.deinit();
+
+    inline for (inp) |e|
+        try as.one(e);
+
+    try as.link();
+
+    return try as.buffer.toOwnedSlice(allocator);
+}
 
 pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Assembler {
     return .{ .allocator = allocator, .errorinfo = errorinfo };
@@ -123,4 +136,67 @@ pub fn link(self: *Assembler) (RelocError || Allocator.Error)!void {
         std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
         std.mem.writeInt(u16, dest, @intCast(target), .little);
     }
+}
+
+fn expectAssembles(inp: anytype, expected: []const u8) !void {
+    const code = try assemble(testing.allocator, inp);
+    defer testing.allocator.free(code);
+
+    try testing.expectEqualSlices(u8, expected, code);
+}
+
+test "assembles" {
+    try expectAssembles(.{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 0x7fff },
+    }, &.{ 0x01, 0xff, 0x7f });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .PUSH, .slot = 0x7b },
+    }, &.{ 0x81, 0x7b });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "Eks" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+    }, &.{ 0x41, 0x03, 0x00, 'E', 'k', 's', 0x44 });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .INTEGER, .to = .LONG } },
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .LONG, .to = .INTEGER } },
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .SINGLE, .to = .DOUBLE } },
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .DOUBLE, .to = .SINGLE } },
+    }, &.{ 0x42, 0x12, 0xe2, 0xb2 });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .LET, .slot = 0xa1 },
+    }, &.{ 0x03, 0xa1 });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .PRINT_COMMA },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+    }, &.{ 0x05, 0x06 });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .ALU, .t = .STRING, .alu = .ADD },
+        isa.Opcode{ .op = .ALU, .t = .SINGLE, .alu = .MUL },
+        isa.Opcode{ .op = .ALU, .t = .DOUBLE, .alu = .LTE },
+    }, &.{ 0x47, 0x00, 0xa7, 0x00, 0x37, 0x05 });
+
+    try expectAssembles(.{
+        isa.Opcode{ .op = .PRAGMA },
+    }, &.{0x0e});
+}
+
+test "assembles jumps" {
+    try expectAssembles(.{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Label{ .id = "1" },
+        isa.Opcode{ .op = .PUSH, .t = .LONG },
+        isa.Target{ .label_id = "2" },
+        isa.Opcode{ .op = .PUSH, .t = .SINGLE },
+        isa.Target{ .label_id = "1" },
+        isa.Opcode{ .op = .PUSH, .t = .DOUBLE },
+        isa.Label{ .id = "2" },
+    }, &.{ 0x01, 0x11, 0x08, 0x00, 0x21, 0x01, 0x00, 0x31 });
 }

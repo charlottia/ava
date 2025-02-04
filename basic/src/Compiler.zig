@@ -422,7 +422,7 @@ fn expectCompile(input: []const u8, assembly: anytype) !void {
     };
     defer testing.allocator.free(code);
 
-    const exp = try isa.assemble(testing.allocator, assembly);
+    const exp = try isa.Assembler.assemble(testing.allocator, assembly);
     defer testing.allocator.free(exp);
 
     testing.expectEqualSlices(u8, exp, code) catch |err| {

@@ -174,6 +174,16 @@ pub fn xxd(code: []const u8) !void {
 pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !void {
     const code_r = code_ri orelse "";
 
+    const diff_mode = code_ri != null and !std.mem.eql(u8, code_l, code_r);
+
+    if (diff_mode) {
+        try stdout.tc.setColor(stdout.wr, .bright_red);
+        try stdout.wr.writeAll("-expected\n");
+        try stdout.tc.setColor(stdout.wr, .bright_green);
+        try stdout.wr.writeAll("-actual\n");
+        try stdout.tc.setColor(stdout.wr, .reset);
+    }
+
     var i_l: usize = 0;
     var i_r: usize = 0;
     while (i_l < code_l.len or i_r < code_r.len) {
@@ -190,18 +200,21 @@ pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !v
         if (i_r < code_r.len)
             try disasmAt(buffer_r.writer(allocator), code_r, &i_r);
 
-        const mismatch = code_ri != null and
+        const mismatch = diff_mode and
             (si_l != si_r or !std.mem.eql(u8, buffer_l.items, buffer_r.items));
 
-        if (mismatch)
+        if (mismatch) {
             try stdout.tc.setColor(stdout.wr, .bright_red);
+            try stdout.wr.writeByte('-');
+        } else if (diff_mode)
+            try stdout.wr.writeByte(' ');
         try std.fmt.format(stdout.wr, "{x:0>4}: ", .{si_l});
         try stdout.wr.writeAll(buffer_l.items);
         try stdout.wr.writeByte('\n');
 
         if (mismatch) {
             try stdout.tc.setColor(stdout.wr, .bright_green);
-            try std.fmt.format(stdout.wr, "{x:0>4}: ", .{si_r});
+            try std.fmt.format(stdout.wr, "+{x:0>4}: ", .{si_r});
             try stdout.wr.writeAll(buffer_r.items);
             try stdout.wr.writeByte('\n');
         }
@@ -337,7 +350,7 @@ pub const RunEffects = struct {
     }
 
     pub fn print(self: *Self, v: isa.Value) !void {
-        try isa.printFormat(self.allocator, self.writer, v);
+        try isa.fmt.print(self.allocator, self.writer, v);
     }
 
     pub fn printComma(self: *Self) !void {

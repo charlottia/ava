@@ -818,7 +818,7 @@ pub const TestEffects = struct {
     }
 
     pub fn print(self: *Self, v: isa.Value) !void {
-        try isa.printFormat(testing.allocator, self.printedwr, v);
+        try isa.fmt.print(testing.allocator, self.printedwr, v);
     }
 
     pub fn printComma(self: *Self) !void {
@@ -849,7 +849,7 @@ pub const TestEffects = struct {
 };
 
 fn testRun(inp: anytype) !Machine(TestEffects) {
-    const code = try isa.assemble(testing.allocator, inp);
+    const code = try isa.Assembler.assemble(testing.allocator, inp);
     defer testing.allocator.free(code);
 
     var m = Machine(TestEffects).init(testing.allocator, try TestEffects.init(), null);
