@@ -180,7 +180,7 @@ pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !v
         try stdout.tc.setColor(stdout.wr, .bright_red);
         try stdout.wr.writeAll("-expected\n");
         try stdout.tc.setColor(stdout.wr, .bright_green);
-        try stdout.wr.writeAll("-actual\n");
+        try stdout.wr.writeAll("+actual\n");
         try stdout.tc.setColor(stdout.wr, .reset);
     }
 

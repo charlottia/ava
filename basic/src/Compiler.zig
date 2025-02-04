@@ -122,45 +122,30 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
         .@"if" => |i| {
             // XXX: do we want to coerce here? can be any number? string?
             _ = try self.compileExpr(i.cond.payload);
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
             try self.ifs.append(self.allocator, .{ .index_t = self.as.buffer.items.len });
+            try self.as.one(isa.Target{ .absolute = 0xffff });
         },
         .@"else" => {
             if (self.ifs.items.len == 0) return Error.InvalidElse;
             const i = &self.ifs.items[self.ifs.items.len - 1];
             if (i.*.index_f != null) return Error.InvalidElse;
+
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
             i.*.index_f = self.as.buffer.items.len;
+            try self.as.one(isa.Target{ .absolute = 0xffff });
+
+            // XXX shares much with Assembler.link
+            const dest = self.as.buffer.items[i.*.index_t..][0..2];
+            std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
+            std.mem.writeInt(u16, dest, @intCast(self.as.buffer.items.len), .little);
         },
         .endif => {
             const i = self.ifs.popOrNull() orelse return Error.InvalidEndIf;
-            const stmt_t_code = try self.allocator.dupe(
-                u8,
-                if (i.index_f) |index_f|
-                    self.as.buffer.items[i.index_t..index_f]
-                else
-                    self.as.buffer.items[i.index_t..],
-            );
-            defer self.allocator.free(stmt_t_code);
-            const maybe_stmt_f_code: ?[]const u8 = if (i.index_f) |index_f|
-                try self.allocator.dupe(u8, self.as.buffer.items[index_f..])
-            else
-                null;
-            defer if (maybe_stmt_f_code) |stmt_f_code|
-                self.allocator.free(stmt_f_code);
-            self.as.buffer.items.len = i.index_t;
-
-            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
-            // 3 for InsnC + target; extra if ELSE and so another jump involved
-            try self.as.one(isa.Target{ .absolute = @intCast(
-                i.index_t + stmt_t_code.len + 3 + @as(usize, if (i.index_f != null) 3 else 0),
-            ) });
-            try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
-
-            if (maybe_stmt_f_code) |stmt_f_code| {
-                const index = self.as.buffer.items.len;
-                try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
-                try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_f_code.len + 3) });
-                try self.as.buffer.appendSlice(self.allocator, stmt_f_code);
-            }
+            // XXX shares much with Assembler.link
+            const dest = self.as.buffer.items[i.index_f orelse i.index_t ..][0..2];
+            std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
+            std.mem.writeInt(u16, dest, @intCast(self.as.buffer.items.len), .little);
         },
         .if1 => |i| {
             _ = try self.compileExpr(i.cond.payload);
@@ -765,8 +750,10 @@ test "nested if" {
     try expectCompile(
         \\IF 1 = 1 THEN
         \\    IF 1 = 2 THEN
-        \\        PRINT "fal";
-        \\        PRINT "se"
+        \\        IF 1 = 3 THEN
+        \\            PRINT "fal";
+        \\            PRINT "se"
+        \\        END IF
         \\    END IF
         \\END IF
         \\
@@ -782,6 +769,13 @@ test "nested if" {
         isa.Value{ .integer = 1 },
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "end" },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 3 },
         isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
         isa.Opcode{ .op = .JUMP, .cond = .FALSE },
         isa.Target{ .label_id = "end" },
