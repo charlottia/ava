@@ -93,7 +93,7 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
 
         if (options.bc) {
             try common.xxd(code);
-            try common.disasm(allocator, code);
+            try common.disasm(allocator, code, null);
         }
 
         m.run(code) catch |err| {

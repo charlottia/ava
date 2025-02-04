@@ -65,5 +65,5 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
     };
 
     try common.xxd(code);
-    try common.disasm(allocator, code);
+    try common.disasm(allocator, code, null);
 }

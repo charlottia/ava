@@ -429,10 +429,7 @@ fn expectCompile(input: []const u8, assembly: anytype) !void {
         if (err == error.TestExpectedEqual) {
             const common = @import("main/common.zig");
             common.handlesInitErr();
-            std.debug.print("expected:\n", .{});
-            try common.disasm(testing.allocator, exp);
-            std.debug.print("\nactual:\n", .{});
-            try common.disasm(testing.allocator, code);
+            try common.disasm(testing.allocator, exp, code);
             try common.handlesDeinit();
         }
         return err;
