@@ -105,10 +105,12 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
     if (try self.acceptStmtLabel()) |s| return s;
     if (try self.acceptStmtLet()) |s| return s;
     if (try self.acceptStmtIf()) |s| return s;
+    if (try self.acceptStmtElse()) |s| return s;
     if (try self.acceptStmtFor()) |s| return s;
     if (try self.acceptStmtNext()) |s| return s;
     if (try self.acceptStmtGoto()) |s| return s;
     if (try self.acceptStmtEnd()) |s| return s;
+    if (try self.acceptStmtEndIf()) |s| return s;
     if (try self.acceptStmtPragma()) |s| return s;
 
     return Error.InvalidToken;
@@ -435,6 +437,13 @@ fn acceptStmtIf(self: *Parser) !?Stmt {
     } }, Range.initEnds(k.range, stmt_t.range));
 }
 
+fn acceptStmtElse(self: *Parser) !?Stmt {
+    const k = self.accept(.kw_else) orelse return null;
+    if (!try self.peekTerminator())
+        return Error.ExpectedTerminator;
+    return Stmt.init(.@"else", k.range);
+}
+
 fn acceptStmtFor(self: *Parser) !?Stmt {
     const k = self.accept(.kw_for) orelse return null;
     const lv = try self.expect(.label);
@@ -498,12 +507,20 @@ fn acceptStmtGoto(self: *Parser) !?Stmt {
 fn acceptStmtEnd(self: *Parser) !?Stmt {
     const k = self.accept(.kw_end) orelse return null;
     if (self.accept(.kw_if)) |k2| {
-        _ = try self.expect(.linefeed);
+        if (!try self.peekTerminator())
+            return Error.ExpectedTerminator;
         return Stmt.init(.endif, Range.initEnds(k.range, k2.range));
     }
     if (!try self.peekTerminator())
         return Error.ExpectedTerminator;
     return Stmt.init(.end, k.range);
+}
+
+fn acceptStmtEndIf(self: *Parser) !?Stmt {
+    const k = self.accept(.kw_endif) orelse return null;
+    if (!try self.peekTerminator())
+        return Error.ExpectedTerminator;
+    return Stmt.init(.endif, k.range);
 }
 
 fn acceptStmtPragma(self: *Parser) !?Stmt {
@@ -739,22 +756,7 @@ test "goto" {
     });
 }
 
-test "if" {
-    try expectParse("if 1 = 2 then", &.{
-        Stmt.init(.{
-            .@"if" = .{
-                .cond = Expr.init(.{
-                    .binop = .{
-                        .lhs = &Expr.init(.{ .imm_integer = 1 }, Range.init(.{ 1, 4 }, .{ 1, 4 })),
-                        .op = WithRange(Expr.Op).init(.eq, Range.init(.{ 1, 6 }, .{ 1, 6 })),
-                        .rhs = &Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 8 }, .{ 1, 8 })),
-                    },
-                }, Range.init(.{ 1, 4 }, .{ 1, 8 })),
-                .tok_then = WithRange(void).init({}, Range.init(.{ 1, 10 }, .{ 1, 13 })),
-            },
-        }, Range.init(.{ 1, 1 }, .{ 1, 13 })),
-    });
-
+test "if1" {
     try expectParse("if 1 = 2 then end", &.{
         Stmt.init(.{
             .if1 = .{
@@ -770,7 +772,9 @@ test "if" {
             },
         }, Range.init(.{ 1, 1 }, .{ 1, 17 })),
     });
+}
 
+test "if2" {
     try expectParse("if 1 = 2 then end else go", &.{
         Stmt.init(.{
             .if2 = .{
@@ -793,6 +797,28 @@ test "if" {
     });
 }
 
+test "if" {
+    try expectParse("if 1 = 2 then", &.{
+        Stmt.init(.{
+            .@"if" = .{
+                .cond = Expr.init(.{
+                    .binop = .{
+                        .lhs = &Expr.init(.{ .imm_integer = 1 }, Range.init(.{ 1, 4 }, .{ 1, 4 })),
+                        .op = WithRange(Expr.Op).init(.eq, Range.init(.{ 1, 6 }, .{ 1, 6 })),
+                        .rhs = &Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 8 }, .{ 1, 8 })),
+                    },
+                }, Range.init(.{ 1, 4 }, .{ 1, 8 })),
+                .tok_then = WithRange(void).init({}, Range.init(.{ 1, 10 }, .{ 1, 13 })),
+            },
+        }, Range.init(.{ 1, 1 }, .{ 1, 13 })),
+    });
+}
+
 test "else" {
     try expectParse("else", &.{Stmt.init(.@"else", Range.init(.{ 1, 1 }, .{ 1, 4 }))});
+}
+
+test "end if" {
+    try expectParse("end if", &.{Stmt.init(.endif, Range.init(.{ 1, 1 }, .{ 1, 6 }))});
+    try expectParse("endif", &.{Stmt.init(.endif, Range.init(.{ 1, 1 }, .{ 1, 5 }))});
 }

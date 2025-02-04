@@ -45,6 +45,7 @@ pub const Payload = union(enum) {
         cond: Expr,
         tok_then: WithRange(void),
     },
+    endif,
     if1: struct {
         cond: Expr,
         tok_then: WithRange(void),
@@ -79,7 +80,6 @@ pub const Payload = union(enum) {
     jumplabel: []const u8,
     goto: WithRange([]const u8),
     end,
-    endif,
     pragma_printed: WithRange([]const u8),
 
     pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
@@ -132,6 +132,7 @@ pub const Payload = union(enum) {
             },
             .let => |l| l.rhs.deinit(allocator),
             .@"if" => |i| i.cond.deinit(allocator),
+            .endif => {},
             .if1 => |i| {
                 i.cond.deinit(allocator);
                 i.stmt_t.deinit(allocator);
@@ -159,7 +160,6 @@ pub const Payload = union(enum) {
             .jumplabel => {},
             .goto => {},
             .end => {},
-            .endif => {},
             .pragma_printed => {},
         }
     }

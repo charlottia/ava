@@ -144,6 +144,7 @@ const Printer = struct {
                 try self.advance(i.tok_then.range);
                 try self.writer.writeAll("THEN");
             },
+            .endif => try self.writer.writeAll("END IF"),
             .if1 => |i| {
                 try self.writer.writeAll("IF");
                 try self.printExpr(i.cond);
@@ -200,7 +201,6 @@ const Printer = struct {
                 try self.writer.writeAll(l.payload);
             },
             .end => try self.writer.writeAll("END"),
-            .endif => try self.writer.writeAll("END IF"),
             .pragma_printed => |p| {
                 try self.writer.writeAll("PRAGMA PRINTED ");
                 try self.advance(p.range);

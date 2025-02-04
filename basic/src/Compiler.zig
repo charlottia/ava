@@ -21,6 +21,7 @@ errorinfo: ?*ErrorInfo,
 deftypes: [26]ty.Type = [_]ty.Type{.single} ** 26,
 slots: std.StringHashMapUnmanaged(u8) = .{}, // key is UPPERCASE with sigil
 nextslot: u8 = 0,
+ifs: std.ArrayListUnmanaged(If) = .{},
 
 const Error = error{
     Unimplemented,
@@ -28,6 +29,13 @@ const Error = error{
     Overflow,
     DuplicateLabel,
     MissingTarget,
+    MissingEndIf,
+    InvalidEndIf,
+};
+
+const If = struct {
+    index_t: usize,
+    index_f: ?usize = null,
 };
 
 pub fn compile(allocator: Allocator, sx: []const Stmt, errorinfo: ?*ErrorInfo) (Error || Parser.Error || Allocator.Error)![]const u8 {
@@ -53,6 +61,7 @@ pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Compiler {
 }
 
 pub fn deinit(self: *Compiler) void {
+    self.ifs.deinit(self.allocator);
     {
         var it = self.slots.keyIterator();
         while (it.next()) |k|
@@ -65,6 +74,9 @@ pub fn deinit(self: *Compiler) void {
 pub fn compileStmts(self: *Compiler, sx: []const Stmt) (Error || Allocator.Error)![]const u8 {
     for (sx) |s|
         try self.compileStmt(s);
+
+    if (self.ifs.items.len > 0)
+        return Error.MissingEndIf;
 
     try self.as.link();
 
@@ -106,8 +118,25 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             try self.compileCoerce(rhs_ty, resolved.type);
             try self.as.one(isa.Opcode{ .op = .LET, .slot = resolved.slot });
         },
-        .if1 => |i| {
+        .@"if" => |i| {
             // XXX: do we want to coerce here? can be any number? string?
+            _ = try self.compileExpr(i.cond.payload);
+
+            try self.ifs.append(self.allocator, .{ .index_t = self.as.buffer.items.len });
+        },
+        .endif => {
+            const i = self.ifs.popOrNull() orelse return Error.InvalidEndIf;
+            std.debug.assert(i.index_f == null);
+            const stmt_t_code = try self.allocator.dupe(u8, self.as.buffer.items[i.index_t..]);
+            defer self.allocator.free(stmt_t_code);
+            self.as.buffer.items.len = i.index_t;
+
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
+            // 3 for InsnC + target
+            try self.as.one(isa.Target{ .absolute = @intCast(i.index_t + stmt_t_code.len + 3) });
+            try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
+        },
+        .if1 => |i| {
             _ = try self.compileExpr(i.cond.payload);
 
             const index = self.as.buffer.items.len;
@@ -117,7 +146,6 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             self.as.buffer.items.len = index;
 
             try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
-            // 3 for InsnC + target
             try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_t_code.len + 3) });
             try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
         },
@@ -360,7 +388,12 @@ fn labelResolve(self: *Compiler, l: []const u8, comptime rw: Rw) !ResolvedLabel(
 }
 
 fn expectCompile(input: []const u8, assembly: anytype) !void {
-    const code = try compileText(testing.allocator, input, null);
+    var errorinfo: ErrorInfo = .{};
+    defer errorinfo.clear(testing.allocator);
+    const code = Compiler.compileText(testing.allocator, input, &errorinfo) catch |err| {
+        std.debug.print("err {any} in expectCompile at {any}\n", .{ err, errorinfo });
+        return err;
+    };
     defer testing.allocator.free(code);
 
     const exp = try isa.assemble(testing.allocator, assembly);
@@ -613,6 +646,83 @@ test "if2" {
         isa.Value{ .string = "true" },
         isa.Opcode{ .op = .PRINT, .t = .STRING },
         isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Label{ .id = "end" },
+    });
+}
+
+test "if" {
+    const fal_se = .{
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "fal" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "se" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+    };
+
+    const tr_ue = .{
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "tr" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "ue" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+    };
+
+    try expectCompile(
+        \\IF 1 = 2 THEN
+        \\    PRINT "fal";
+        \\    PRINT "se"
+        \\ENDIF
+        \\
+        \\IF 1 = 1 THEN
+        \\    PRINT "tr";
+        \\    PRINT "ue"
+        \\END IF
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "second" },
+    } ++ fal_se ++ .{
+        isa.Label{ .id = "second" },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "end" },
+    } ++ tr_ue ++ .{
+        isa.Label{ .id = "end" },
+    });
+
+    try expectCompile(
+        \\IF 1 = 2 THEN
+        \\    PRINT "fal";
+        \\    PRINT "se"
+        \\ELSE
+        \\    PRINT "tr";
+        \\    PRINT "ue"
+        \\END IF
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "else" },
+    } ++ fal_se ++ .{
+        isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
+        isa.Target{ .label_id = "end" },
+        isa.Label{ .id = "else" },
+    } ++ tr_ue ++ .{
         isa.Label{ .id = "end" },
     });
 }

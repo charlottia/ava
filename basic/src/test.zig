@@ -95,10 +95,12 @@ test "functionals" {
 
 fn expectFunctional(allocator: Allocator, path: []const u8, contents: []const u8) !void {
     var errorinfo: ErrorInfo = .{};
+    defer errorinfo.clear(testing.allocator);
     const code = Compiler.compileText(allocator, contents, &errorinfo) catch |err| {
         if (err == error.OutOfMemory)
             return err;
-        std.debug.panic("err {any} in FT '{s}' at {any}", .{ err, path, errorinfo });
+        std.debug.print("err {any} in FT '{s}' at {any}\n", .{ err, path, errorinfo });
+        return err;
     };
     defer allocator.free(code);
 
