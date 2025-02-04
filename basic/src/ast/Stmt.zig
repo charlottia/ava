@@ -48,15 +48,16 @@ pub const Payload = union(enum) {
     if1: struct {
         cond: Expr,
         tok_then: WithRange(void),
-        stmt_t: *Stmt,
+        stmt_t: *const Stmt,
     },
     if2: struct {
         cond: Expr,
         tok_then: WithRange(void),
-        stmt_t: *Stmt,
+        stmt_t: *const Stmt,
         tok_else: WithRange(void),
-        stmt_f: *Stmt,
+        stmt_f: *const Stmt,
     },
+    @"else",
     @"for": struct {
         lv: WithRange([]const u8),
         tok_eq: WithRange(void),
@@ -143,6 +144,7 @@ pub const Payload = union(enum) {
                 i.stmt_f.deinit(allocator);
                 allocator.destroy(i.stmt_f);
             },
+            .@"else" => {},
             .@"for" => |f| {
                 f.from.deinit(allocator);
                 f.to.deinit(allocator);

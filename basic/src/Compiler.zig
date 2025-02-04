@@ -66,7 +66,7 @@ pub fn compileStmts(self: *Compiler, sx: []const Stmt) (Error || Allocator.Error
     for (sx) |s|
         try self.compileStmt(s);
 
-    try self.as.reloc();
+    try self.as.link();
 
     return self.as.buffer.toOwnedSlice(self.allocator);
 }
@@ -106,6 +106,21 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             try self.compileCoerce(rhs_ty, resolved.type);
             try self.as.one(isa.Opcode{ .op = .LET, .slot = resolved.slot });
         },
+        .if1 => |i| {
+            // XXX: do we want to coerce here? can be any number? string?
+            _ = try self.compileExpr(i.cond.payload);
+
+            const index = self.as.buffer.items.len;
+            try self.compileStmt(i.stmt_t.*);
+            const stmt_t_code = try self.allocator.dupe(u8, self.as.buffer.items[index..]);
+            defer self.allocator.free(stmt_t_code);
+            self.as.buffer.items.len = index;
+
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
+            // 3 for InsnC + target
+            try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_t_code.len + 3) });
+            try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
+        },
         .lineno => |n| {
             const ns = try std.fmt.allocPrint(self.allocator, "{d}", .{n});
             defer self.allocator.free(ns);
@@ -117,7 +132,7 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             try self.as.one(isa.Label{ .id = lowered });
         },
         .goto => |l| {
-            try self.as.one(isa.Opcode{ .op = .JUMP });
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
             try self.as.one(isa.Target{ .label_id = l.payload });
         },
         .pragma_printed => |p| {
@@ -492,10 +507,10 @@ test "goto" {
         isa.Value{ .integer = 2 },
         isa.Opcode{ .op = .PRINT, .t = .INTEGER },
         isa.Opcode{ .op = .PRINT_LINEFEED },
-        isa.Opcode{ .op = .JUMP },
+        isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
         isa.Target{ .label_id = "a" },
         isa.Label{ .id = "77" },
-        isa.Opcode{ .op = .JUMP },
+        isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
         isa.Target{ .label_id = "77" },
     });
 }
@@ -518,4 +533,34 @@ test "missing jump target" {
     try expectCompileErr(
         \\GOTO 10
     , Error.MissingTarget, "missing jump target: 10");
+}
+
+test "if" {
+    try expectCompile(
+        \\PRINT "start"
+        \\IF 1 = 2 THEN PRINT "impossible"
+        \\PRINT "end"
+        \\
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "start" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "next" },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "impossible" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Label{ .id = "next" },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
+        isa.Value{ .string = "end" },
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+    });
 }

@@ -116,12 +116,23 @@ pub const InsnAlu = packed struct(u16) {
     rest: u4 = 0,
 };
 
+pub const InsnC = packed struct(u8) {
+    op: Op,
+    cond: Cond,
+};
+
+const Cond = enum(u4) {
+    UNCOND = 0b0000,
+    FALSE = 0b0001,
+};
+
 pub const Opcode = struct {
     op: Op,
     t: ?Type = null,
     tc: ?struct { from: TypeCast, to: TypeCast } = null,
     alu: ?AluOp = null,
     slot: ?u8 = null,
+    cond: ?Cond = null,
 };
 
 pub const Value = union(enum) {
@@ -157,6 +168,7 @@ pub const Label = struct {
 
 pub const Target = union(enum) {
     label_id: []const u8,
+    absolute: u16,
 };
 
 pub fn printFormat(allocator: Allocator, writer: anytype, v: Value) !void {
@@ -310,7 +322,7 @@ pub const Assembler = struct {
                         try writer.writeInt(u16, @bitCast(insn), .little);
                     },
                     .JUMP => {
-                        const insn = InsnX{ .op = e.op };
+                        const insn = InsnC{ .op = e.op, .cond = e.cond.? };
                         try writer.writeInt(u8, @bitCast(insn), .little);
                     },
                 }
@@ -345,16 +357,20 @@ pub const Assembler = struct {
                     });
                     try writer.writeInt(u16, 0xffff, .little);
                 },
+                .absolute => |n| try writer.writeInt(u16, n, .little),
             },
             else => @compileError("unhandled type: " ++ @typeName(@TypeOf(e))),
         }
     }
 
-    pub fn reloc(self: *Assembler) (RelocError || Allocator.Error)!void {
+    pub fn link(self: *Assembler) (RelocError || Allocator.Error)!void {
         for (self.relocs.items) |rl| {
             const target = self.labels.get(rl.target) orelse
                 return ErrorInfo.ret(self, RelocError.MissingTarget, "missing jump target: {s}", .{rl.target});
-            std.mem.writeInt(u16, self.buffer.items[rl.offset..][0..2], @intCast(target), .little);
+
+            const dest = self.buffer.items[rl.offset..][0..2];
+            std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
+            std.mem.writeInt(u16, dest, @intCast(target), .little);
         }
     }
 };
@@ -366,7 +382,7 @@ pub fn assemble(allocator: Allocator, inp: anytype) ![]const u8 {
     inline for (inp) |e|
         try as.one(e);
 
-    try as.reloc();
+    try as.link();
 
     return try as.buffer.toOwnedSlice(allocator);
 }

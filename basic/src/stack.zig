@@ -93,6 +93,7 @@ pub fn Machine(comptime Effects: type) type {
                 const ix: isa.InsnX = @bitCast(code[i]);
                 const it: isa.InsnT = @bitCast(code[i]);
                 const itc: isa.InsnTC = @bitCast(code[i]);
+                const ic: isa.InsnC = @bitCast(code[i]);
                 i += 1;
                 const op = ix.op;
 
@@ -717,7 +718,15 @@ pub fn Machine(comptime Effects: type) type {
                     },
                     .JUMP => {
                         const imm = adv(code, &i, 2);
-                        i = std.mem.readInt(u16, imm, .little);
+                        const dest = std.mem.readInt(u16, imm, .little);
+                        switch (ic.cond) {
+                            .UNCOND => i = dest,
+                            .FALSE => {
+                                const e = (try self.takeValues(1, .integer))[0];
+                                if (e == 0)
+                                    i = dest;
+                            },
+                        }
                     },
                     // .OPERATOR_NEGATE_INTEGER => {
                     //     const vx = try self.takeValues(1, .integer);

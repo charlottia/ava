@@ -404,7 +404,7 @@ fn acceptStmtIf(self: *Parser) !?Stmt {
         return Stmt.init(.{ .@"if" = .{
             .cond = cond,
             .tok_then = tok_then,
-        } }, Range.initEnds(k.range, cond.range));
+        } }, Range.initEnds(k.range, tok_then.range));
     }
     const st = try self.parseOne() orelse return Error.InvalidEnd;
     errdefer st.deinit(self.allocator);
@@ -737,4 +737,62 @@ test "goto" {
             .goto = WithRange([]const u8).init("123777", Range.init(.{ 1, 6 }, .{ 1, 11 })),
         }, Range.init(.{ 1, 1 }, .{ 1, 11 })),
     });
+}
+
+test "if" {
+    try expectParse("if 1 = 2 then", &.{
+        Stmt.init(.{
+            .@"if" = .{
+                .cond = Expr.init(.{
+                    .binop = .{
+                        .lhs = &Expr.init(.{ .imm_integer = 1 }, Range.init(.{ 1, 4 }, .{ 1, 4 })),
+                        .op = WithRange(Expr.Op).init(.eq, Range.init(.{ 1, 6 }, .{ 1, 6 })),
+                        .rhs = &Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 8 }, .{ 1, 8 })),
+                    },
+                }, Range.init(.{ 1, 4 }, .{ 1, 8 })),
+                .tok_then = WithRange(void).init({}, Range.init(.{ 1, 10 }, .{ 1, 13 })),
+            },
+        }, Range.init(.{ 1, 1 }, .{ 1, 13 })),
+    });
+
+    try expectParse("if 1 = 2 then end", &.{
+        Stmt.init(.{
+            .if1 = .{
+                .cond = Expr.init(.{
+                    .binop = .{
+                        .lhs = &Expr.init(.{ .imm_integer = 1 }, Range.init(.{ 1, 4 }, .{ 1, 4 })),
+                        .op = WithRange(Expr.Op).init(.eq, Range.init(.{ 1, 6 }, .{ 1, 6 })),
+                        .rhs = &Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 8 }, .{ 1, 8 })),
+                    },
+                }, Range.init(.{ 1, 4 }, .{ 1, 8 })),
+                .tok_then = WithRange(void).init({}, Range.init(.{ 1, 10 }, .{ 1, 13 })),
+                .stmt_t = &Stmt.init(.end, Range.init(.{ 1, 15 }, .{ 1, 17 })),
+            },
+        }, Range.init(.{ 1, 1 }, .{ 1, 17 })),
+    });
+
+    try expectParse("if 1 = 2 then end else go", &.{
+        Stmt.init(.{
+            .if2 = .{
+                .cond = Expr.init(.{
+                    .binop = .{
+                        .lhs = &Expr.init(.{ .imm_integer = 1 }, Range.init(.{ 1, 4 }, .{ 1, 4 })),
+                        .op = WithRange(Expr.Op).init(.eq, Range.init(.{ 1, 6 }, .{ 1, 6 })),
+                        .rhs = &Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 8 }, .{ 1, 8 })),
+                    },
+                }, Range.init(.{ 1, 4 }, .{ 1, 8 })),
+                .tok_then = WithRange(void).init({}, Range.init(.{ 1, 10 }, .{ 1, 13 })),
+                .stmt_t = &Stmt.init(.end, Range.init(.{ 1, 15 }, .{ 1, 17 })),
+                .tok_else = WithRange(void).init({}, Range.init(.{ 1, 19 }, .{ 1, 22 })),
+                .stmt_f = &Stmt.init(.{ .call = .{
+                    .name = WithRange([]const u8).init("go", Range.init(.{ 1, 24 }, .{ 1, 25 })),
+                    .args = &.{},
+                } }, Range.init(.{ 1, 24 }, .{ 1, 25 })),
+            },
+        }, Range.init(.{ 1, 1 }, .{ 1, 25 })),
+    });
+}
+
+test "else" {
+    try expectParse("else", &.{Stmt.init(.@"else", Range.init(.{ 1, 1 }, .{ 1, 4 }))});
 }

@@ -108,24 +108,31 @@ fn expectFunctional(allocator: Allocator, path: []const u8, contents: []const u8
     try m.run(code);
 
     var fail = false;
+
+    if (m.stack.items.len > 0) {
+        fail = true;
+        std.debug.print("stack had items remaining\n", .{});
+    }
+
     for (m.effects.expectations.items) |e|
         if (!std.mem.eql(u8, e.exp, e.act)) {
             fail = true;
             break;
         };
 
-    if (fail)
+    if (fail) {
+        std.debug.print("err in FT '{s}'\n", .{path});
         for (m.effects.expectations.items) |e| {
             if (std.mem.eql(u8, e.exp, e.act)) {
                 std.debug.print("match: \"{s}\"\n\n", .{std.mem.trimRight(u8, e.exp, "\r\n")});
             } else {
-                fail = true;
                 std.debug.print("exp.:  \"{s}\" !!\nact.:  \"{s}\" !!\n\n", .{
                     std.mem.trimRight(u8, e.exp, "\r\n"),
                     std.mem.trimRight(u8, e.act, "\r\n"),
                 });
             }
-        };
+        }
+    }
 
     try testing.expect(!fail);
 }
