@@ -25,9 +25,9 @@ LET b# = 2
 IF a% = b# THEN PRINT "true"
 PRAGMA PRINTED "true\n"
 
-REM PRINT a% = b#
-REM PRINT a% <> b#
-REM PRAGMA PRINTED "-1\n0\n"
+PRINT a% = b#
+PRINT a% <> b#
+PRAGMA PRINTED "-1\n0\n"
 
 GOTO skip
 
