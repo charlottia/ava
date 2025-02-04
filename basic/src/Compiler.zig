@@ -30,6 +30,7 @@ const Error = error{
     DuplicateLabel,
     MissingTarget,
     MissingEndIf,
+    InvalidElse,
     InvalidEndIf,
 };
 
@@ -121,20 +122,45 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
         .@"if" => |i| {
             // XXX: do we want to coerce here? can be any number? string?
             _ = try self.compileExpr(i.cond.payload);
-
             try self.ifs.append(self.allocator, .{ .index_t = self.as.buffer.items.len });
+        },
+        .@"else" => {
+            if (self.ifs.items.len == 0) return Error.InvalidElse;
+            const i = &self.ifs.items[self.ifs.items.len - 1];
+            if (i.*.index_f != null) return Error.InvalidElse;
+            i.*.index_f = self.as.buffer.items.len;
         },
         .endif => {
             const i = self.ifs.popOrNull() orelse return Error.InvalidEndIf;
-            std.debug.assert(i.index_f == null);
-            const stmt_t_code = try self.allocator.dupe(u8, self.as.buffer.items[i.index_t..]);
+            const stmt_t_code = try self.allocator.dupe(
+                u8,
+                if (i.index_f) |index_f|
+                    self.as.buffer.items[i.index_t..index_f]
+                else
+                    self.as.buffer.items[i.index_t..],
+            );
             defer self.allocator.free(stmt_t_code);
+            const maybe_stmt_f_code: ?[]const u8 = if (i.index_f) |index_f|
+                try self.allocator.dupe(u8, self.as.buffer.items[index_f..])
+            else
+                null;
+            defer if (maybe_stmt_f_code) |stmt_f_code|
+                self.allocator.free(stmt_f_code);
             self.as.buffer.items.len = i.index_t;
 
             try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
-            // 3 for InsnC + target
-            try self.as.one(isa.Target{ .absolute = @intCast(i.index_t + stmt_t_code.len + 3) });
+            // 3 for InsnC + target; extra if ELSE and so another jump involved
+            try self.as.one(isa.Target{ .absolute = @intCast(
+                i.index_t + stmt_t_code.len + 3 + @as(usize, if (i.index_f != null) 3 else 0),
+            ) });
             try self.as.buffer.appendSlice(self.allocator, stmt_t_code);
+
+            if (maybe_stmt_f_code) |stmt_f_code| {
+                const index = self.as.buffer.items.len;
+                try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
+                try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_f_code.len + 3) });
+                try self.as.buffer.appendSlice(self.allocator, stmt_f_code);
+            }
         },
         .if1 => |i| {
             _ = try self.compileExpr(i.cond.payload);
@@ -650,27 +676,27 @@ test "if2" {
     });
 }
 
+const fal_se = .{
+    isa.Opcode{ .op = .PUSH, .t = .STRING },
+    isa.Value{ .string = "fal" },
+    isa.Opcode{ .op = .PRINT, .t = .STRING },
+    isa.Opcode{ .op = .PUSH, .t = .STRING },
+    isa.Value{ .string = "se" },
+    isa.Opcode{ .op = .PRINT, .t = .STRING },
+    isa.Opcode{ .op = .PRINT_LINEFEED },
+};
+
+const tr_ue = .{
+    isa.Opcode{ .op = .PUSH, .t = .STRING },
+    isa.Value{ .string = "tr" },
+    isa.Opcode{ .op = .PRINT, .t = .STRING },
+    isa.Opcode{ .op = .PUSH, .t = .STRING },
+    isa.Value{ .string = "ue" },
+    isa.Opcode{ .op = .PRINT, .t = .STRING },
+    isa.Opcode{ .op = .PRINT_LINEFEED },
+};
+
 test "if" {
-    const fal_se = .{
-        isa.Opcode{ .op = .PUSH, .t = .STRING },
-        isa.Value{ .string = "fal" },
-        isa.Opcode{ .op = .PRINT, .t = .STRING },
-        isa.Opcode{ .op = .PUSH, .t = .STRING },
-        isa.Value{ .string = "se" },
-        isa.Opcode{ .op = .PRINT, .t = .STRING },
-        isa.Opcode{ .op = .PRINT_LINEFEED },
-    };
-
-    const tr_ue = .{
-        isa.Opcode{ .op = .PUSH, .t = .STRING },
-        isa.Value{ .string = "tr" },
-        isa.Opcode{ .op = .PRINT, .t = .STRING },
-        isa.Opcode{ .op = .PUSH, .t = .STRING },
-        isa.Value{ .string = "ue" },
-        isa.Opcode{ .op = .PRINT, .t = .STRING },
-        isa.Opcode{ .op = .PRINT_LINEFEED },
-    };
-
     try expectCompile(
         \\IF 1 = 2 THEN
         \\    PRINT "fal";
@@ -723,6 +749,35 @@ test "if" {
         isa.Target{ .label_id = "end" },
         isa.Label{ .id = "else" },
     } ++ tr_ue ++ .{
+        isa.Label{ .id = "end" },
+    });
+}
+
+test "nested if" {
+    try expectCompile(
+        \\IF 1 = 1 THEN
+        \\    IF 1 = 2 THEN
+        \\        PRINT "fal";
+        \\        PRINT "se"
+        \\    END IF
+        \\END IF
+        \\
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "end" },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+    } ++ fal_se ++ .{
+        isa.Target{ .label_id = "end" },
         isa.Label{ .id = "end" },
     });
 }

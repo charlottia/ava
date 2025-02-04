@@ -144,6 +144,7 @@ const Printer = struct {
                 try self.advance(i.tok_then.range);
                 try self.writer.writeAll("THEN");
             },
+            .@"else" => try self.writer.writeAll("ELSE"),
             .endif => try self.writer.writeAll("END IF"),
             .if1 => |i| {
                 try self.writer.writeAll("IF");
@@ -162,7 +163,6 @@ const Printer = struct {
                 try self.writer.writeAll("ELSE");
                 try self.printStmt(i.stmt_f.*);
             },
-            .@"else" => try self.writer.writeAll("ELSE"),
             .@"for" => |f| {
                 try self.writer.writeAll("FOR");
                 try self.advance(f.lv.range);
