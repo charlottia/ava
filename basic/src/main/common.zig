@@ -38,13 +38,25 @@ const HandleWrite = struct {
 };
 
 pub var stdin: HandleRead = undefined;
-pub var stdout: HandleWrite = undefined;
-pub var stderr: HandleWrite = undefined;
+pub var stdout: *HandleWrite = undefined;
+pub var stderr: *HandleWrite = undefined;
+
+var _stdout: HandleWrite = undefined;
+var _stderr: HandleWrite = undefined;
 
 pub fn handlesInit() void {
     stdin.init(std.io.getStdIn());
+    stdout = &_stdout;
     stdout.init(std.io.getStdOut());
+    stderr = &_stderr;
     stderr.init(std.io.getStdErr());
+}
+
+pub fn handlesInitErr() void {
+    stdin.init(std.io.getStdIn());
+    stderr = &_stderr;
+    stderr.init(std.io.getStdErr());
+    stdout = stderr;
 }
 
 pub fn handlesDeinit() !void {
@@ -170,6 +182,7 @@ pub fn disasm(allocator: Allocator, code: []const u8) !void {
         const ix: isa.InsnX = @bitCast(code[i]);
         const it: isa.InsnT = @bitCast(code[i]);
         const itc: isa.InsnTC = @bitCast(code[i]);
+        const ic: isa.InsnC = @bitCast(code[i]);
         i += 1;
         const op = ix.op;
 
@@ -240,6 +253,7 @@ pub fn disasm(allocator: Allocator, code: []const u8) !void {
             .JUMP => {
                 const target = std.mem.readInt(u16, code[i..][0..2], .little);
                 i += 2;
+                try reportType(ic.cond);
                 try std.fmt.format(stdout.wr, " {} (0x{x})", .{ target, target });
             },
             .PRAGMA => unreachable,

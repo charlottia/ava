@@ -425,7 +425,18 @@ fn expectCompile(input: []const u8, assembly: anytype) !void {
     const exp = try isa.assemble(testing.allocator, assembly);
     defer testing.allocator.free(exp);
 
-    try testing.expectEqualSlices(u8, exp, code);
+    testing.expectEqualSlices(u8, exp, code) catch |err| {
+        if (err == error.TestExpectedEqual) {
+            const common = @import("main/common.zig");
+            common.handlesInitErr();
+            std.debug.print("expected:\n", .{});
+            try common.disasm(testing.allocator, exp);
+            std.debug.print("\nactual:\n", .{});
+            try common.disasm(testing.allocator, code);
+            try common.handlesDeinit();
+        }
+        return err;
+    };
 }
 
 test "compile shrimple" {
@@ -776,8 +787,8 @@ test "nested if" {
         isa.Value{ .integer = 2 },
         isa.Opcode{ .op = .ALU, .alu = .EQ, .t = .INTEGER },
         isa.Opcode{ .op = .JUMP, .cond = .FALSE },
-    } ++ fal_se ++ .{
         isa.Target{ .label_id = "end" },
+    } ++ fal_se ++ .{
         isa.Label{ .id = "end" },
     });
 }
