@@ -27,7 +27,7 @@ PRAGMA PRINTED "true\n"
 
 PRINT a% = b#
 PRINT a% <> b#
-PRAGMA PRINTED "-1\n0\n"
+PRAGMA PRINTED "-1 \n 0 \n"
 
 GOTO skip
 

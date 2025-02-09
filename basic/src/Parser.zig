@@ -206,7 +206,7 @@ fn acceptFactor(self: *Parser) !?Expr {
     return null;
 }
 
-fn acceptTEC(self: *Parser, next: *const fn (*Parser) (Error || Allocator.Error)!?Expr, mappings: anytype) (Error || Allocator.Error)!?Expr {
+fn acceptInfix(self: *Parser, next: *const fn (*Parser) (Error || Allocator.Error)!?Expr, mappings: anytype) (Error || Allocator.Error)!?Expr {
     var t = try next(self) orelse return null;
     errdefer t.deinit(self.allocator);
 
@@ -237,24 +237,24 @@ fn acceptTEC(self: *Parser, next: *const fn (*Parser) (Error || Allocator.Error)
     }
 }
 
-fn acceptTerm(self: *Parser) !?Expr {
-    return self.acceptTEC(acceptFactor, .{
+fn acceptDivMul(self: *Parser) (Error || Allocator.Error)!?Expr {
+    return self.acceptInfix(acceptFactor, .{
         .asterisk = .mul,
         .fslash = .fdiv,
         .bslash = .idiv,
     });
 }
 
-fn acceptExpr(self: *Parser) (Error || Allocator.Error)!?Expr {
-    return self.acceptTEC(acceptTerm, .{
+fn acceptAddSub(self: *Parser) (Error || Allocator.Error)!?Expr {
+    return self.acceptInfix(acceptDivMul, .{
         .plus = .add,
         .minus = .sub,
-        .kw_mod = .mod, // XXX (not sure why; old)
+        .kw_mod = .mod, // XXX 1 + 2 MOD 3 = ?
     });
 }
 
-fn acceptCond(self: *Parser) !?Expr {
-    return self.acceptTEC(acceptExpr, .{
+fn acceptExpr(self: *Parser) (Error || Allocator.Error)!?Expr {
+    return self.acceptInfix(acceptAddSub, .{
         .equals = .eq,
         .diamond = .neq,
         .angleo = .lt,
@@ -399,7 +399,7 @@ fn acceptStmtLet(self: *Parser) !?Stmt {
 
 fn acceptStmtIf(self: *Parser) !?Stmt {
     const k = self.accept(.kw_if) orelse return null;
-    const cond = try self.acceptCond() orelse return Error.InvalidToken;
+    const cond = try self.acceptExpr() orelse return Error.InvalidToken;
     errdefer cond.deinit(self.allocator);
     const tok_then = try self.expect(.kw_then);
     if (try self.peekTerminator()) {
@@ -821,4 +821,76 @@ test "else" {
 test "end if" {
     try expectParse("end if", &.{Stmt.init(.endif, Range.init(.{ 1, 1 }, .{ 1, 6 }))});
     try expectParse("endif", &.{Stmt.init(.endif, Range.init(.{ 1, 1 }, .{ 1, 5 }))});
+}
+
+fn testingParseExpr(x: []const u8) !struct { []const u8, []Stmt, Expr } {
+    const stmt = try std.fmt.allocPrint(testing.allocator, "PRINT {s}", .{x});
+    errdefer testing.allocator.free(stmt);
+
+    var errorinfo: ErrorInfo = .{};
+    const sx = parse(testing.allocator, stmt, &errorinfo) catch |err| {
+        std.debug.print("error parsing expr '{s}' in testingParseExpr at {any}", .{ stmt, errorinfo });
+        return err;
+    };
+    errdefer free(testing.allocator, sx);
+
+    return .{ .@"0" = stmt, .@"1" = sx, .@"2" = sx[0].payload.print.args[0] };
+}
+
+fn expectParseExprEquiv(lhs: []const u8, rhs: []const u8) !void {
+    const lhs_t = try testingParseExpr(lhs);
+    defer testing.allocator.free(lhs_t.@"0");
+    defer free(testing.allocator, lhs_t.@"1");
+
+    const rhs_t = try testingParseExpr(rhs);
+    defer testing.allocator.free(rhs_t.@"0");
+    defer free(testing.allocator, rhs_t.@"1");
+
+    try expectEquivExpr(lhs_t.@"2", rhs_t.@"2");
+}
+
+fn expectEquivExpr(lhs: Expr, rhs: Expr) error{TestExpectedEquiv}!void {
+    if (lhs.payload == .paren)
+        return expectEquivExpr(lhs.payload.paren.*, rhs);
+
+    if (rhs.payload == .paren)
+        return expectEquivExpr(lhs, rhs.payload.paren.*);
+
+    if (std.meta.activeTag(lhs.payload) != std.meta.activeTag(rhs.payload))
+        return error.TestExpectedEquiv;
+
+    switch (lhs.payload) {
+        inline .imm_integer,
+        .imm_long,
+        .imm_single,
+        .imm_double,
+        => |l, tag| if (l != @field(rhs.payload, @tagName(tag)))
+            return error.TestExpectedEquiv,
+        inline .imm_string,
+        .label,
+        => |l, tag| if (!std.mem.eql(u8, l, @field(rhs.payload, @tagName(tag))))
+            return error.TestExpectedEquiv,
+        .binop => |l| {
+            try expectEquivExpr(l.lhs.*, rhs.payload.binop.lhs.*);
+            if (l.op.payload != rhs.payload.binop.op.payload)
+                return error.TestExpectedEquiv;
+            try expectEquivExpr(l.rhs.*, rhs.payload.binop.rhs.*);
+        },
+        .paren => unreachable,
+        else => unreachable,
+    }
+}
+
+test "expectParseExprEquiv" {
+    try expectParseExprEquiv(
+        "x * y * z-a + b + c",
+        "((x*y*z)-a+b+c)",
+    );
+
+    try testing.expectError(error.TestExpectedEquiv, expectParseExprEquiv("a", "b"));
+    try testing.expectError(error.TestExpectedEquiv, expectParseExprEquiv("a+b*c", "(a+b)*c"));
+}
+
+test "comparators" {
+    try expectParseExprEquiv("1 + 2 < 3 * 4 - 5", "(1 + 2) < ((3 * 4) - 5)");
 }
