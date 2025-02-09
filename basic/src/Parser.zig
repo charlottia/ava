@@ -237,8 +237,14 @@ fn acceptInfix(self: *Parser, next: *const fn (*Parser) (Error || Allocator.Erro
     }
 }
 
-fn acceptDivMul(self: *Parser) (Error || Allocator.Error)!?Expr {
+fn acceptMod(self: *Parser) (Error || Allocator.Error)!?Expr {
     return self.acceptInfix(acceptFactor, .{
+        .kw_mod = .mod,
+    });
+}
+
+fn acceptDivMul(self: *Parser) (Error || Allocator.Error)!?Expr {
+    return self.acceptInfix(acceptMod, .{
         .asterisk = .mul,
         .fslash = .fdiv,
         .bslash = .idiv,
@@ -249,7 +255,6 @@ fn acceptAddSub(self: *Parser) (Error || Allocator.Error)!?Expr {
     return self.acceptInfix(acceptDivMul, .{
         .plus = .add,
         .minus = .sub,
-        .kw_mod = .mod, // XXX 1 + 2 MOD 3 = ?
     });
 }
 
