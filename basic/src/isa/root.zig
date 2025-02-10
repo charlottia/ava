@@ -171,3 +171,85 @@ pub const Target = union(enum) {
     label_id: []const u8,
     absolute: u16,
 };
+
+pub const Disassembly = struct {
+    opcode: Opcode,
+    value: ?Value,
+    target: ?Target,
+};
+
+pub fn disasmAt(code: []const u8, i: *usize) Disassembly {
+    const ix: InsnX = @bitCast(code[i.*]);
+    const it: InsnT = @bitCast(code[i.*]);
+    const itc: InsnTC = @bitCast(code[i.*]);
+    const ic: InsnC = @bitCast(code[i.*]);
+    i.* += 1;
+    const op = ix.op;
+
+    var opcode = Opcode{ .op = op };
+    var value: ?Value = null;
+    var target: ?Target = null;
+
+    switch (op) {
+        .PUSH => if (ix.rest == 0b1000) {
+            i.* += 1;
+            opcode.slot = code[i.*];
+        } else {
+            opcode.t = it.t;
+            switch (it.t) {
+                .INTEGER => {
+                    value = .{ .integer = std.mem.readInt(i16, code[i.*..][0..2], .little) };
+                    i.* += 2;
+                },
+                .LONG => {
+                    value = .{ .long = std.mem.readInt(i32, code[i.*..][0..4], .little) };
+                    i.* += 4;
+                },
+                .SINGLE => {
+                    var r: [1]f32 = undefined;
+                    @memcpy(std.mem.sliceAsBytes(r[0..]), code[i.*..][0..4]);
+                    value = .{ .single = r[0] };
+                    i.* += 4;
+                },
+                .DOUBLE => {
+                    var r: [1]f64 = undefined;
+                    @memcpy(std.mem.sliceAsBytes(r[0..]), code[i.*..][0..8]);
+                    value = .{ .double = r[0] };
+                    i.* += 8;
+                },
+                .STRING => {
+                    const len = std.mem.readInt(u16, code[i.*..][0..2], .little);
+                    i.* += 2;
+                    value = .{ .string = code[i.*..][0..len] };
+                    i.* += len;
+                },
+            }
+        },
+        .CAST => opcode.tc = .{ .from = itc.tf, .to = itc.tt },
+        .LET => {
+            opcode.slot = code[i.*];
+            i.* += 1;
+        },
+        .PRINT => opcode.t = it.t,
+        .PRINT_COMMA, .PRINT_LINEFEED => {},
+        .ALU => {
+            const ia: InsnAlu = @bitCast(code[i.* - 1 ..][0..2].*);
+            i.* += 1;
+            opcode.t = ia.t;
+            opcode.alu = ia.alu;
+        },
+        .JUMP => {
+            target = .{ .absolute = std.mem.readInt(u16, code[i.*..][0..2], .little) };
+            i.* += 2;
+            opcode.cond = ic.cond;
+        },
+        .PRAGMA => {
+            const len = std.mem.readInt(u16, code[i.*..][0..2], .little);
+            i.* += 2;
+            value = .{ .string = code[i.*..][0..len] };
+            i.* += len;
+        },
+    }
+
+    return .{ .opcode = opcode, .value = value, .target = target };
+}

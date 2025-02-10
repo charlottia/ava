@@ -224,90 +224,45 @@ pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !v
 }
 
 fn disasmAt(writer: anytype, code: []const u8, i: *usize) !void {
-    const ix: isa.InsnX = @bitCast(code[i.*]);
-    const it: isa.InsnT = @bitCast(code[i.*]);
-    const itc: isa.InsnTC = @bitCast(code[i.*]);
-    const ic: isa.InsnC = @bitCast(code[i.*]);
-    i.* += 1;
-    const op = ix.op;
+    const da = isa.disasmAt(code, i);
 
     try stdout.tc.setColor(writer, .bright_green);
-    try writer.writeAll(@tagName(op));
+    try writer.writeAll(@tagName(da.opcode.op));
     try stdout.tc.setColor(writer, .reset);
 
-    switch (op) {
-        .PUSH => if (ix.rest == 0b1000) {
-            const slot = code[i.*];
-            i.* += 1;
-            try std.fmt.format(writer, " slot {d}", .{slot});
-        } else switch (it.t) {
-            .INTEGER => {
-                const n = std.mem.readInt(i16, code[i.*..][0..2], .little);
-                i.* += 2;
-                try reportType(writer, it.t);
-                try std.fmt.format(writer, " {} (0x{x})", .{ n, n });
-            },
-            .LONG => {
-                const n = std.mem.readInt(i32, code[i.*..][0..4], .little);
-                i.* += 4;
-                try reportType(writer, it.t);
-                try std.fmt.format(writer, " {} (0x{x})", .{ n, n });
-            },
-            .SINGLE => {
-                var r: [1]f32 = undefined;
-                @memcpy(std.mem.sliceAsBytes(r[0..]), code[i.*..][0..4]);
-                i.* += 4;
-                try reportType(writer, it.t);
-                try std.fmt.format(writer, " {}", .{r[0]});
-            },
-            .DOUBLE => {
-                var r: [1]f64 = undefined;
-                @memcpy(std.mem.sliceAsBytes(r[0..]), code[i.*..][0..8]);
-                i.* += 8;
-                try reportType(writer, it.t);
-                try std.fmt.format(writer, " {}", .{r[0]});
-            },
-            .STRING => {
-                const len = std.mem.readInt(u16, code[i.*..][0..2], .little);
-                i.* += 2;
-                const str = code[i.*..][0..len];
-                i.* += len;
-                try reportType(writer, it.t);
-                try std.fmt.format(writer, " \"{s}\" (len {d})", .{ str, len });
-            },
+    switch (da.opcode.op) {
+        .PUSH => if (da.opcode.t == null) {
+            try std.fmt.format(writer, " slot {d}", .{da.opcode.slot.?});
+        } else {
+            try reportType(writer, da.opcode.t.?);
+            switch (da.opcode.t.?) {
+                .INTEGER => try std.fmt.format(writer, " {} (0x{x})", .{ da.value.?.integer, da.value.?.integer }),
+                .LONG => try std.fmt.format(writer, " {} (0x{x})", .{ da.value.?.long, da.value.?.long }),
+                .SINGLE => try std.fmt.format(writer, " {}", .{da.value.?.single}),
+                .DOUBLE => try std.fmt.format(writer, " {}", .{da.value.?.double}),
+                .STRING => try std.fmt.format(writer, " \"{s}\" (len {d})", .{ da.value.?.string, da.value.?.string.len }),
+            }
         },
         .CAST => {
-            try reportType(writer, itc.tf);
-            try reportType(writer, itc.tt);
+            try reportType(writer, da.opcode.tc.?.from);
+            try reportType(writer, da.opcode.tc.?.to);
         },
-        .LET => {
-            const slot = code[i.*];
-            i.* += 1;
-            try std.fmt.format(writer, " slot {d}", .{slot});
-        },
+        .LET => try std.fmt.format(writer, " slot {d}", .{da.opcode.slot.?}),
         .PRINT => {
-            try reportType(writer, it.t);
+            try reportType(writer, da.opcode.t.?);
         },
         .PRINT_COMMA, .PRINT_LINEFEED => {},
         .ALU => {
-            const ia: isa.InsnAlu = @bitCast(code[i.* - 1 ..][0..2].*);
-            i.* += 1;
-            try reportType(writer, ia.t);
-            try std.fmt.format(writer, " {s}", .{@tagName(ia.alu)});
+            try reportType(writer, da.opcode.t.?);
+            try std.fmt.format(writer, " {s}", .{@tagName(da.opcode.alu.?)});
         },
         .JUMP => {
-            const target = std.mem.readInt(u16, code[i.*..][0..2], .little);
-            i.* += 2;
-            try reportType(writer, ic.cond);
-            try std.fmt.format(writer, " {} (0x{x})", .{ target, target });
+            try reportType(writer, da.opcode.cond.?);
+            try std.fmt.format(writer, " {} (0x{x})", .{ da.target.?.absolute, da.target.?.absolute });
         },
         .PRAGMA => {
-            const len = std.mem.readInt(u16, code[i.*..][0..2], .little);
-            i.* += 2;
-            const str = code[i.*..][0..len];
-            i.* += len;
             try reportType(writer, .printed);
-            try std.fmt.format(writer, " \"{s}\" (len {d})", .{ str, len });
+            try std.fmt.format(writer, " \"{s}\" (len {d})", .{ da.value.?.string, da.value.?.string.len });
         },
     }
 }
