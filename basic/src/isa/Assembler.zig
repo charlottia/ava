@@ -53,11 +53,12 @@ pub fn one(self: *Assembler, e: anytype) (Error || Allocator.Error)!void {
         isa.Opcode => {
             switch (e.op) {
                 .PUSH => {
-                    if (e.slot) |slot| {
+                    if (e.@"var") |@"var"| {
                         std.debug.assert(e.t == null);
                         const insn = isa.InsnX{ .op = e.op, .rest = 0b1000 };
                         try writer.writeInt(u8, @bitCast(insn), .little);
-                        try writer.writeInt(u8, slot, .little);
+                        try writer.writeInt(u8, @as(u8, @intCast(@"var".len)), .little);
+                        try writer.writeAll(@"var");
                     } else {
                         const insn = isa.InsnT{ .op = e.op, .t = e.t.? };
                         try writer.writeInt(u8, @bitCast(insn), .little);
@@ -70,11 +71,12 @@ pub fn one(self: *Assembler, e: anytype) (Error || Allocator.Error)!void {
                 .LET => {
                     const insn = isa.InsnX{ .op = e.op };
                     try writer.writeInt(u8, @bitCast(insn), .little);
-                    try writer.writeInt(u8, e.slot.?, .little);
+                    try writer.writeInt(u8, @as(u8, @intCast(e.@"var".?.len)), .little);
+                    try writer.writeAll(e.@"var".?);
                 },
                 .PRINT => {
                     const insn = isa.InsnT{ .op = e.op, .t = e.t.? };
-                    std.debug.assert(e.slot == null);
+                    std.debug.assert(e.@"var" == null);
                     try writer.writeInt(u8, @bitCast(insn), .little);
                 },
                 .PRINT_COMMA, .PRINT_LINEFEED, .PRAGMA => {
@@ -152,8 +154,8 @@ test "assembles" {
     }, &.{ 0x01, 0xff, 0x7f });
 
     try expectAssembles(.{
-        isa.Opcode{ .op = .PUSH, .slot = 0x7b },
-    }, &.{ 0x81, 0x7b });
+        isa.Opcode{ .op = .PUSH, .@"var" = "xyz" },
+    }, &.{ 0x81, 0x03, 'x', 'y', 'z' });
 
     try expectAssembles(.{
         isa.Opcode{ .op = .PUSH, .t = .STRING },
@@ -169,8 +171,8 @@ test "assembles" {
     }, &.{ 0x42, 0x12, 0xe2, 0xb2 });
 
     try expectAssembles(.{
-        isa.Opcode{ .op = .LET, .slot = 0xa1 },
-    }, &.{ 0x03, 0xa1 });
+        isa.Opcode{ .op = .LET, .@"var" = "F" },
+    }, &.{ 0x03, 0x01, 'F' });
 
     try expectAssembles(.{
         isa.Opcode{ .op = .PRINT_COMMA },

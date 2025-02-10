@@ -68,16 +68,6 @@ pub const Payload = union(enum) {
     paren: *const Expr,
     negate: *const Expr,
 
-    pub fn zeroImm(@"type": ty.Type) Self {
-        return switch (@"type") {
-            .integer => .{ .imm_integer = 0 },
-            .long => .{ .imm_long = 0 },
-            .single => .{ .imm_single = 0 },
-            .double => .{ .imm_double = 0 },
-            .string => .{ .imm_string = "" },
-        };
-    }
-
     // Used in tests when zero values are too divide-by-zero-y.
     pub fn oneImm(@"type": ty.Type) Self {
         return switch (@"type") {

@@ -182,7 +182,7 @@ fn colourify(allocator: Allocator, code: []const u8) ![]ColouredCh {
             result[i + 1].colour = .bright_cyan
         else if (da.opcode.op == .LET or (da.opcode.op == .PUSH and da.opcode.t == null))
             result[i + 1].colour = .bright_blue
-        else if ((da.opcode.op == .PUSH and da.opcode.slot == null and da.opcode.t.? == .STRING) or
+        else if ((da.opcode.op == .PUSH and da.opcode.@"var" == null and da.opcode.t.? == .STRING) or
             da.opcode.op == .PRAGMA)
         {
             result[i + 1].colour = .bright_blue;
@@ -267,11 +267,14 @@ fn disasmAt(writer: anytype, code: []const u8, i: usize) !usize {
 
     switch (da.opcode.op) {
         .PUSH => if (da.opcode.t == null) {
-            try stdout.tc.setColor(writer, .bright_green);
-            try writer.writeAll(" slot ");
-            try stdout.tc.setColor(writer, .bright_blue);
-            try std.fmt.format(writer, "{d}", .{da.opcode.slot.?});
+            try stdout.tc.setColor(writer, .bright_red);
+            try std.fmt.format(writer, " {s}", .{da.opcode.@"var".?});
             try stdout.tc.setColor(writer, .reset);
+            try writer.writeAll(" (len ");
+            try stdout.tc.setColor(writer, .bright_blue);
+            try std.fmt.format(writer, "{d}", .{da.opcode.@"var".?.len});
+            try stdout.tc.setColor(writer, .reset);
+            try writer.writeAll(")");
         } else {
             try reportType(writer, da.opcode.t.?);
             switch (da.opcode.t.?) {
@@ -296,11 +299,14 @@ fn disasmAt(writer: anytype, code: []const u8, i: usize) !usize {
             try reportType(writer, da.opcode.tc.?.to);
         },
         .LET => {
-            try stdout.tc.setColor(writer, .bright_green);
-            try writer.writeAll(" slot ");
-            try stdout.tc.setColor(writer, .bright_blue);
-            try std.fmt.format(writer, "{d}", .{da.opcode.slot.?});
+            try stdout.tc.setColor(writer, .bright_red);
+            try std.fmt.format(writer, " {s}", .{da.opcode.@"var".?});
             try stdout.tc.setColor(writer, .reset);
+            try writer.writeAll(" (len ");
+            try stdout.tc.setColor(writer, .bright_blue);
+            try std.fmt.format(writer, "{d}", .{da.opcode.@"var".?.len});
+            try stdout.tc.setColor(writer, .reset);
+            try writer.writeAll(")");
         },
         .PRINT => {
             try reportType(writer, da.opcode.t.?);

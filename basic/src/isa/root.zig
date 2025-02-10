@@ -132,7 +132,7 @@ pub const Opcode = struct {
     t: ?Type = null,
     tc: ?struct { from: TypeCast, to: TypeCast } = null,
     alu: ?AluOp = null,
-    slot: ?u8 = null,
+    @"var": ?[]const u8 = null,
     cond: ?Cond = null,
 };
 
@@ -152,6 +152,16 @@ pub const Value = union(enum) {
             .single => .single,
             .double => .double,
             .string => .string,
+        };
+    }
+
+    pub fn zero(t: ty.Type) Self {
+        return switch (t) {
+            .integer => .{ .integer = 0 },
+            .long => .{ .long = 0 },
+            .single => .{ .single = 0 },
+            .double => .{ .double = 0 },
+            .string => .{ .string = "" },
         };
     }
 
@@ -194,8 +204,10 @@ pub fn disasmAt(code: []const u8, ii: usize) Disassembly {
 
     switch (ix.op) {
         .PUSH => if (ix.rest == 0b1000) {
-            opcode.slot = code[i];
+            const len = code[i];
             i += 1;
+            opcode.@"var" = code[i..][0..len];
+            i += len;
         } else {
             opcode.t = it.t;
             switch (it.t) {
@@ -229,8 +241,10 @@ pub fn disasmAt(code: []const u8, ii: usize) Disassembly {
         },
         .CAST => opcode.tc = .{ .from = itc.tf, .to = itc.tt },
         .LET => {
-            opcode.slot = code[i];
+            const len = code[i];
             i += 1;
+            opcode.@"var" = code[i..][0..len];
+            i += len;
         },
         .PRINT => opcode.t = it.t,
         .PRINT_COMMA, .PRINT_LINEFEED => {},

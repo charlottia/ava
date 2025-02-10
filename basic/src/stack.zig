@@ -7,6 +7,7 @@ const Compiler = @import("./Compiler.zig");
 const PrintLoc = @import("./PrintLoc.zig");
 const ErrorInfo = @import("./ErrorInfo.zig");
 const @"test" = @import("./test.zig");
+const ty = @import("./ty.zig");
 
 const Error = error{
     TypeMismatch,
@@ -23,7 +24,7 @@ pub fn Machine(comptime Effects: type) type {
         errorinfo: ?*ErrorInfo,
 
         stack: std.ArrayListUnmanaged(isa.Value) = .{},
-        slots: std.ArrayListUnmanaged(isa.Value) = .{},
+        vars: std.StringHashMapUnmanaged(isa.Value) = .{},
 
         pub fn init(allocator: Allocator, effects: *Effects, errorinfo: ?*ErrorInfo) Self {
             return .{
@@ -37,8 +38,12 @@ pub fn Machine(comptime Effects: type) type {
             self.effects.deinit();
             self.valueFreeMany(self.stack.items);
             self.stack.deinit(self.allocator);
-            self.valueFreeMany(self.slots.items);
-            self.slots.deinit(self.allocator);
+            var it = self.vars.iterator();
+            while (it.next()) |e| {
+                self.allocator.free(e.key_ptr.*);
+                self.valueFree(e.value_ptr.*);
+            }
+            self.vars.deinit(self.allocator);
         }
 
         fn valueFreeMany(self: *Self, vx: []const isa.Value) void {
@@ -58,19 +63,26 @@ pub fn Machine(comptime Effects: type) type {
             return self.stack.items[self.stack.items.len - n ..][0..n].*;
         }
 
-        fn variableGet(self: *Self, slot: u8) !isa.Value {
-            return self.slots.items[slot].clone(self.allocator);
+        fn variableGet(self: *Self, @"var": []const u8) !isa.Value {
+            std.debug.assert(@"var".len > 0);
+            if (self.vars.get(@"var")) |v|
+                return v.clone(self.allocator);
+            // autovivify
+            const @"type" = ty.Type.fromSigil(@"var"[@"var".len - 1]) orelse
+                return Error.TypeMismatch;
+            return isa.Value.zero(@"type");
         }
 
-        fn variableOwn(self: *Self, slot: u8, v: isa.Value) !void {
-            if (slot < self.slots.items.len) {
-                self.valueFree(self.slots.items[slot]);
-                self.slots.items[slot] = v;
-            } else {
-                // Assuming no random new slot access (e.g. 0, then 2).
-                std.debug.assert(slot == self.slots.items.len);
-                try self.slots.append(self.allocator, v);
+        fn variableOwn(self: *Self, @"var": []const u8, v: isa.Value) !void {
+            const e = try self.vars.getOrPut(self.allocator, @"var");
+
+            if (e.found_existing)
+                self.valueFree(e.value_ptr.*)
+            else {
+                errdefer _ = self.vars.remove(@"var");
+                e.key_ptr.* = try self.allocator.dupe(u8, @"var");
             }
+            e.value_ptr.* = v;
         }
 
         inline fn adv(code: []const u8, i: *usize, n: anytype) (ty: {
@@ -80,9 +92,8 @@ pub fn Machine(comptime Effects: type) type {
                 []const u8;
         }) {
             std.debug.assert(code.len - i.* + 1 >= n);
-            const imm = code[i.*..][0..n];
-            i.* += n;
-            return imm;
+            defer i.* += n;
+            return code[i.*..][0..n];
         }
 
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
@@ -99,8 +110,9 @@ pub fn Machine(comptime Effects: type) type {
 
                 switch (op) {
                     .PUSH => if (ix.rest == 0b1000) {
-                        const slot = adv(code, &i, 1)[0];
-                        const v = try self.variableGet(slot);
+                        const len = adv(code, &i, 1)[0];
+                        const @"var" = adv(code, &i, len);
+                        const v = try self.variableGet(@"var");
                         errdefer self.valueFree(v);
                         try self.stack.append(self.allocator, v);
                     } else switch (it.t) {
@@ -206,11 +218,11 @@ pub fn Machine(comptime Effects: type) type {
                         },
                     },
                     .LET => {
-                        const slot = adv(code, &i, 1)[0];
-                        std.debug.assert(self.stack.items.len >= 1);
+                        const len = adv(code, &i, 1)[0];
+                        const @"var" = adv(code, &i, len);
                         const val = self.stackTake(1);
                         errdefer self.valueFreeMany(&val);
-                        try self.variableOwn(slot, val[0]);
+                        try self.variableOwn(@"var", val[0]);
                     },
                     .PRINT => {
                         const val = self.stackTake(1);

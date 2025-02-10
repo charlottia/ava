@@ -19,8 +19,6 @@ as: isa.Assembler,
 errorinfo: ?*ErrorInfo,
 
 deftypes: [26]ty.Type = [_]ty.Type{.single} ** 26,
-slots: std.StringHashMapUnmanaged(u8) = .{}, // key is UPPERCASE with sigil
-nextslot: u8 = 0,
 csx: std.ArrayListUnmanaged(ControlStructure) = .{},
 
 const Error = error{
@@ -71,12 +69,6 @@ pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Compiler {
 
 pub fn deinit(self: *Compiler) void {
     self.csx.deinit(self.allocator);
-    {
-        var it = self.slots.keyIterator();
-        while (it.next()) |k|
-            self.allocator.free(k.*);
-    }
-    self.slots.deinit(self.allocator);
     self.as.deinit();
 }
 
@@ -125,10 +117,11 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
                 try self.as.one(isa.Opcode{ .op = .PRINT_LINEFEED });
         },
         .let => |l| {
-            const resolved = try self.labelResolve(l.lhs.payload, .write);
+            const resolved = try self.labelResolve(l.lhs.payload);
+            defer resolved.deinit(self.allocator);
             const rhs_ty = try self.compileExpr(l.rhs.payload);
             try self.compileCoerce(rhs_ty, resolved.type);
-            try self.as.one(isa.Opcode{ .op = .LET, .slot = resolved.slot });
+            try self.as.one(isa.Opcode{ .op = .LET, .@"var" = resolved.@"var" });
         },
         .@"if" => |i| {
             // XXX: do we want to coerce here? can be any number? string?
@@ -275,13 +268,9 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
             return .string;
         },
         .label => |l| {
-            const resolved = try self.labelResolve(l, .read);
-            if (resolved.slot) |slot| {
-                try self.as.one(isa.Opcode{ .op = .PUSH, .slot = slot });
-            } else {
-                // autovivify
-                _ = try self.compileExpr(Expr.Payload.zeroImm(resolved.type));
-            }
+            const resolved = try self.labelResolve(l);
+            defer resolved.deinit(self.allocator);
+            try self.as.one(isa.Opcode{ .op = .PUSH, .@"var" = resolved.@"var" });
             return resolved.type;
         },
         .binop => |b| {
@@ -395,52 +384,33 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Ex
     return .{ .widened = widened_ty, .result = result_ty };
 }
 
-const Rw = enum { read, write };
+const ResolvedLabel = struct {
+    @"var": []u8,
+    type: ty.Type,
 
-fn ResolvedLabel(comptime rw: Rw) type {
-    return if (rw == .read) struct {
-        slot: ?u8 = null,
-        type: ty.Type,
-    } else struct {
-        slot: u8,
-        type: ty.Type,
-    };
-}
+    fn deinit(self: ResolvedLabel, allocator: Allocator) void {
+        allocator.free(self.@"var");
+    }
+};
 
-fn labelResolve(self: *Compiler, l: []const u8, comptime rw: Rw) !ResolvedLabel(rw) {
+fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
     std.debug.assert(l.len > 0);
 
-    var key: []u8 = undefined;
-    var typ: ty.Type = undefined;
-
     if (ty.Type.fromSigil(l[l.len - 1])) |t| {
-        key = try self.allocator.alloc(u8, l.len);
-        _ = std.ascii.upperString(key, l);
-
-        typ = t;
-    } else {
-        key = try self.allocator.alloc(u8, l.len + 1);
-        _ = std.ascii.upperString(key, l);
-
-        std.debug.assert(key[0] >= 'A' and key[0] <= 'Z');
-        typ = self.deftypes[key[0] - 'A'];
-        key[l.len] = typ.sigil();
+        return .{
+            .@"var" = try std.ascii.allocUpperString(self.allocator, l),
+            .type = t,
+        };
     }
 
-    if (self.slots.getEntry(key)) |e| {
-        self.allocator.free(key);
-        return .{ .slot = e.value_ptr.*, .type = typ };
-    } else if (rw == .read) {
-        // autovivify
-        self.allocator.free(key);
-        return .{ .type = typ };
-    } else {
-        errdefer self.allocator.free(key);
-        const slot = self.nextslot;
-        self.nextslot += 1;
-        try self.slots.putNoClobber(self.allocator, key, slot);
-        return .{ .slot = slot, .type = typ };
-    }
+    var @"var" = try self.allocator.alloc(u8, l.len + 1);
+    _ = std.ascii.upperString(@"var", l);
+
+    std.debug.assert(@"var"[0] >= 'A' and @"var"[0] <= 'Z');
+    const @"type" = self.deftypes[@"var"[0] - 'A'];
+    @"var"[l.len] = @"type".sigil();
+
+    return .{ .@"var" = @"var", .type = @"type" };
 }
 
 fn expectCompile(input: []const u8, assembly: anytype) !void {
@@ -511,14 +481,14 @@ test "compile variable access" {
     , .{
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 12 },
-        isa.Opcode{ .op = .LET, .slot = 0 },
+        isa.Opcode{ .op = .LET, .@"var" = "A%" },
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 34 },
-        isa.Opcode{ .op = .LET, .slot = 1 },
-        isa.Opcode{ .op = .PUSH, .slot = 0 },
-        isa.Opcode{ .op = .PUSH, .slot = 1 },
+        isa.Opcode{ .op = .LET, .@"var" = "B%" },
+        isa.Opcode{ .op = .PUSH, .@"var" = "A%" },
+        isa.Opcode{ .op = .PUSH, .@"var" = "B%" },
         isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .INTEGER },
-        isa.Opcode{ .op = .LET, .slot = 2 },
+        isa.Opcode{ .op = .LET, .@"var" = "C%" },
     });
 }
 
@@ -561,21 +531,7 @@ test "promotion and coercion" {
         isa.Opcode{ .op = .ALU, .alu = .MUL, .t = .SINGLE },
         isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .SINGLE },
         isa.Opcode{ .op = .CAST, .tc = .{ .from = .SINGLE, .to = .INTEGER } },
-        isa.Opcode{ .op = .LET, .slot = 0 },
-    });
-}
-
-test "autovivification" {
-    try expectCompile(
-        \\PRINT a%; a$
-    , .{
-        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
-        isa.Value{ .integer = 0 },
-        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
-        isa.Opcode{ .op = .PUSH, .t = .STRING },
-        isa.Value{ .string = "" },
-        isa.Opcode{ .op = .PRINT, .t = .STRING },
-        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Opcode{ .op = .LET, .@"var" = "A%" },
     });
 }
 
@@ -838,19 +794,19 @@ test "while" {
     , .{
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 0 },
-        isa.Opcode{ .op = .LET, .slot = 0 },
+        isa.Opcode{ .op = .LET, .@"var" = "I%" },
         isa.Label{ .id = "cond" },
-        isa.Opcode{ .op = .PUSH, .slot = 0 },
+        isa.Opcode{ .op = .PUSH, .@"var" = "I%" },
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 2 },
         isa.Opcode{ .op = .ALU, .alu = .NEQ, .t = .INTEGER },
         isa.Opcode{ .op = .JUMP, .cond = .FALSE },
         isa.Target{ .label_id = "end" },
-        isa.Opcode{ .op = .PUSH, .slot = 0 },
+        isa.Opcode{ .op = .PUSH, .@"var" = "I%" },
         isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 1 },
         isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .INTEGER },
-        isa.Opcode{ .op = .LET, .slot = 0 },
+        isa.Opcode{ .op = .LET, .@"var" = "I%" },
         isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
         isa.Target{ .label_id = "cond" },
         isa.Label{ .id = "end" },
