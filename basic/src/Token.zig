@@ -122,34 +122,31 @@ pub const Payload = union(enum) {
     }
 };
 
-pub const BarewordTable = .{
-    .kw_if = "IF",
-    .kw_then = "THEN",
-    .kw_elseif = "ELSEIF",
-    .kw_else = "ELSE",
-    .kw_end = "END",
-    .kw_endif = "ENDIF",
-    .kw_goto = "GOTO",
-    .kw_for = "FOR",
-    .kw_to = "TO",
-    .kw_step = "STEP",
-    .kw_next = "NEXT",
-    .kw_dim = "DIM",
-    .kw_as = "AS",
-    .kw_gosub = "GOSUB",
-    .kw_return = "RETURN",
-    .kw_stop = "STOP",
-    .kw_do = "DO",
-    .kw_loop = "LOOP",
-    .kw_while = "WHILE",
-    .kw_until = "UNTIL",
-    .kw_wend = "WEND",
-    .kw_let = "LET",
-    .kw_and = "AND",
-    .kw_or = "OR",
-    .kw_xor = "XOR",
-    .kw_pragma = "PRAGMA",
-    .kw_mod = "MOD",
+pub const BarewordTable = t: {
+    var fields: []const std.builtin.Type.StructField = &.{};
+    for (@typeInfo(Payload).@"union".fields) |f| {
+        if (!std.mem.startsWith(u8, f.name, "kw_"))
+            continue;
+
+        var out: [f.name.len - 3]u8 = f.name[3..].*;
+        _ = std.ascii.upperString(&out, &out);
+        const value = out;
+
+        fields = fields ++ [_]std.builtin.Type.StructField{.{
+            .name = f.name,
+            .type = @TypeOf(&value),
+            .default_value_ptr = @ptrCast(&&value), // ...
+            .is_comptime = true,
+            .alignment = @alignOf(@TypeOf(&value)),
+        }};
+    }
+
+    break :t @Type(.{ .@"struct" = .{
+        .layout = .auto,
+        .fields = fields,
+        .decls = &.{},
+        .is_tuple = false,
+    } }){};
 };
 
 pub const Tag = std.meta.Tag(Payload);

@@ -59,6 +59,10 @@ pub const Payload = union(enum) {
         tok_else: WithRange(void),
         stmt_f: *const Stmt,
     },
+    @"while": struct {
+        cond: Expr,
+    },
+    wend,
     @"for": struct {
         lv: WithRange([]const u8),
         tok_eq: WithRange(void),
@@ -146,6 +150,8 @@ pub const Payload = union(enum) {
                 i.stmt_f.deinit(allocator);
                 allocator.destroy(i.stmt_f);
             },
+            .@"while" => |w| w.cond.deinit(allocator),
+            .wend => {},
             .@"for" => |f| {
                 f.from.deinit(allocator);
                 f.to.deinit(allocator);

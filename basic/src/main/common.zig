@@ -232,17 +232,19 @@ pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !v
         const mismatch = diff_mode and
             (si_l != si_r or !std.mem.eql(u8, buffer_l.items, buffer_r.items));
 
-        try stdout.tc.setColor(stdout.wr, .white);
-        if (mismatch) {
-            try stdout.tc.setColor(stdout.wr, .bright_red);
-            try stdout.wr.writeByte('-');
-        } else if (diff_mode)
-            try stdout.wr.writeByte(' ');
-        try std.fmt.format(stdout.wr, "{x:0>4}: ", .{si_l});
-        try stdout.wr.writeAll(buffer_l.items);
-        try stdout.wr.writeByte('\n');
+        if (!(mismatch and si_l >= code_l.len)) {
+            try stdout.tc.setColor(stdout.wr, .white);
+            if (mismatch) {
+                try stdout.tc.setColor(stdout.wr, .bright_red);
+                try stdout.wr.writeByte('-');
+            } else if (diff_mode)
+                try stdout.wr.writeByte(' ');
+            try std.fmt.format(stdout.wr, "{x:0>4}: ", .{si_l});
+            try stdout.wr.writeAll(buffer_l.items);
+            try stdout.wr.writeByte('\n');
+        }
 
-        if (mismatch) {
+        if (mismatch and si_r < code_r.len) {
             try stdout.tc.setColor(stdout.wr, .bright_green);
             try std.fmt.format(stdout.wr, "+{x:0>4}: ", .{si_r});
             try stdout.wr.writeAll(buffer_r.items);

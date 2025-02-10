@@ -163,6 +163,11 @@ const Printer = struct {
                 try self.writer.writeAll("ELSE");
                 try self.printStmt(i.stmt_f.*);
             },
+            .@"while" => |w| {
+                try self.writer.writeAll("IF");
+                try self.printExpr(w.cond);
+            },
+            .wend => try self.writer.writeAll("WEND"),
             .@"for" => |f| {
                 try self.writer.writeAll("FOR");
                 try self.advance(f.lv.range);

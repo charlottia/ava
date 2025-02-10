@@ -106,6 +106,8 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
     if (try self.acceptStmtLet()) |s| return s;
     if (try self.acceptStmtIf()) |s| return s;
     if (try self.acceptStmtElse()) |s| return s;
+    if (try self.acceptStmtWhile()) |s| return s;
+    if (try self.acceptStmtWend()) |s| return s;
     if (try self.acceptStmtFor()) |s| return s;
     if (try self.acceptStmtNext()) |s| return s;
     if (try self.acceptStmtGoto()) |s| return s;
@@ -447,6 +449,24 @@ fn acceptStmtElse(self: *Parser) !?Stmt {
     if (!try self.peekTerminator())
         return Error.ExpectedTerminator;
     return Stmt.init(.@"else", k.range);
+}
+
+fn acceptStmtWhile(self: *Parser) !?Stmt {
+    const k = self.accept(.kw_while) orelse return null;
+    const cond = try self.acceptExpr() orelse return Error.InvalidToken;
+    errdefer cond.deinit(self.allocator);
+    if (!try self.peekTerminator())
+        return Error.ExpectedTerminator;
+    return Stmt.init(.{ .@"while" = .{
+        .cond = cond,
+    } }, Range.initEnds(k.range, cond.range));
+}
+
+fn acceptStmtWend(self: *Parser) !?Stmt {
+    const k = self.accept(.kw_wend) orelse return null;
+    if (!try self.peekTerminator())
+        return Error.ExpectedTerminator;
+    return Stmt.init(.wend, k.range);
 }
 
 fn acceptStmtFor(self: *Parser) !?Stmt {
@@ -898,4 +918,16 @@ test "expectParseExprEquiv" {
 
 test "comparators" {
     try expectParseExprEquiv("1 + 2 < 3 * 4 - 5", "(1 + 2) < ((3 * 4) - 5)");
+}
+
+test "while" {
+    try expectParse(
+        \\WHILE i
+        \\WEND
+    , &.{
+        Stmt.init(.{ .@"while" = .{ .cond = Expr.init(.{
+            .label = "i",
+        }, Range.init(.{ 1, 7 }, .{ 1, 7 })) } }, Range.init(.{ 1, 1 }, .{ 1, 7 })),
+        Stmt.init(.wend, Range.init(.{ 2, 1 }, .{ 2, 4 })),
+    });
 }

@@ -21,7 +21,7 @@ errorinfo: ?*ErrorInfo,
 deftypes: [26]ty.Type = [_]ty.Type{.single} ** 26,
 slots: std.StringHashMapUnmanaged(u8) = .{}, // key is UPPERCASE with sigil
 nextslot: u8 = 0,
-ifs: std.ArrayListUnmanaged(If) = .{},
+csx: std.ArrayListUnmanaged(ControlStructure) = .{},
 
 const Error = error{
     Unimplemented,
@@ -30,13 +30,21 @@ const Error = error{
     DuplicateLabel,
     MissingTarget,
     MissingEndIf,
+    MissingWend,
     InvalidElse,
     InvalidEndIf,
+    InvalidWend,
 };
 
-const If = struct {
-    index_t: usize,
-    index_f: ?usize = null,
+const ControlStructure = union(enum) {
+    @"if": struct {
+        index_t: usize,
+        index_f: ?usize = null,
+    },
+    @"while": struct {
+        start: usize,
+        index_e: usize,
+    },
 };
 
 pub fn compile(allocator: Allocator, sx: []const Stmt, errorinfo: ?*ErrorInfo) (Error || Parser.Error || Allocator.Error)![]const u8 {
@@ -62,7 +70,7 @@ pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) Compiler {
 }
 
 pub fn deinit(self: *Compiler) void {
-    self.ifs.deinit(self.allocator);
+    self.csx.deinit(self.allocator);
     {
         var it = self.slots.keyIterator();
         while (it.next()) |k|
@@ -76,8 +84,11 @@ pub fn compileStmts(self: *Compiler, sx: []const Stmt) (Error || Allocator.Error
     for (sx) |s|
         try self.compileStmt(s);
 
-    if (self.ifs.items.len > 0)
-        return Error.MissingEndIf;
+    if (self.csx.items.len > 0)
+        return switch (self.csx.items[self.csx.items.len - 1]) {
+            .@"if" => Error.MissingEndIf,
+            .@"while" => Error.MissingWend,
+        };
 
     try self.as.link();
 
@@ -123,12 +134,16 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             // XXX: do we want to coerce here? can be any number? string?
             _ = try self.compileExpr(i.cond.payload);
             try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
-            try self.ifs.append(self.allocator, .{ .index_t = self.as.buffer.items.len });
+            try self.csx.append(self.allocator, .{ .@"if" = .{ .index_t = self.as.buffer.items.len } });
             try self.as.one(isa.Target{ .absolute = 0xffff });
         },
         .@"else" => {
-            if (self.ifs.items.len == 0) return Error.InvalidElse;
-            const i = &self.ifs.items[self.ifs.items.len - 1];
+            if (self.csx.items.len == 0) return Error.InvalidElse;
+            const cs = &self.csx.items[self.csx.items.len - 1];
+            const i = switch (cs.*) {
+                .@"if" => |*i| i,
+                else => return Error.InvalidElse,
+            };
             if (i.*.index_f != null) return Error.InvalidElse;
 
             try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
@@ -141,7 +156,11 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             std.mem.writeInt(u16, dest, @intCast(self.as.buffer.items.len), .little);
         },
         .endif => {
-            const i = self.ifs.popOrNull() orelse return Error.InvalidEndIf;
+            const cs = self.csx.popOrNull() orelse return Error.InvalidEndIf;
+            const i = switch (cs) {
+                .@"if" => |i| i,
+                else => return Error.InvalidEndIf,
+            };
             // XXX shares much with Assembler.link
             const dest = self.as.buffer.items[i.index_f orelse i.index_t ..][0..2];
             std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
@@ -185,6 +204,26 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
                 try self.as.one(isa.Target{ .absolute = @intCast(index + stmt_f_code.len + 3) });
                 try self.as.buffer.appendSlice(self.allocator, stmt_f_code);
             }
+        },
+        .@"while" => |w| {
+            const start = self.as.buffer.items.len;
+            _ = try self.compileExpr(w.cond.payload);
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
+            try self.csx.append(self.allocator, .{ .@"while" = .{ .start = start, .index_e = self.as.buffer.items.len } });
+            try self.as.one(isa.Target{ .absolute = 0xffff });
+        },
+        .wend => {
+            const cs = self.csx.popOrNull() orelse return Error.InvalidEndIf;
+            const w = switch (cs) {
+                .@"while" => |w| w,
+                else => return Error.InvalidEndIf,
+            };
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
+            try self.as.one(isa.Target{ .absolute = @intCast(w.start) });
+            // XXX shares much with Assembler.link
+            const dest = self.as.buffer.items[w.index_e..][0..2];
+            std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
+            std.mem.writeInt(u16, dest, @intCast(self.as.buffer.items.len), .little);
         },
         .lineno => |n| {
             const ns = try std.fmt.allocPrint(self.allocator, "{d}", .{n});
@@ -786,6 +825,34 @@ test "nested if" {
         isa.Opcode{ .op = .JUMP, .cond = .FALSE },
         isa.Target{ .label_id = "end" },
     } ++ fal_se ++ .{
+        isa.Label{ .id = "end" },
+    });
+}
+
+test "while" {
+    try expectCompile(
+        \\i% = 0
+        \\WHILE i% <> 2
+        \\  i% = i% + 1
+        \\WEND
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 0 },
+        isa.Opcode{ .op = .LET, .slot = 0 },
+        isa.Label{ .id = "cond" },
+        isa.Opcode{ .op = .PUSH, .slot = 0 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 2 },
+        isa.Opcode{ .op = .ALU, .alu = .NEQ, .t = .INTEGER },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "end" },
+        isa.Opcode{ .op = .PUSH, .slot = 0 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .INTEGER },
+        isa.Opcode{ .op = .LET, .slot = 0 },
+        isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
+        isa.Target{ .label_id = "cond" },
         isa.Label{ .id = "end" },
     });
 }
