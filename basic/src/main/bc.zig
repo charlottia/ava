@@ -10,7 +10,7 @@ const common = @import("./common.zig");
 fn usage(status: u8) noreturn {
     common.usageFor(status, "bc", "[options] [file]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Disassembles and pretty-prints Ava BASIC bytecode.
+        \\Hexdumps and disassembles Ava BASIC bytecode.
         \\
         \\The extension of [file] will be used to guess the run mode if no relevant
         \\option is given. `-' may be given to read from standard input.
@@ -63,6 +63,7 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
         .avc => {},
     };
 
-    try common.xxd(code);
+    try common.xxd(allocator, code);
+    try common.stdout.wr.writeByte('\n');
     try common.disasm(allocator, code, null);
 }

@@ -91,7 +91,7 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
         defer allocator.free(code);
 
         if (options.bc) {
-            try common.xxd(code);
+            try common.xxd(allocator, code);
             try common.disasm(allocator, code, null);
         }
 

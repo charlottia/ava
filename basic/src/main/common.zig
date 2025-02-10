@@ -123,24 +123,22 @@ pub fn handleError(comptime what: []const u8, err: anyerror, errorinfo: ErrorInf
     try bundle.bw.flush();
 }
 
-pub fn xxd(code: []const u8) !void {
-    var i: usize = 0;
+pub fn xxd(allocator: Allocator, code: []const u8) !void {
+    const coloured = try colourify(allocator, code);
+    defer allocator.free(coloured);
 
+    var i: usize = 0;
     while (i < code.len) : (i += 16) {
         try stdout.tc.setColor(stdout.wr, .white);
         try std.fmt.format(stdout.wr, "{x:0>4}:", .{i});
-        const c = @min(code.len - i, 16);
+        const c = @min(coloured.len - i, 16);
         for (0..c) |j| {
-            const ch = code[i + j];
+            const cch = coloured[i + j];
             if (j % 2 == 0)
                 try stdout.wr.writeByte(' ');
-            if (ch == 0)
-                try stdout.tc.setColor(stdout.wr, .reset)
-            else if (ch < 32 or ch > 126)
-                try stdout.tc.setColor(stdout.wr, .bright_yellow)
-            else
-                try stdout.tc.setColor(stdout.wr, .bright_green);
-            try std.fmt.format(stdout.wr, "{x:0>2}", .{ch});
+            if (j == 0 or coloured[i + j - 1].colour != cch.colour)
+                try stdout.tc.setColor(stdout.wr, cch.colour);
+            try std.fmt.format(stdout.wr, "{x:0>2}", .{cch.ch});
         }
 
         for (c..16) |j| {
@@ -151,17 +149,13 @@ pub fn xxd(code: []const u8) !void {
 
         try stdout.wr.writeAll("  ");
         for (0..c) |j| {
-            const ch = code[i + j];
-            if (ch == 0) {
-                try stdout.tc.setColor(stdout.wr, .reset);
-                try stdout.wr.writeByte('.');
-            } else if (ch < 32 or ch > 126) {
-                try stdout.tc.setColor(stdout.wr, .bright_yellow);
-                try stdout.wr.writeByte('.');
-            } else {
-                try stdout.tc.setColor(stdout.wr, .bright_green);
-                try stdout.wr.writeByte(ch);
-            }
+            const cch = coloured[i + j];
+            if (j == 0 or coloured[i + j - 1].colour != cch.colour)
+                try stdout.tc.setColor(stdout.wr, cch.colour);
+            if (cch.ch < 32 or cch.ch > 126)
+                try stdout.wr.writeByte('.')
+            else
+                try stdout.wr.writeByte(cch.ch);
         }
 
         try stdout.wr.writeByte('\n');
@@ -169,6 +163,41 @@ pub fn xxd(code: []const u8) !void {
 
     try stdout.tc.setColor(stdout.wr, .reset);
     try stdout.bw.flush();
+}
+
+const ColouredCh = struct { colour: std.io.tty.Color, ch: u8 };
+
+fn colourify(allocator: Allocator, code: []const u8) ![]ColouredCh {
+    const result = try allocator.alloc(ColouredCh, code.len);
+
+    var i: usize = 0;
+    while (i < code.len) {
+        const da = isa.disasmAt(code, i);
+        for (i..da.i) |j|
+            result[j].colour = .reset;
+
+        // ALU is two byte insn, rest are 1.
+        result[i].colour = .bright_green;
+        if (da.opcode.op == .ALU)
+            result[i + 1].colour = .bright_cyan
+        else if (da.opcode.op == .LET or (da.opcode.op == .PUSH and da.opcode.t == null))
+            result[i + 1].colour = .bright_blue
+        else if ((da.opcode.op == .PUSH and da.opcode.slot == null and da.opcode.t.? == .STRING) or
+            da.opcode.op == .PRAGMA)
+        {
+            result[i + 1].colour = .bright_blue;
+            result[i + 2].colour = .bright_blue;
+            for (i + 3..da.i) |j|
+                result[j].colour = .bright_yellow;
+        }
+
+        for (i..da.i) |j|
+            result[j].ch = code[j];
+
+        i = da.i;
+    }
+
+    return result;
 }
 
 pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !void {
@@ -193,16 +222,17 @@ pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !v
         var buffer_l = std.ArrayListUnmanaged(u8){};
         defer buffer_l.deinit(allocator);
         if (i_l < code_l.len)
-            try disasmAt(buffer_l.writer(allocator), code_l, &i_l);
+            i_l = try disasmAt(buffer_l.writer(allocator), code_l, i_l);
 
         var buffer_r = std.ArrayListUnmanaged(u8){};
         defer buffer_r.deinit(allocator);
         if (i_r < code_r.len)
-            try disasmAt(buffer_r.writer(allocator), code_r, &i_r);
+            i_r = try disasmAt(buffer_r.writer(allocator), code_r, i_r);
 
         const mismatch = diff_mode and
             (si_l != si_r or !std.mem.eql(u8, buffer_l.items, buffer_r.items));
 
+        try stdout.tc.setColor(stdout.wr, .white);
         if (mismatch) {
             try stdout.tc.setColor(stdout.wr, .bright_red);
             try stdout.wr.writeByte('-');
@@ -219,11 +249,14 @@ pub fn disasm(allocator: Allocator, code_l: []const u8, code_ri: ?[]const u8) !v
             try stdout.wr.writeByte('\n');
         }
 
+        if (!diff_mode and (i_l / 0x10) != (si_l / 0x10))
+            try stdout.wr.writeByte('\n');
+
         try stdout.bw.flush();
     }
 }
 
-fn disasmAt(writer: anytype, code: []const u8, i: *usize) !void {
+fn disasmAt(writer: anytype, code: []const u8, i: usize) !usize {
     const da = isa.disasmAt(code, i);
 
     try stdout.tc.setColor(writer, .bright_green);
@@ -232,7 +265,11 @@ fn disasmAt(writer: anytype, code: []const u8, i: *usize) !void {
 
     switch (da.opcode.op) {
         .PUSH => if (da.opcode.t == null) {
-            try std.fmt.format(writer, " slot {d}", .{da.opcode.slot.?});
+            try stdout.tc.setColor(writer, .bright_green);
+            try writer.writeAll(" slot ");
+            try stdout.tc.setColor(writer, .bright_blue);
+            try std.fmt.format(writer, "{d}", .{da.opcode.slot.?});
+            try stdout.tc.setColor(writer, .reset);
         } else {
             try reportType(writer, da.opcode.t.?);
             switch (da.opcode.t.?) {
@@ -240,21 +277,38 @@ fn disasmAt(writer: anytype, code: []const u8, i: *usize) !void {
                 .LONG => try std.fmt.format(writer, " {} (0x{x})", .{ da.value.?.long, da.value.?.long }),
                 .SINGLE => try std.fmt.format(writer, " {}", .{da.value.?.single}),
                 .DOUBLE => try std.fmt.format(writer, " {}", .{da.value.?.double}),
-                .STRING => try std.fmt.format(writer, " \"{s}\" (len {d})", .{ da.value.?.string, da.value.?.string.len }),
+                .STRING => {
+                    try stdout.tc.setColor(writer, .bright_yellow);
+                    try std.fmt.format(writer, " \"{s}\"", .{da.value.?.string});
+                    try stdout.tc.setColor(writer, .reset);
+                    try writer.writeAll(" (len ");
+                    try stdout.tc.setColor(writer, .bright_blue);
+                    try std.fmt.format(writer, "{d}", .{da.value.?.string.len});
+                    try stdout.tc.setColor(writer, .reset);
+                    try writer.writeAll(")");
+                },
             }
         },
         .CAST => {
             try reportType(writer, da.opcode.tc.?.from);
             try reportType(writer, da.opcode.tc.?.to);
         },
-        .LET => try std.fmt.format(writer, " slot {d}", .{da.opcode.slot.?}),
+        .LET => {
+            try stdout.tc.setColor(writer, .bright_green);
+            try writer.writeAll(" slot ");
+            try stdout.tc.setColor(writer, .bright_blue);
+            try std.fmt.format(writer, "{d}", .{da.opcode.slot.?});
+            try stdout.tc.setColor(writer, .reset);
+        },
         .PRINT => {
             try reportType(writer, da.opcode.t.?);
         },
         .PRINT_COMMA, .PRINT_LINEFEED => {},
         .ALU => {
             try reportType(writer, da.opcode.t.?);
+            try stdout.tc.setColor(writer, .bright_cyan);
             try std.fmt.format(writer, " {s}", .{@tagName(da.opcode.alu.?)});
+            try stdout.tc.setColor(writer, .reset);
         },
         .JUMP => {
             try reportType(writer, da.opcode.cond.?);
@@ -262,13 +316,22 @@ fn disasmAt(writer: anytype, code: []const u8, i: *usize) !void {
         },
         .PRAGMA => {
             try reportType(writer, .printed);
-            try std.fmt.format(writer, " \"{s}\" (len {d})", .{ da.value.?.string, da.value.?.string.len });
+            try stdout.tc.setColor(writer, .bright_yellow);
+            try std.fmt.format(writer, " \"{s}\"", .{da.value.?.string});
+            try stdout.tc.setColor(writer, .reset);
+            try writer.writeAll(" (len ");
+            try stdout.tc.setColor(writer, .bright_blue);
+            try std.fmt.format(writer, "{d}", .{da.value.?.string.len});
+            try stdout.tc.setColor(writer, .reset);
+            try writer.writeAll(")");
         },
     }
+
+    return da.i;
 }
 
 fn reportType(writer: anytype, t: anytype) !void {
-    try stdout.tc.setColor(writer, .cyan);
+    try stdout.tc.setColor(writer, .bright_green);
     try writer.writeByte(' ');
     for (@tagName(t)) |c|
         try writer.writeByte(std.ascii.toLower(c));
