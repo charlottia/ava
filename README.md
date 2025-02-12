@@ -1,5 +1,8 @@
 # Ava BASIC
 
+Note: probably done for now.
+
+
 ## Wayfinding
 
 * [`basic/`](basic/) — Compiler and stack machine interpreter.
