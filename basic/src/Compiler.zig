@@ -29,9 +29,11 @@ const Error = error{
     MissingTarget,
     MissingEndIf,
     MissingWend,
+    MissingNext,
     InvalidElse,
     InvalidEndIf,
     InvalidWend,
+    InvalidNext,
 };
 
 const ControlStructure = union(enum) {
@@ -42,6 +44,11 @@ const ControlStructure = union(enum) {
     @"while": struct {
         start: usize,
         index_e: usize,
+    },
+    @"for": struct {
+        start: usize,
+        label: []const u8,
+        to: Expr.Payload,
     },
 };
 
@@ -80,6 +87,7 @@ pub fn compileStmts(self: *Compiler, sx: []const Stmt) (Error || Allocator.Error
         return switch (self.csx.items[self.csx.items.len - 1]) {
             .@"if" => Error.MissingEndIf,
             .@"while" => Error.MissingWend,
+            .@"for" => Error.MissingNext,
         };
 
     try self.as.link();
@@ -206,10 +214,10 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             try self.as.one(isa.Target{ .absolute = 0xffff });
         },
         .wend => {
-            const cs = self.csx.popOrNull() orelse return Error.InvalidEndIf;
+            const cs = self.csx.popOrNull() orelse return Error.InvalidWend;
             const w = switch (cs) {
                 .@"while" => |w| w,
-                else => return Error.InvalidEndIf,
+                else => return Error.InvalidWend,
             };
             try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .UNCOND });
             try self.as.one(isa.Target{ .absolute = @intCast(w.start) });
@@ -217,6 +225,44 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             const dest = self.as.buffer.items[w.index_e..][0..2];
             std.debug.assert(std.mem.readInt(u16, dest, .little) == 0xffff);
             std.mem.writeInt(u16, dest, @intCast(self.as.buffer.items.len), .little);
+        },
+        .@"for" => |f| {
+            // init loop var
+            const lv_resolved = try self.labelResolve(f.lv.payload);
+            defer lv_resolved.deinit(self.allocator);
+            const from_ty = try self.compileExpr(f.from.payload);
+            try self.compileCoerce(from_ty, lv_resolved.type);
+            try self.as.one(isa.Opcode{ .op = .LET, .@"var" = lv_resolved.@"var" });
+            try self.csx.append(self.allocator, .{ .@"for" = .{
+                .start = self.as.buffer.items.len,
+                .label = f.lv.payload,
+                .to = f.to.payload,
+            } });
+        },
+        .next => |n| {
+            const cs = self.csx.popOrNull() orelse return Error.InvalidNext;
+            const f = switch (cs) {
+                .@"for" => |f| f,
+                else => return Error.InvalidNext,
+            };
+            const lv_resolved = try self.labelResolve(f.label);
+            defer lv_resolved.deinit(self.allocator);
+            const nv_resolved = try self.labelResolve(n.payload);
+            defer nv_resolved.deinit(self.allocator);
+            if (!std.mem.eql(u8, lv_resolved.@"var", nv_resolved.@"var"))
+                return Error.InvalidNext;
+            std.debug.assert(lv_resolved.type == nv_resolved.type);
+            try self.as.one(isa.Opcode{ .op = .PUSH, .@"var" = lv_resolved.@"var" });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .t = isa.Type.fromTy(lv_resolved.type) });
+            try self.as.one(isa.Value.one(lv_resolved.type));
+            try self.as.one(isa.Opcode{ .op = .ALU, .alu = .ADD, .t = isa.Type.fromTy(lv_resolved.type) });
+            try self.as.one(isa.Opcode{ .op = .LET, .@"var" = lv_resolved.@"var" });
+            try self.as.one(isa.Opcode{ .op = .PUSH, .@"var" = lv_resolved.@"var" });
+            const to_ty = try self.compileExpr(f.to);
+            try self.compileCoerce(to_ty, lv_resolved.type);
+            try self.as.one(isa.Opcode{ .op = .ALU, .alu = .GT, .t = isa.Type.fromTy(lv_resolved.type) });
+            try self.as.one(isa.Opcode{ .op = .JUMP, .cond = .FALSE });
+            try self.as.one(isa.Target{ .absolute = @intCast(f.start) });
         },
         .lineno => |n| {
             const ns = try std.fmt.allocPrint(self.allocator, "{d}", .{n});
@@ -810,5 +856,34 @@ test "while" {
         isa.Opcode{ .op = .JUMP, .cond = .UNCOND },
         isa.Target{ .label_id = "cond" },
         isa.Label{ .id = "end" },
+    });
+}
+
+test "for" {
+    try expectCompile(
+        \\FOR a = 1% to 3&
+        \\  PRINT a
+        \\NEXT a
+    , .{
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
+        isa.Value{ .integer = 1 },
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .INTEGER, .to = .SINGLE } },
+        isa.Opcode{ .op = .LET, .@"var" = "A!" },
+        isa.Label{ .id = "start" },
+        isa.Opcode{ .op = .PUSH, .@"var" = "A!" },
+        isa.Opcode{ .op = .PRINT, .t = .SINGLE },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
+        isa.Opcode{ .op = .PUSH, .@"var" = "A!" },
+        isa.Opcode{ .op = .PUSH, .t = .SINGLE },
+        isa.Value{ .single = 1 },
+        isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .SINGLE },
+        isa.Opcode{ .op = .LET, .@"var" = "A!" },
+        isa.Opcode{ .op = .PUSH, .@"var" = "A!" },
+        isa.Opcode{ .op = .PUSH, .t = .LONG },
+        isa.Value{ .long = 3 },
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .LONG, .to = .SINGLE } },
+        isa.Opcode{ .op = .ALU, .alu = .GT, .t = .SINGLE },
+        isa.Opcode{ .op = .JUMP, .cond = .FALSE },
+        isa.Target{ .label_id = "start" },
     });
 }
