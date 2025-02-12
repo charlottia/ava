@@ -165,16 +165,6 @@ pub const Value = union(enum) {
         };
     }
 
-    pub fn one(t: ty.Type) Self {
-        return switch (t) {
-            .integer => .{ .integer = 1 },
-            .long => .{ .long = 1 },
-            .single => .{ .single = 1 },
-            .double => .{ .double = 1 },
-            .string => @panic("isa.Value.one called with .string"),
-        };
-    }
-
     pub fn clone(self: Self, allocator: Allocator) !Self {
         return switch (self) {
             .integer, .long, .single, .double => self,

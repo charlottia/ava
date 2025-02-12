@@ -49,6 +49,7 @@ const ControlStructure = union(enum) {
         start: usize,
         label: []const u8,
         to: Expr.Payload,
+        step: Expr.Payload,
     },
 };
 
@@ -227,7 +228,6 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
             std.mem.writeInt(u16, dest, @intCast(self.as.buffer.items.len), .little);
         },
         .@"for" => |f| {
-            // init loop var
             const lv_resolved = try self.labelResolve(f.lv.payload);
             defer lv_resolved.deinit(self.allocator);
             const from_ty = try self.compileExpr(f.from.payload);
@@ -237,6 +237,20 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
                 .start = self.as.buffer.items.len,
                 .label = f.lv.payload,
                 .to = f.to.payload,
+                .step = Expr.Payload.oneImm(lv_resolved.type),
+            } });
+        },
+        .forstep => |f| {
+            const lv_resolved = try self.labelResolve(f.lv.payload);
+            defer lv_resolved.deinit(self.allocator);
+            const from_ty = try self.compileExpr(f.from.payload);
+            try self.compileCoerce(from_ty, lv_resolved.type);
+            try self.as.one(isa.Opcode{ .op = .LET, .@"var" = lv_resolved.@"var" });
+            try self.csx.append(self.allocator, .{ .@"for" = .{
+                .start = self.as.buffer.items.len,
+                .label = f.lv.payload,
+                .to = f.to.payload,
+                .step = f.step.payload,
             } });
         },
         .next => |n| {
@@ -253,8 +267,8 @@ fn compileStmt(self: *Compiler, s: Stmt) (Error || Allocator.Error)!void {
                 return Error.InvalidNext;
             std.debug.assert(lv_resolved.type == nv_resolved.type);
             try self.as.one(isa.Opcode{ .op = .PUSH, .@"var" = lv_resolved.@"var" });
-            try self.as.one(isa.Opcode{ .op = .PUSH, .t = isa.Type.fromTy(lv_resolved.type) });
-            try self.as.one(isa.Value.one(lv_resolved.type));
+            const step_ty = try self.compileExpr(f.step);
+            try self.compileCoerce(step_ty, lv_resolved.type);
             try self.as.one(isa.Opcode{ .op = .ALU, .alu = .ADD, .t = isa.Type.fromTy(lv_resolved.type) });
             try self.as.one(isa.Opcode{ .op = .LET, .@"var" = lv_resolved.@"var" });
             try self.as.one(isa.Opcode{ .op = .PUSH, .@"var" = lv_resolved.@"var" });

@@ -68,7 +68,9 @@ pub const Payload = union(enum) {
     paren: *const Expr,
     negate: *const Expr,
 
-    // Used in tests when zero values are too divide-by-zero-y.
+    // Used by:
+    // * FOR...NEXT's default STEP.
+    // * Tests when zero values are too divide-by-zero-y.
     pub fn oneImm(@"type": ty.Type) Self {
         return switch (@"type") {
             .integer => .{ .imm_integer = 1 },
